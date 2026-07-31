@@ -45,7 +45,10 @@ var (
 	// DDL type names. timestamptz is intentionally kept: SQLite accepts the
 	// unknown type name, and ncruces uses the declared type to decide whether
 	// to decode a text column back into time.Time.
-	sqliteUUIDPattern       = regexp.MustCompile(`(?i)\buuid\b`)
+	sqliteUUIDPattern = regexp.MustCompile(`(?i)\buuid\b`)
+	// bigserial exists only in Postgres. "integer primary key" is SQLite's rowid
+	// alias, so a bigserial primary key keeps its auto-assigned monotonic value.
+	sqliteBigserialPattern  = regexp.MustCompile(`(?i)\bbigserial\b`)
 	sqliteJSONBTypePattern  = regexp.MustCompile(`(?i)\bjsonb\b`)
 	sqliteJSONTypePattern   = regexp.MustCompile(`(?i)\bjson\b`)
 	sqliteDefaultNowPattern = regexp.MustCompile(`(?i)default\s+now\(\)`)
@@ -152,6 +155,7 @@ func translateSQLiteDDL(ddl string) string {
 	ddl = sqliteAddColumnGuard.ReplaceAllString(ddl, "add column")
 	ddl = sqliteDropColumnGuard.ReplaceAllString(ddl, "drop column")
 	ddl = sqliteCastPattern.ReplaceAllString(ddl, "")
+	ddl = sqliteBigserialPattern.ReplaceAllString(ddl, "integer")
 	ddl = sqliteUUIDPattern.ReplaceAllString(ddl, "text")
 	ddl = sqliteJSONBTypePattern.ReplaceAllString(ddl, "text")
 	ddl = sqliteJSONTypePattern.ReplaceAllString(ddl, "text")

@@ -5,6 +5,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 )
 
 // Store result types for series mutations. A mutation returns the refreshed
@@ -207,15 +208,24 @@ func (service Service) AddSeriesComment(ctx context.Context, actor auth.UserSubj
 	if !accepted_ {
 		return SeriesCommentRejected{Reason: storeResult.(CreateSeriesCommentStoreRejected).Reason}
 	}
+	subject := event.NoSubjectRefs()
+	subject.Series = event.SeriesSubject{ID: series.ID}
+	_ = service.recorder.Emit(ctx, event.EmitCommand{
+		Kind:       event.KindSeriesCommented,
+		Actor:      event.ActorUser{ID: actor.ID},
+		Subject:    subject,
+		Metadata:   event.EmptyMetadata(),
+		Recipients: event.NewRecipients(series.CreatedBy, actor.ID),
+	})
 	return SeriesCommentAdded{Value: accepted.Value}
 }
 
-func (service Service) ListSeriesComments(ctx context.Context, actor auth.UserSubject, seriesID core.TaskSeriesID) SeriesCommentsResult {
+func (service Service) ListSeriesComments(ctx context.Context, actor auth.UserSubject, seriesID core.TaskSeriesID, page core.Page) SeriesCommentsResult {
 	_, problem := service.loadViewableSeries(ctx, actor, seriesID)
 	if problem != nil {
 		return SeriesCommentsListRejected{Reason: *problem}
 	}
-	storeResult := service.store.ListSeriesComments(ctx, seriesID)
+	storeResult := service.store.ListSeriesComments(ctx, seriesID, page)
 	listed, matched := storeResult.(ListSeriesCommentsStoreAccepted)
 	if !matched {
 		return SeriesCommentsListRejected{Reason: storeResult.(ListSeriesCommentsStoreRejected).Reason}

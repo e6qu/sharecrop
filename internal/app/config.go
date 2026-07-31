@@ -2,11 +2,28 @@ package app
 
 import "os"
 
+// HTTPProtocol is the sealed set of listener protocols runServe can speak.
+// H1 is plain HTTP/1.1 (the default); H2C adds cleartext HTTP/2 by wrapping
+// the handler in an h2c upgrader (HTTP/1.1 keeps working alongside it).
+type HTTPProtocol struct {
+	value string
+}
+
+var (
+	HTTPProtocolH1  = HTTPProtocol{value: "h1"}
+	HTTPProtocolH2C = HTTPProtocol{value: "h2c"}
+)
+
+func (protocol HTTPProtocol) String() string {
+	return protocol.value
+}
+
 type Config struct {
 	httpAddress       string
 	databaseURL       string
 	migrationsDir     string
 	accessTokenSecret string
+	httpProtocol      HTTPProtocol
 }
 
 type EnvValues struct {
@@ -14,6 +31,7 @@ type EnvValues struct {
 	DatabaseURL       string
 	MigrationsDir     string
 	AccessTokenSecret string
+	HTTPProtocol      string
 }
 
 type MigrationConfig struct {
@@ -63,6 +81,7 @@ func LoadConfig() ConfigResult {
 		DatabaseURL:       os.Getenv("DATABASE_URL"),
 		MigrationsDir:     os.Getenv("SHARECROP_MIGRATIONS_DIR"),
 		AccessTokenSecret: os.Getenv("SHARECROP_ACCESS_TOKEN_SECRET"),
+		HTTPProtocol:      os.Getenv("SHARECROP_HTTP_PROTOCOL"),
 	})
 }
 
@@ -100,13 +119,49 @@ func ParseConfig(values EnvValues) ConfigResult {
 		return ConfigRejected{Reason: "SHARECROP_ACCESS_TOKEN_SECRET is required"}
 	}
 
+	protocolResult := parseHTTPProtocol(values.HTTPProtocol)
+	protocol, protocolMatched := protocolResult.(httpProtocolParsed)
+	if !protocolMatched {
+		return ConfigRejected{Reason: protocolResult.(httpProtocolRejected).reason}
+	}
+
 	return ConfigLoaded{
 		Value: Config{
 			httpAddress:       values.HTTPAddress,
 			databaseURL:       values.DatabaseURL,
 			migrationsDir:     values.MigrationsDir,
 			accessTokenSecret: values.AccessTokenSecret,
+			httpProtocol:      protocol.value,
 		},
+	}
+}
+
+type httpProtocolResult interface {
+	httpProtocolResult()
+}
+
+type httpProtocolParsed struct {
+	value HTTPProtocol
+}
+
+type httpProtocolRejected struct {
+	reason string
+}
+
+func (httpProtocolParsed) httpProtocolResult() {}
+
+func (httpProtocolRejected) httpProtocolResult() {}
+
+// parseHTTPProtocol maps SHARECROP_HTTP_PROTOCOL onto the sealed enum. The
+// empty string (unset) means HTTP/1.1.
+func parseHTTPProtocol(raw string) httpProtocolResult {
+	switch raw {
+	case "", HTTPProtocolH1.value:
+		return httpProtocolParsed{value: HTTPProtocolH1}
+	case HTTPProtocolH2C.value:
+		return httpProtocolParsed{value: HTTPProtocolH2C}
+	default:
+		return httpProtocolRejected{reason: "SHARECROP_HTTP_PROTOCOL must be one of \"h1\" or \"h2c\" (or unset for h1)"}
 	}
 }
 
@@ -124,6 +179,10 @@ func (c Config) MigrationsDir() string {
 
 func (c Config) AccessTokenSecret() string {
 	return c.accessTokenSecret
+}
+
+func (c Config) HTTPProtocol() HTTPProtocol {
+	return c.httpProtocol
 }
 
 func (c MigrationConfig) DatabaseURL() string {

@@ -25,6 +25,8 @@ type AgentScope
     | AgentScopePrivacyManage
     | AgentScopePlatformAdmin
     | AgentScopeCredentialsManage
+    | AgentScopeWebhooksRead
+    | AgentScopeWebhooksManage
 
 agentScopeDecoder : Decoder AgentScope
 agentScopeDecoder =
@@ -88,6 +90,12 @@ agentScopeDecoder =
 
                     "credentials_manage" ->
                         Decode.succeed AgentScopeCredentialsManage
+
+                    "webhooks_read" ->
+                        Decode.succeed AgentScopeWebhooksRead
+
+                    "webhooks_manage" ->
+                        Decode.succeed AgentScopeWebhooksManage
 
                     _ ->
                         Decode.fail "invalid AgentScope"
@@ -153,6 +161,12 @@ agentScopeEncoder agentScope =
         AgentScopeCredentialsManage ->
             Encode.string "credentials_manage"
 
+        AgentScopeWebhooksRead ->
+            Encode.string "webhooks_read"
+
+        AgentScopeWebhooksManage ->
+            Encode.string "webhooks_manage"
+
 
 type AgentCredentialState
     = AgentCredentialStateActive
@@ -216,17 +230,20 @@ agentCredentialResponseEncoder agentCredentialResponse =
 
 type alias AgentCredentialsResponse =
     { credentials : List AgentCredentialResponse
+    , nextOffset : Int
     }
 
 agentCredentialsResponseDecoder : Decoder AgentCredentialsResponse
 agentCredentialsResponseDecoder =
-    Decode.map AgentCredentialsResponse
+    Decode.map2 AgentCredentialsResponse
         (Decode.field "credentials" (Decode.list agentCredentialResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 agentCredentialsResponseEncoder : AgentCredentialsResponse -> Encode.Value
 agentCredentialsResponseEncoder agentCredentialsResponse =
     Encode.object
         [ ( "credentials", Encode.list agentCredentialResponseEncoder agentCredentialsResponse.credentials )
+        , ( "next_offset", Encode.int agentCredentialsResponse.nextOffset )
         ]
 
 type alias AgentCredentialCreatedResponse =
@@ -279,17 +296,20 @@ orgCredentialResponseEncoder orgCredentialResponse =
 
 type alias OrgCredentialsResponse =
     { credentials : List OrgCredentialResponse
+    , nextOffset : Int
     }
 
 orgCredentialsResponseDecoder : Decoder OrgCredentialsResponse
 orgCredentialsResponseDecoder =
-    Decode.map OrgCredentialsResponse
+    Decode.map2 OrgCredentialsResponse
         (Decode.field "credentials" (Decode.list orgCredentialResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 orgCredentialsResponseEncoder : OrgCredentialsResponse -> Encode.Value
 orgCredentialsResponseEncoder orgCredentialsResponse =
     Encode.object
         [ ( "credentials", Encode.list orgCredentialResponseEncoder orgCredentialsResponse.credentials )
+        , ( "next_offset", Encode.int orgCredentialsResponse.nextOffset )
         ]
 
 type alias OrgCredentialCreatedResponse =

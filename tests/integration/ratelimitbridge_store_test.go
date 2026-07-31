@@ -66,8 +66,11 @@ func TestRateLimitBridgeDualRun(t *testing.T) {
 		if bridgeLimiter.StorageKind() != ipLimiter.StorageKind() {
 			t.Errorf("storage kind: bridge %q, direct %q", bridgeLimiter.StorageKind(), ipLimiter.StorageKind())
 		}
-		if bridgeLimiter.ActiveBuckets() < 1 {
-			t.Errorf("bridge reported %d active buckets after draining one, want >= 1", bridgeLimiter.ActiveBuckets())
+		bridgeBuckets, bridgeCounted := bridgeLimiter.ActiveBuckets().(httpserver.ActiveBucketsCounted)
+		if !bridgeCounted {
+			t.Errorf("bridge active buckets result = %#v, want counted", bridgeLimiter.ActiveBuckets())
+		} else if bridgeBuckets.Count < 1 {
+			t.Errorf("bridge reported %d active buckets after draining one, want >= 1", bridgeBuckets.Count)
 		}
 	})
 }

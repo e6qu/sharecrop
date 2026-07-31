@@ -22,6 +22,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/assetsbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/eventbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/ledgerbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/mcpsessionbridge"
@@ -36,6 +37,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/savedqueueviewbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/taskbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/webhookbridge"
 )
 
 func main() {
@@ -62,6 +64,8 @@ func buildMux() (http.Handler, error) {
 	}
 	return appmux.New(secret.Value, appmux.Stores{
 		Auth:               authbridge.NewGuestStore(rpc.Invoke),
+		Event:              eventbridge.NewGuestStore(rpc.Invoke),
+		Webhook:            webhookbridge.NewGuestStore(rpc.Invoke),
 		Notification:       notificationbridge.NewGuestStore(rpc.Invoke),
 		Organization:       orgbridge.NewGuestStore(rpc.Invoke),
 		Task:               taskbridge.NewGuestStore(rpc.Invoke),

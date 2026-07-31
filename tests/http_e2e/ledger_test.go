@@ -155,8 +155,14 @@ type ledgerEntryHTTPResponse struct {
 	TaskID string `json:"task_id"`
 }
 
+type errorHTTPResponse struct {
+	Error string `json:"error"`
+	Code  string `json:"code"`
+}
+
 type ledgerHTTPResponse struct {
-	Entries []ledgerEntryHTTPResponse `json:"entries"`
+	Entries    []ledgerEntryHTTPResponse `json:"entries"`
+	NextOffset int                       `json:"next_offset"`
 }
 
 type taskFundHTTPResponse struct {

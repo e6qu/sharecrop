@@ -76,17 +76,20 @@ auditEventResponseEncoder auditEventResponse =
 
 type alias AuditEventsResponse =
     { events : List AuditEventResponse
+    , nextOffset : Int
     }
 
 auditEventsResponseDecoder : Decoder AuditEventsResponse
 auditEventsResponseDecoder =
-    Decode.map AuditEventsResponse
+    Decode.map2 AuditEventsResponse
         (Decode.field "events" (Decode.list auditEventResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 auditEventsResponseEncoder : AuditEventsResponse -> Encode.Value
 auditEventsResponseEncoder auditEventsResponse =
     Encode.object
         [ ( "events", Encode.list auditEventResponseEncoder auditEventsResponse.events )
+        , ( "next_offset", Encode.int auditEventsResponse.nextOffset )
         ]
 
 type alias PlatformAdminResponse =
@@ -112,15 +115,18 @@ platformAdminResponseEncoder platformAdminResponse =
 
 type alias PlatformAdminsResponse =
     { admins : List PlatformAdminResponse
+    , nextOffset : Int
     }
 
 platformAdminsResponseDecoder : Decoder PlatformAdminsResponse
 platformAdminsResponseDecoder =
-    Decode.map PlatformAdminsResponse
+    Decode.map2 PlatformAdminsResponse
         (Decode.field "admins" (Decode.list platformAdminResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 platformAdminsResponseEncoder : PlatformAdminsResponse -> Encode.Value
 platformAdminsResponseEncoder platformAdminsResponse =
     Encode.object
         [ ( "admins", Encode.list platformAdminResponseEncoder platformAdminsResponse.admins )
+        , ( "next_offset", Encode.int platformAdminsResponse.nextOffset )
         ]

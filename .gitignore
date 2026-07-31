@@ -22,3 +22,4 @@ elm019
 
 # Generated demo build artifact (built by deno task wasm:demo:build)
 site/demo/seed-snapshot.b64
+/sharecrop-wasm

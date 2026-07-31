@@ -17,8 +17,10 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
@@ -401,11 +403,20 @@ func newAuthHTTPServer(t *testing.T, ctx context.Context) *httptest.Server {
 	taskStore := db.NewTaskStore(pool)
 	agentService := agent.NewService(db.NewAgentStore(pool))
 	orgCredentialService := orgcred.NewService(db.NewOrgCredentialStore(pool))
-	taskService := task.NewService(taskStore, organizationService, agentService)
-	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService)
-	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
-	assetService := assets.NewService(db.NewCollectibleStore(pool))
-	return httptest.NewServer(httpserver.New(staticFiles, serviceCreated.Value, verifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService))
+	// The recorder shares the notification service the HTTP runtime serves, so
+	// service-level emissions land in the same inbox the API and MCP tools
+	// read - the same wiring appgraph.Build gives production.
+	eventStore := db.NewEventStore(pool)
+	notificationService := notification.NewService(db.NewNotificationStore(pool))
+	recorder := event.NewRecorder(eventStore, notificationService)
+	taskService := task.NewService(taskStore, organizationService, agentService, recorder)
+	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService, recorder)
+	ledgerService := ledger.NewService(db.NewLedgerStore(pool), recorder)
+	assetService := assets.NewService(db.NewCollectibleStore(pool), recorder)
+	runtime := httpserver.DefaultRuntimeState(httpserver.ParseAdminUserIDsForRuntime(os.Getenv("SHARECROP_ADMIN_USER_IDS")))
+	runtime.NotificationService = notificationService
+	runtime.EventStore = eventStore
+	return httptest.NewServer(httpserver.NewWithRuntimeState(staticFiles, serviceCreated.Value, verifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, runtime))
 }
 
 func postEmptyJSON(t *testing.T, url string, cookies []*http.Cookie) *http.Response {

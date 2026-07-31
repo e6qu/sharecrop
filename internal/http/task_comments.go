@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
@@ -17,7 +18,8 @@ type taskCommentResponse struct {
 }
 
 type taskCommentsResponse struct {
-	Comments []taskCommentResponse `json:"comments"`
+	Comments   []taskCommentResponse `json:"comments"`
+	NextOffset int                   `json:"next_offset"`
 }
 
 func (taskCommentResponse) writableResponse() {}
@@ -33,18 +35,26 @@ func (server Server) listTaskComments(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	result := server.taskService.ListTaskComments(r.Context(), actor, taskID)
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.taskService.ListTaskComments(r.Context(), actor, taskID, page.Probe())
 	listed, matched := result.(task.TaskCommentsListed)
 	if !matched {
 		writeDomainError(w, result.(task.TaskCommentsListRejected).Reason)
 		return
 	}
-	writeJSON(w, http.StatusOK, taskCommentsResponse{Comments: taskCommentsToResponse(listed.Values)})
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	writeJSON(w, http.StatusOK, taskCommentsResponse{Comments: taskCommentsToResponse(listed.Values[:visible]), NextOffset: nextOffset})
 }
 
 func (server Server) addTaskComment(w http.ResponseWriter, r *http.Request) {
 	actor, ok := server.seriesActor(w, r)
 	if !ok {
+		return
+	}
+	if !server.allowBySubject(w, actor.ID.String()) {
 		return
 	}
 	taskID, ok := server.parseSeriesTaskID(w, r.PathValue("task_id"))
@@ -53,13 +63,13 @@ func (server Server) addTaskComment(w http.ResponseWriter, r *http.Request) {
 	}
 	var request seriesCommentRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	bodyResult := task.NewCommentBody(request.Body)
 	body, matched := bodyResult.(task.CommentBodyAccepted)
 	if !matched {
-		writeError(w, http.StatusBadRequest, bodyResult.(task.CommentBodyRejected).Reason.Description())
+		writeDomainError(w, bodyResult.(task.CommentBodyRejected).Reason)
 		return
 	}
 	result := server.taskService.AddTaskComment(r.Context(), actor, taskID, body.Value)

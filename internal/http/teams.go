@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"encoding/json"
+	"github.com/e6qu/sharecrop/internal/agent"
 	"net/http"
 
 	"github.com/e6qu/sharecrop/internal/auth"
@@ -28,17 +29,17 @@ func teamDetailFrom(got org.TeamGot) teamDetailResponse {
 }
 
 func (server Server) getTeam(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserOrOrgSubject(r)
+	actorResult := server.requireUserOrOrgSubject(r, agent.ScopeOrgRead)
 	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(actorRejected).reason)
+		writeActorRejection(w, actorResult)
 		return
 	}
 
 	teamIDResult := core.ParseTeamID(r.PathValue("team_id"))
 	teamIDCreated, teamIDMatched := teamIDResult.(core.TeamIDCreated)
 	if !teamIDMatched {
-		writeError(w, http.StatusBadRequest, teamIDResult.(core.TeamIDRejected).Reason.Description())
+		writeDomainError(w, teamIDResult.(core.TeamIDRejected).Reason)
 		return
 	}
 
@@ -56,14 +57,14 @@ func (server Server) getTeamWork(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
 	teamIDResult := core.ParseTeamID(r.PathValue("team_id"))
 	teamIDCreated, teamIDMatched := teamIDResult.(core.TeamIDCreated)
 	if !teamIDMatched {
-		writeError(w, http.StatusBadRequest, teamIDResult.(core.TeamIDRejected).Reason.Description())
+		writeDomainError(w, teamIDResult.(core.TeamIDRejected).Reason)
 		return
 	}
 
@@ -83,43 +84,46 @@ func (server Server) getTeamWork(w http.ResponseWriter, r *http.Request) {
 	pageResult := parsePageStrict(r)
 	pageAccepted, pageMatched := pageResult.(pageParseAccepted)
 	if !pageMatched {
-		writeError(w, http.StatusBadRequest, pageResult.(pageParseRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, pageResult.(pageParseRejected).reason)
 		return
 	}
 
-	result := server.taskService.List(r.Context(), actor.subject, task.TeamListScope{TeamID: teamIDCreated.Value, IncludeReserved: true}, filtersAccepted.value, pageAccepted.value)
+	result := server.taskService.List(r.Context(), actor.subject, task.TeamListScope{TeamID: teamIDCreated.Value, IncludeReserved: true}, filtersAccepted.value, pageAccepted.value.Probe())
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		writeDomainError(w, result.(task.ListRejected).Reason)
 		return
 	}
-	writeTasksResponse(w, http.StatusOK, tasksToResponse(listed.Values))
+	visible, nextOffset := probeListWindow(len(listed.Values), pageAccepted.value)
+	response := tasksToResponse(listed.Values[:visible])
+	response.NextOffset = nextOffset
+	writeTasksResponse(w, http.StatusOK, response)
 }
 
 func (server Server) addTeamMember(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserOrOrgSubject(r)
+	actorResult := server.requireUserOrOrgSubject(r, agent.ScopeOrgManage)
 	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(actorRejected).reason)
+		writeActorRejection(w, actorResult)
 		return
 	}
 
 	teamIDResult := core.ParseTeamID(r.PathValue("team_id"))
 	teamIDCreated, teamIDMatched := teamIDResult.(core.TeamIDCreated)
 	if !teamIDMatched {
-		writeError(w, http.StatusBadRequest, teamIDResult.(core.TeamIDRejected).Reason.Description())
+		writeDomainError(w, teamIDResult.(core.TeamIDRejected).Reason)
 		return
 	}
 
 	var request teamMemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	emailResult := auth.NewEmailAddress(request.Email)
 	emailAccepted, emailMatched := emailResult.(auth.EmailAddressAccepted)
 	if !emailMatched {
-		writeError(w, http.StatusBadRequest, emailResult.(auth.EmailAddressRejected).Reason.Description())
+		writeDomainError(w, emailResult.(auth.EmailAddressRejected).Reason)
 		return
 	}
 

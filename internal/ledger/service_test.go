@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event/eventtest"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
 
@@ -95,7 +96,7 @@ func TestBalanceSectionsAndTotal(t *testing.T) {
 
 func TestServiceFundTaskGeneratesEntryAndDelegates(t *testing.T) {
 	store := &memoryStore{}
-	service := NewService(store)
+	service := NewService(store, eventtest.NewRecorder())
 	amount := newTestAmount(t, 50)
 
 	result := service.FundTask(context.Background(), newTestUserID(t), newTestTaskID(t), amount, newTestKey(t, "fund-1"))
@@ -112,7 +113,7 @@ func TestServiceFundTaskGeneratesEntryAndDelegates(t *testing.T) {
 
 func TestServiceAcceptSubmissionDelegates(t *testing.T) {
 	store := &memoryStore{}
-	service := NewService(store)
+	service := NewService(store, eventtest.NewRecorder())
 
 	result := service.AcceptSubmission(context.Background(), newTestUserID(t), newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-1"))
 	if _, matched := result.(SubmissionAccepted); !matched {
@@ -125,7 +126,7 @@ func TestServiceAcceptSubmissionDelegates(t *testing.T) {
 
 func TestServiceRejectSubmissionDelegates(t *testing.T) {
 	store := &memoryStore{}
-	service := NewService(store)
+	service := NewService(store, eventtest.NewRecorder())
 	note := submissionNote(t, "needs current data")
 
 	result := service.RejectSubmission(context.Background(), newTestUserID(t), newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "reject-1"), note, NoCreditReviewSelection{}, NoTipSelection{}, BanImplementorSelection{})
@@ -145,6 +146,24 @@ type memoryStore struct {
 	acceptCommand AcceptStoreCommand
 	refundCommand RefundStoreCommand
 	rejectCommand RejectStoreCommand
+	worker        core.UserID
+	payout        PayoutOutcome
+	tip           TipOutcome
+}
+
+// reviewPayout returns the configured payout outcome, defaulting to NoPayout.
+func (store *memoryStore) reviewPayout() PayoutOutcome {
+	if store.payout == nil {
+		return NoPayout{}
+	}
+	return store.payout
+}
+
+func (store *memoryStore) reviewTip() TipOutcome {
+	if store.tip == nil {
+		return NoTip{}
+	}
+	return store.tip
 }
 
 func (store *memoryStore) FundTask(_ context.Context, command FundStoreCommand) FundResult {
@@ -154,16 +173,16 @@ func (store *memoryStore) FundTask(_ context.Context, command FundStoreCommand) 
 
 func (store *memoryStore) AcceptSubmission(_ context.Context, command AcceptStoreCommand) AcceptResult {
 	store.acceptCommand = command
-	return SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: NoPayout{}, Tip: NoTip{}}
+	return SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, Payout: store.reviewPayout(), Tip: store.reviewTip()}
 }
 
 func (store *memoryStore) RequestChanges(_ context.Context, command RequestChangesStoreCommand) RequestChangesResult {
-	return ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, ReviewNote: command.ReviewNote.String()}
+	return ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, ReviewNote: command.ReviewNote.String()}
 }
 
 func (store *memoryStore) RejectSubmission(_ context.Context, command RejectStoreCommand) RejectResult {
 	store.rejectCommand = command
-	return SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: NoPayout{}, Tip: NoTip{}}
+	return SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, Payout: store.reviewPayout(), Tip: store.reviewTip()}
 }
 
 func (store *memoryStore) RefundTask(_ context.Context, command RefundStoreCommand) RefundResult {

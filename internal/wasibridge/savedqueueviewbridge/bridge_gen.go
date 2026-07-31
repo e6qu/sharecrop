@@ -19,8 +19,9 @@ const (
 )
 
 type listArgs struct {
-	UserID string `json:"userid"`
-	Scope  string `json:"scope"`
+	UserID string            `json:"userid"`
+	Scope  string            `json:"scope"`
+	Page   corewire.PageWire `json:"page"`
 }
 
 type upsertArgs struct {
@@ -45,7 +46,11 @@ func Dispatch(ctx context.Context, store httpserver.SavedQueueViewService, metho
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeListResult(store.List(ctx, argUserID, argScope)))
+		argPage, err := corewire.DecodePage(decoded.Page)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeListResult(store.List(ctx, argUserID, argScope, argPage)))
 	case methodUpsert:
 		var decoded upsertArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -77,8 +82,8 @@ func NewGuestStore(invoke Invoker) GuestStore {
 	return GuestStore{invoke: invoke}
 }
 
-func (g GuestStore) List(ctx context.Context, argUserID core.UserID, argScope string) httpserver.SavedQueueViewsListResult {
-	args, err := json.Marshal(listArgs{UserID: corewire.EncodeUserID(argUserID), Scope: corewire.EncodeString(argScope)})
+func (g GuestStore) List(ctx context.Context, argUserID core.UserID, argScope string, argPage core.Page) httpserver.SavedQueueViewsListResult {
+	args, err := json.Marshal(listArgs{UserID: corewire.EncodeUserID(argUserID), Scope: corewire.EncodeString(argScope), Page: corewire.EncodePage(argPage)})
 	if err != nil {
 		return httpserver.SavedQueueViewsListRejected{Reason: guestError(err)}
 	}

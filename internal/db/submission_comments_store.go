@@ -24,13 +24,14 @@ func (store SubmissionStore) CreateSubmissionComment(ctx context.Context, commen
 	return submission.CreateSubmissionCommentStoreAccepted{Value: comment}
 }
 
-func (store SubmissionStore) ListSubmissionComments(ctx context.Context, submissionID core.SubmissionID) submission.ListSubmissionCommentsStoreResult {
+func (store SubmissionStore) ListSubmissionComments(ctx context.Context, submissionID core.SubmissionID, page core.Page) submission.ListSubmissionCommentsStoreResult {
 	rows, err := store.db.Query(ctx, `
 		select id::text, submission_id::text, author_user_id::text, body, created_at
 		from submission_comments
 		where submission_id = $1
-		order by created_at, id
-	`, submissionID.String())
+		order by created_at desc, id desc
+		limit $2 offset $3
+	`, submissionID.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return submission.ListSubmissionCommentsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list submission comments failed")}
 	}

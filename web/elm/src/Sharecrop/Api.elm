@@ -7,6 +7,7 @@ import Sharecrop.Generated.Admin as Admin
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
+import Sharecrop.Generated.Events as Events
 import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Moderation as Moderation
 import Sharecrop.Generated.Notification as Notification
@@ -17,7 +18,7 @@ import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
-import Sharecrop.Labels exposing (assigneeScopeTag, participationUsesReservation)
+import Sharecrop.Labels exposing (assigneeScopeTag, domainEventKindTag, participationUsesReservation)
 import Sharecrop.ResponseSchema as ResponseSchema
 import Sharecrop.Types exposing (..)
 import Task as ElmTask
@@ -392,7 +393,7 @@ awardCommand model state collectibleId =
 
 loadAfterAuth : String -> Cmd Msg
 loadAfterAuth token =
-    Cmd.batch [ fetchBalance token, fetchLedger token 0, fetchTasks token [] "" "newest" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token, fetchSavedQueueViews token ]
+    Cmd.batch [ fetchBalance token, fetchLedger token 0, fetchTasks token [] "" "newest" 0, fetchCredentials token, fetchCollectibles token, fetchOrganizations token, fetchUserDirectory token, fetchStandaloneTeams token, fetchSavedQueueViews token, fetchUnreadCount token ]
 
 
 refreshCollectibles : Model -> Cmd Msg
@@ -467,7 +468,7 @@ routeLoadCmd : String -> String -> Page -> Cmd Msg
 routeLoadCmd token subjectId page =
     case page of
         OverviewPage ->
-            Cmd.batch [ fetchBalance token, fetchLedger token 0 ]
+            Cmd.batch [ fetchBalance token, fetchLedger token 0, fetchEvents token "" ]
 
         TasksPage ->
             -- The Tasks hub embeds My tasks, Discover public tasks, My
@@ -490,7 +491,7 @@ routeLoadCmd token subjectId page =
             Cmd.batch [ fetchTasks token [] "" "newest" 0, fetchOrganizations token ]
 
         AgentsPage ->
-            fetchCredentials token
+            Cmd.batch [ fetchCredentials token, fetchWebhookSubscriptions token ]
 
         CollectiblesPage ->
             Cmd.batch [ fetchCollectibles token, fetchCollectibleCatalog token, fetchTasks token [] "" "newest" 0, fetchOrganizations token ]
@@ -540,7 +541,7 @@ routeLoadCmd token subjectId page =
                 ]
 
         InboxPage ->
-            fetchNotifications token 0
+            fetchNotifications token False 0
 
         NotFoundPage ->
             Cmd.none
@@ -1049,16 +1050,16 @@ postRequestChanges token taskId submissionId reviewNote =
     authorizedRequest "POST"
         token
         ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/request-changes")
-        (Http.jsonBody (requestChangesBody reviewNote))
+        (Http.jsonBody (requestChangesBody submissionId reviewNote))
         (expectWhateverWithServerError (ReviewActionReceived submissionId))
 
 
-postReject : String -> String -> String -> String -> String -> String -> Bool -> Cmd Msg
-postReject token taskId submissionId reviewNote partialCredit tipAmount banImplementor =
+postReject : String -> String -> String -> String -> String -> String -> Ledger.BanSelection -> Cmd Msg
+postReject token taskId submissionId reviewNote partialCredit tipAmount banSelection =
     authorizedRequest "POST"
         token
         ("/api/tasks/" ++ taskId ++ "/submissions/" ++ submissionId ++ "/reject")
-        (Http.jsonBody (rejectRequestBody submissionId reviewNote partialCredit tipAmount banImplementor))
+        (Http.jsonBody (rejectRequestBody submissionId reviewNote partialCredit tipAmount banSelection))
         (expectWhateverWithServerError (ReviewActionReceived submissionId))
 
 
@@ -1122,7 +1123,14 @@ fetchUserDirectory token =
 
 fetchUserDirectoryPage : String -> String -> Int -> Cmd Msg
 fetchUserDirectoryPage token queryText offset =
-    authorizedRequest "GET" token (selectorQuery queryText offset "/api/users") Http.emptyBody (expectJsonWithServerError UserDirectoryReceived (Decode.field "users" (Decode.list userDirectoryEntryDecoder)))
+    authorizedRequest "GET" token (selectorQuery queryText offset "/api/users") Http.emptyBody (expectJsonWithServerError UserDirectoryReceived userDirectoryPageDecoder)
+
+
+userDirectoryPageDecoder : Decode.Decoder UserDirectoryPage
+userDirectoryPageDecoder =
+    Decode.map2 UserDirectoryPage
+        (Decode.field "users" (Decode.list userDirectoryEntryDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 
 fetchStandaloneTeams : String -> Cmd Msg
@@ -1584,6 +1592,7 @@ createTaskRequestBody state =
         , ( "task_type", Encode.string state.createTaskType )
         , ( "reference_url", Encode.string state.createReferenceURL )
         , ( "attachments", Encode.list attachmentRequestBody state.createAttachments )
+        , ( "expires_at", Encode.string (String.trim state.createExpiresAt) )
         ]
 
 
@@ -1802,21 +1811,28 @@ acceptRequestBody submissionId payoutAmount tipAmount tipCollectibleId =
         ]
 
 
-requestChangesBody : String -> Encode.Value
-requestChangesBody reviewNote =
+-- The request-changes endpoint requires an idempotency key like accept and
+-- reject do; the key is minted the same way (a stable per-submission prefix)
+-- so a retried click after a network timeout dedupes server-side instead of
+-- failing.
+
+
+requestChangesBody : String -> String -> Encode.Value
+requestChangesBody submissionId reviewNote =
     Encode.object
-        [ ( "review_note", Encode.string reviewNote )
+        [ ( "idempotency_key", Encode.string ("ui-request-changes:" ++ submissionId) )
+        , ( "review_note", Encode.string reviewNote )
         ]
 
 
-rejectRequestBody : String -> String -> String -> String -> Bool -> Encode.Value
-rejectRequestBody submissionId reviewNote partialCredit tipAmount banImplementor =
+rejectRequestBody : String -> String -> String -> String -> Ledger.BanSelection -> Encode.Value
+rejectRequestBody submissionId reviewNote partialCredit tipAmount banSelection =
     Encode.object
         [ ( "idempotency_key", Encode.string ("ui-reject:" ++ submissionId) )
         , ( "review_note", Encode.string reviewNote )
         , ( "partial_credit_amount", Encode.int (intInputOrZero partialCredit) )
         , ( "tip_amount", Encode.int (intInputOrZero tipAmount) )
-        , ( "ban_implementor", Encode.bool banImplementor )
+        , ( "ban_selection", Ledger.banSelectionEncoder banSelection )
         ]
 
 
@@ -1879,6 +1895,7 @@ taskDetailFromResponse response =
     , seriesID = response.seriesID
     , taskType = response.taskType
     , referenceURL = response.referenceURL
+    , expiresAt = response.expiresAt
     }
 
 
@@ -2015,14 +2032,107 @@ fetchOrganizationLedgerPage token organizationId offset =
     authorizedRequest "GET" token ("/api/organizations/" ++ organizationId ++ "/credits/ledger?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError OrgLedgerReceived Ledger.ledgerResponseDecoder)
 
 
-fetchNotifications : String -> Int -> Cmd Msg
-fetchNotifications token offset =
-    authorizedRequest "GET" token ("/api/notifications?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError NotificationsReceived Notification.notificationsResponseDecoder)
+fetchNotifications : String -> Bool -> Int -> Cmd Msg
+fetchNotifications token unreadOnly offset =
+    let
+        stateQuery =
+            if unreadOnly then
+                "&state=unread"
+
+            else
+                ""
+    in
+    authorizedRequest "GET" token ("/api/notifications?limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset ++ stateQuery) Http.emptyBody (expectJsonWithServerError NotificationsReceived Notification.notificationsResponseDecoder)
 
 
 markNotificationRead : String -> String -> Cmd Msg
 markNotificationRead token notificationId =
     authorizedRequest "POST" token ("/api/notifications/" ++ notificationId ++ "/read") Http.emptyBody (expectJsonWithServerError NotificationReadReceived Notification.notificationResponseDecoder)
+
+
+fetchUnreadCount : String -> Cmd Msg
+fetchUnreadCount token =
+    authorizedRequest "GET" token "/api/notifications/unread-count" Http.emptyBody (expectJsonWithServerError UnreadCountReceived Notification.notificationUnreadCountResponseDecoder)
+
+
+-- The events feed pages by cursor, not offset: an empty cursor starts from
+-- the beginning of the caller's visible stream, and each poll resumes after
+-- the last cursor already held in the model.
+
+
+fetchEvents : String -> String -> Cmd Msg
+fetchEvents token afterCursor =
+    let
+        afterQuery =
+            if afterCursor == "" then
+                ""
+
+            else
+                "&after=" ++ Url.percentEncode afterCursor
+    in
+    authorizedRequest "GET" token ("/api/events?limit=" ++ String.fromInt selectorPageSize ++ afterQuery) Http.emptyBody (expectJsonWithServerError ActivityEventsReceived Events.eventListResponseDecoder)
+
+
+fetchWebhookSubscriptions : String -> Cmd Msg
+fetchWebhookSubscriptions token =
+    authorizedRequest "GET" token "/api/webhook-subscriptions" Http.emptyBody (expectJsonWithServerError WebhooksReceived Events.webhookSubscriptionsResponseDecoder)
+
+
+createWebhookSubscription : String -> String -> List Events.DomainEventKind -> Cmd Msg
+createWebhookSubscription token url kinds =
+    authorizedRequest "POST"
+        token
+        "/api/webhook-subscriptions"
+        (Http.jsonBody
+            (Encode.object
+                [ ( "url", Encode.string (String.trim url) )
+                , ( "kinds", Encode.list (\kind -> Encode.string (domainEventKindTag kind)) kinds )
+                , ( "organization_id", Encode.string "" )
+                ]
+            )
+        )
+        (expectJsonWithServerError WebhookCreated Events.webhookSubscriptionCreatedResponseDecoder)
+
+
+revokeWebhookSubscription : String -> String -> Cmd Msg
+revokeWebhookSubscription token subscriptionId =
+    authorizedRequest "DELETE"
+        token
+        ("/api/webhook-subscriptions/" ++ subscriptionId)
+        Http.emptyBody
+        (expectJsonWithServerError WebhookRevoked Events.webhookSubscriptionResponseDecoder)
+
+
+fetchWebhookDeliveries : String -> String -> Cmd Msg
+fetchWebhookDeliveries token subscriptionId =
+    authorizedRequest "GET"
+        token
+        ("/api/webhook-subscriptions/" ++ subscriptionId ++ "/deliveries")
+        Http.emptyBody
+        (expectJsonWithServerError WebhookDeliveriesReceived Events.webhookDeliveriesResponseDecoder)
+
+
+createWebhookCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+createWebhookCommand model state =
+    if String.trim state.webhookURL == "" then
+        ( updateLoggedIn model (\current -> { current | webhookMessage = Just (FailureNote "Enter the endpoint URL first.") }), Cmd.none )
+
+    else if List.isEmpty state.webhookKinds then
+        ( updateLoggedIn model (\current -> { current | webhookMessage = Just (FailureNote "Select at least one event kind.") }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | webhookMessage = Nothing, newWebhookSecret = Nothing })
+        , createWebhookSubscription state.accessToken state.webhookURL state.webhookKinds
+        )
+
+
+toggleWebhookKind : Events.DomainEventKind -> List Events.DomainEventKind -> List Events.DomainEventKind
+toggleWebhookKind kind kinds =
+    if List.member kind kinds then
+        List.filter (\existing -> existing /= kind) kinds
+
+    else
+        kinds ++ [ kind ]
 
 
 moveSeriesTaskOrder : Bool -> String -> List SeriesTaskEntry -> List String
@@ -2105,7 +2215,26 @@ seriesBody title description =
 
 serverErrorMessageDecoder : Decode.Decoder String
 serverErrorMessageDecoder =
-    Decode.field "error" Decode.string
+    Decode.map2 userFacingServerError
+        (Decode.oneOf [ Decode.field "code" Decode.string, Decode.succeed "" ])
+        (Decode.field "error" Decode.string)
+
+
+-- Error bodies also carry a machine-readable `code`. The server's message
+-- stays the primary user-facing text; the code is used only to special-case
+-- rate limiting, whose raw message is not phrased for end users.
+-- (`unauthenticated` deliberately keeps today's behavior: the message shows
+-- where the action was attempted, and the scheduled session refresh handles
+-- real expiry by returning to the auth screen.)
+
+
+userFacingServerError : String -> String -> String
+userFacingServerError code message =
+    if code == "rate_limited" then
+        "Slow down — too many requests."
+
+    else
+        message
 
 
 responseToServerErrorResult : (String -> Result Http.Error a) -> Http.Response String -> Result Http.Error a

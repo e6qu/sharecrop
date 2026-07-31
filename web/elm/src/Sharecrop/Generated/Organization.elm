@@ -123,17 +123,20 @@ organizationResponseEncoder organizationResponse =
 
 type alias OrganizationsResponse =
     { organizations : List OrganizationResponse
+    , nextOffset : Int
     }
 
 organizationsResponseDecoder : Decoder OrganizationsResponse
 organizationsResponseDecoder =
-    Decode.map OrganizationsResponse
+    Decode.map2 OrganizationsResponse
         (Decode.field "organizations" (Decode.list organizationResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 organizationsResponseEncoder : OrganizationsResponse -> Encode.Value
 organizationsResponseEncoder organizationsResponse =
     Encode.object
         [ ( "organizations", Encode.list organizationResponseEncoder organizationsResponse.organizations )
+        , ( "next_offset", Encode.int organizationsResponse.nextOffset )
         ]
 
 type alias OrganizationMemberResponse =
@@ -165,15 +168,18 @@ organizationMemberResponseEncoder organizationMemberResponse =
 
 type alias OrganizationMembersResponse =
     { members : List OrganizationMemberResponse
+    , nextOffset : Int
     }
 
 organizationMembersResponseDecoder : Decoder OrganizationMembersResponse
 organizationMembersResponseDecoder =
-    Decode.map OrganizationMembersResponse
+    Decode.map2 OrganizationMembersResponse
         (Decode.field "members" (Decode.list organizationMemberResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 organizationMembersResponseEncoder : OrganizationMembersResponse -> Encode.Value
 organizationMembersResponseEncoder organizationMembersResponse =
     Encode.object
         [ ( "members", Encode.list organizationMemberResponseEncoder organizationMembersResponse.members )
+        , ( "next_offset", Encode.int organizationMembersResponse.nextOffset )
         ]

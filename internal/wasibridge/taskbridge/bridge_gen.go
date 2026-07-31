@@ -101,7 +101,8 @@ type createSeriesCommentArgs struct {
 }
 
 type listSeriesCommentsArgs struct {
-	SeriesID string `json:"seriesid"`
+	SeriesID string            `json:"seriesid"`
+	Page     corewire.PageWire `json:"page"`
 }
 
 type createTaskCommentArgs struct {
@@ -109,7 +110,8 @@ type createTaskCommentArgs struct {
 }
 
 type listTaskCommentsArgs struct {
-	TaskID string `json:"taskid"`
+	TaskID string            `json:"taskid"`
+	Page   corewire.PageWire `json:"page"`
 }
 
 type createReservationArgs struct {
@@ -124,7 +126,8 @@ type changeReservationStateArgs struct {
 }
 
 type listReservationsArgs struct {
-	TaskID string `json:"taskid"`
+	TaskID string            `json:"taskid"`
+	Page   corewire.PageWire `json:"page"`
 }
 
 type checkSubmissionEligibilityArgs struct {
@@ -324,7 +327,11 @@ func Dispatch(ctx context.Context, store task.Store, method string, args []byte)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeListSeriesCommentsResult(store.ListSeriesComments(ctx, argSeriesID)))
+		argPage, err := corewire.DecodePage(decoded.Page)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeListSeriesCommentsResult(store.ListSeriesComments(ctx, argSeriesID, argPage)))
 	case methodCreateTaskComment:
 		var decoded createTaskCommentArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -344,7 +351,11 @@ func Dispatch(ctx context.Context, store task.Store, method string, args []byte)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeListTaskCommentsResult(store.ListTaskComments(ctx, argTaskID)))
+		argPage, err := corewire.DecodePage(decoded.Page)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeListTaskCommentsResult(store.ListTaskComments(ctx, argTaskID, argPage)))
 	case methodCreateReservation:
 		var decoded createReservationArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -386,7 +397,11 @@ func Dispatch(ctx context.Context, store task.Store, method string, args []byte)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeListReservationsResult(store.ListReservations(ctx, argTaskID)))
+		argPage, err := corewire.DecodePage(decoded.Page)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeListReservationsResult(store.ListReservations(ctx, argTaskID, argPage)))
 	case methodCheckSubmissionEligibility:
 		var decoded checkSubmissionEligibilityArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -682,8 +697,8 @@ func (g GuestStore) CreateSeriesComment(ctx context.Context, argSeriesComment ta
 	return result
 }
 
-func (g GuestStore) ListSeriesComments(ctx context.Context, argSeriesID core.TaskSeriesID) task.ListSeriesCommentsStoreResult {
-	args, err := json.Marshal(listSeriesCommentsArgs{SeriesID: corewire.EncodeTaskSeriesID(argSeriesID)})
+func (g GuestStore) ListSeriesComments(ctx context.Context, argSeriesID core.TaskSeriesID, argPage core.Page) task.ListSeriesCommentsStoreResult {
+	args, err := json.Marshal(listSeriesCommentsArgs{SeriesID: corewire.EncodeTaskSeriesID(argSeriesID), Page: corewire.EncodePage(argPage)})
 	if err != nil {
 		return task.ListSeriesCommentsStoreRejected{Reason: guestError(err)}
 	}
@@ -722,8 +737,8 @@ func (g GuestStore) CreateTaskComment(ctx context.Context, argTaskComment task.T
 	return result
 }
 
-func (g GuestStore) ListTaskComments(ctx context.Context, argTaskID core.TaskID) task.ListTaskCommentsStoreResult {
-	args, err := json.Marshal(listTaskCommentsArgs{TaskID: corewire.EncodeTaskID(argTaskID)})
+func (g GuestStore) ListTaskComments(ctx context.Context, argTaskID core.TaskID, argPage core.Page) task.ListTaskCommentsStoreResult {
+	args, err := json.Marshal(listTaskCommentsArgs{TaskID: corewire.EncodeTaskID(argTaskID), Page: corewire.EncodePage(argPage)})
 	if err != nil {
 		return task.ListTaskCommentsStoreRejected{Reason: guestError(err)}
 	}
@@ -782,8 +797,8 @@ func (g GuestStore) ChangeReservationState(ctx context.Context, argTaskID core.T
 	return result
 }
 
-func (g GuestStore) ListReservations(ctx context.Context, argTaskID core.TaskID) task.ListReservationsStoreResult {
-	args, err := json.Marshal(listReservationsArgs{TaskID: corewire.EncodeTaskID(argTaskID)})
+func (g GuestStore) ListReservations(ctx context.Context, argTaskID core.TaskID, argPage core.Page) task.ListReservationsStoreResult {
+	args, err := json.Marshal(listReservationsArgs{TaskID: corewire.EncodeTaskID(argTaskID), Page: corewire.EncodePage(argPage)})
 	if err != nil {
 		return task.ListReservationsStoreRejected{Reason: guestError(err)}
 	}

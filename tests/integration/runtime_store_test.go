@@ -30,7 +30,7 @@ func TestNotificationStorePersistsInboxLifecycle(t *testing.T) {
 		t.Fatalf("notify rejected: %T", result)
 	}
 
-	listResult := service.List(context.Background(), recipient, core.DefaultPage())
+	listResult := service.List(context.Background(), recipient, notification.AnyState{}, core.DefaultPage())
 	listed, listedMatched := listResult.(notification.NotificationsListed)
 	if !listedMatched {
 		t.Fatalf("list notifications rejected: %T", listResult)
@@ -55,7 +55,7 @@ func TestNotificationStorePersistsInboxLifecycle(t *testing.T) {
 	if _, skipped := selfResult.(notification.NotificationSkipped); !skipped {
 		t.Fatalf("self notification should be skipped, got %T", selfResult)
 	}
-	secondList := service.List(context.Background(), recipient, core.DefaultPage()).(notification.NotificationsListed)
+	secondList := service.List(context.Background(), recipient, notification.AnyState{}, core.DefaultPage()).(notification.NotificationsListed)
 	if len(secondList.Values) != 1 {
 		t.Fatalf("self notification created a row")
 	}
@@ -175,16 +175,15 @@ func TestModerationTriageStorePersistsTransitions(t *testing.T) {
 		t.Fatalf("record open triage rejected: %T", openResult)
 	}
 
-	listResult := store.List(context.Background(), []core.AuditEventID{recorded.Value.ID})
-	listed, listedMatched := listResult.(httpserver.ModerationTriageListed)
-	if !listedMatched {
-		t.Fatalf("list moderation triage rejected: %T", listResult)
+	openRecord, foundOpen := findTriageRecord(t, store.List(context.Background(), httpserver.TriageStateEquals{State: httpserver.ModerationTriageStateOpen}, core.DefaultPage()), recorded.Value.ID)
+	if !foundOpen {
+		t.Fatalf("open-filtered triage list did not contain the new report")
 	}
-	if len(listed.Values) != 1 || listed.Values[0].State != "open" {
-		t.Fatalf("triage list = %#v, want one open record", listed.Values)
+	if openRecord.State != httpserver.ModerationTriageStateOpen.String() {
+		t.Fatalf("triage record = %#v, want open", openRecord)
 	}
 
-	updateResult := store.Update(context.Background(), actor, recorded.Value.ID, "resolved", "handled")
+	updateResult := store.Update(context.Background(), actor, recorded.Value.ID, httpserver.ModerationTriageStateResolved, "handled")
 	updated, updatedMatched := updateResult.(httpserver.ModerationTriageSaved)
 	if !updatedMatched {
 		t.Fatalf("update moderation triage rejected: %T", updateResult)
@@ -193,10 +192,36 @@ func TestModerationTriageStorePersistsTransitions(t *testing.T) {
 		t.Fatalf("updated triage = %#v", updated.Value)
 	}
 
-	invalidResult := store.Update(context.Background(), actor, recorded.Value.ID, "deleted", "bad")
-	if _, rejected := invalidResult.(httpserver.ModerationTriageMutationRejected); !rejected {
-		t.Fatalf("invalid triage state should be rejected, got %T", invalidResult)
+	// The state filter is applied in SQL: the resolved report leaves the
+	// open-filtered listing and appears in the resolved-filtered one.
+	if _, stillOpen := findTriageRecord(t, store.List(context.Background(), httpserver.TriageStateEquals{State: httpserver.ModerationTriageStateOpen}, core.DefaultPage()), recorded.Value.ID); stillOpen {
+		t.Fatalf("resolved report still appears in the open-filtered listing")
 	}
+	resolvedRecord, foundResolved := findTriageRecord(t, store.List(context.Background(), httpserver.TriageStateEquals{State: httpserver.ModerationTriageStateResolved}, core.DefaultPage()), recorded.Value.ID)
+	if !foundResolved {
+		t.Fatalf("resolved-filtered triage list did not contain the resolved report")
+	}
+	if resolvedRecord.ResolutionNote != "handled" {
+		t.Fatalf("resolved triage record = %#v", resolvedRecord)
+	}
+
+	if _, rejected := httpserver.ParseModerationTriageState("deleted").(httpserver.ModerationTriageStateRejected); !rejected {
+		t.Fatalf("invalid triage state should be rejected by ParseModerationTriageState")
+	}
+}
+
+func findTriageRecord(t *testing.T, result httpserver.ModerationTriageListResult, reportID core.AuditEventID) (httpserver.ModerationTriageRecord, bool) {
+	t.Helper()
+	listed, matched := result.(httpserver.ModerationTriageListed)
+	if !matched {
+		t.Fatalf("list moderation triage rejected: %T", result)
+	}
+	for _, record := range listed.Values {
+		if record.ReportID == reportID {
+			return record, true
+		}
+	}
+	return httpserver.ModerationTriageRecord{}, false
 }
 
 func TestPrivacyStoreResolvesExportAndSensitiveRedaction(t *testing.T) {
@@ -437,8 +462,12 @@ func TestPostgresRateLimiterPersistsBuckets(t *testing.T) {
 	if limiter.Allow("client") {
 		t.Fatalf("second request should be rate limited")
 	}
-	if limiter.ActiveBuckets() != 1 {
-		t.Fatalf("expected one persisted rate-limit bucket")
+	buckets, counted := limiter.ActiveBuckets().(httpserver.ActiveBucketsCounted)
+	if !counted {
+		t.Fatalf("active buckets result = %#v, want counted", limiter.ActiveBuckets())
+	}
+	if buckets.Count != 1 {
+		t.Fatalf("expected one persisted rate-limit bucket, got %d", buckets.Count)
 	}
 }
 

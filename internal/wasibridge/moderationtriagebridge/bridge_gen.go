@@ -26,14 +26,15 @@ type recordOpenArgs struct {
 }
 
 type listArgs struct {
-	IDs []string `json:"ids"`
+	Filter triageStateFilterWire `json:"filter"`
+	Page   corewire.PageWire     `json:"page"`
 }
 
 type updateArgs struct {
 	UserID   string `json:"userid"`
 	ReportID string `json:"reportid"`
 	State    string `json:"state"`
-	State2   string `json:"state2"`
+	Note     string `json:"note"`
 }
 
 // Dispatch services one store call against store: decode the arguments, call the
@@ -56,11 +57,15 @@ func Dispatch(ctx context.Context, store httpserver.ModerationTriageService, met
 		if err := json.Unmarshal(args, &decoded); err != nil {
 			return nil, fmt.Errorf("moderationtriage bridge: decode List args: %w", err)
 		}
-		argIDs, err := decodeAuditEventIDs(decoded.IDs)
+		argFilter, err := decodeTriageStateFilter(decoded.Filter)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeListResult(store.List(ctx, argIDs)))
+		argPage, err := corewire.DecodePage(decoded.Page)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeListResult(store.List(ctx, argFilter, argPage)))
 	case methodUpdate:
 		var decoded updateArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -74,15 +79,15 @@ func Dispatch(ctx context.Context, store httpserver.ModerationTriageService, met
 		if err != nil {
 			return nil, err
 		}
-		argState, err := corewire.DecodeString(decoded.State)
+		argState, err := decodeTriageState(decoded.State)
 		if err != nil {
 			return nil, err
 		}
-		argState2, err := corewire.DecodeString(decoded.State2)
+		argNote, err := corewire.DecodeString(decoded.Note)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeMutationResult(store.Update(ctx, argUserID, argReportID, argState, argState2)))
+		return json.Marshal(encodeMutationResult(store.Update(ctx, argUserID, argReportID, argState, argNote)))
 	default:
 		return nil, fmt.Errorf("moderationtriage bridge: unknown method %q", method)
 	}
@@ -124,8 +129,8 @@ func (g GuestStore) RecordOpen(ctx context.Context, argEvent audit.Event) httpse
 	return result
 }
 
-func (g GuestStore) List(ctx context.Context, argIDs []core.AuditEventID) httpserver.ModerationTriageListResult {
-	args, err := json.Marshal(listArgs{IDs: encodeAuditEventIDs(argIDs)})
+func (g GuestStore) List(ctx context.Context, argFilter httpserver.ModerationTriageStateFilter, argPage core.Page) httpserver.ModerationTriageListResult {
+	args, err := json.Marshal(listArgs{Filter: encodeTriageStateFilter(argFilter), Page: corewire.EncodePage(argPage)})
 	if err != nil {
 		return httpserver.ModerationTriageListRejected{Reason: guestError(err)}
 	}
@@ -144,8 +149,8 @@ func (g GuestStore) List(ctx context.Context, argIDs []core.AuditEventID) httpse
 	return result
 }
 
-func (g GuestStore) Update(ctx context.Context, argUserID core.UserID, argReportID core.AuditEventID, argState string, argState2 string) httpserver.ModerationTriageMutationResult {
-	args, err := json.Marshal(updateArgs{UserID: corewire.EncodeUserID(argUserID), ReportID: corewire.EncodeAuditEventID(argReportID), State: corewire.EncodeString(argState), State2: corewire.EncodeString(argState2)})
+func (g GuestStore) Update(ctx context.Context, argUserID core.UserID, argReportID core.AuditEventID, argState httpserver.ModerationTriageState, argNote string) httpserver.ModerationTriageMutationResult {
+	args, err := json.Marshal(updateArgs{UserID: corewire.EncodeUserID(argUserID), ReportID: corewire.EncodeAuditEventID(argReportID), State: encodeTriageState(argState), Note: corewire.EncodeString(argNote)})
 	if err != nil {
 		return httpserver.ModerationTriageMutationRejected{Reason: guestError(err)}
 	}

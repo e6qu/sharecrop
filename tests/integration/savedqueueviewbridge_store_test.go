@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
@@ -57,8 +58,8 @@ func TestSavedQueueViewBridgeDualRun(t *testing.T) {
 			t.Errorf("saved view = %+v", saved.Value)
 		}
 
-		viaBridge := requireViewsListed(t, bridgeStore.List(ctx, owner, "team_work"))
-		direct := requireViewsListed(t, dbStore.List(ctx, owner, "team_work"))
+		viaBridge := requireViewsListed(t, bridgeStore.List(ctx, owner, "team_work", core.DefaultPage()))
+		direct := requireViewsListed(t, dbStore.List(ctx, owner, "team_work", core.DefaultPage()))
 		if len(viaBridge) != len(direct) || len(viaBridge) != 1 {
 			t.Fatalf("view counts: bridge %d, direct %d, want 1", len(viaBridge), len(direct))
 		}

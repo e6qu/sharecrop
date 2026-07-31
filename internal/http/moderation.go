@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,71 @@ type rawModerationMetadata struct {
 	Reason  string  `json:"reason"`
 	Details *string `json:"details"`
 }
+
+// ModerationTriageState is the sealed triage lifecycle of a moderation report,
+// matching the moderation_report_triage state check constraint
+// (migrations/000030_admin_moderation_retention.sql).
+type ModerationTriageState struct {
+	value string
+}
+
+var (
+	ModerationTriageStateOpen      = ModerationTriageState{value: "open"}
+	ModerationTriageStateResolved  = ModerationTriageState{value: "resolved"}
+	ModerationTriageStateDismissed = ModerationTriageState{value: "dismissed"}
+)
+
+func (state ModerationTriageState) String() string {
+	return state.value
+}
+
+type ModerationTriageStateResult interface {
+	moderationTriageStateResult()
+}
+
+type ModerationTriageStateAccepted struct {
+	Value ModerationTriageState
+}
+
+type ModerationTriageStateRejected struct {
+	Reason core.DomainError
+}
+
+func (ModerationTriageStateAccepted) moderationTriageStateResult() {}
+
+func (ModerationTriageStateRejected) moderationTriageStateResult() {}
+
+func ParseModerationTriageState(raw string) ModerationTriageStateResult {
+	switch raw {
+	case ModerationTriageStateOpen.value:
+		return ModerationTriageStateAccepted{Value: ModerationTriageStateOpen}
+	case ModerationTriageStateResolved.value:
+		return ModerationTriageStateAccepted{Value: ModerationTriageStateResolved}
+	case ModerationTriageStateDismissed.value:
+		return ModerationTriageStateAccepted{Value: ModerationTriageStateDismissed}
+	default:
+		return ModerationTriageStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "moderation triage state is invalid")}
+	}
+}
+
+// ModerationTriageStateFilter is the optional triage-state restriction on a
+// moderation report listing: AnyTriageState lists every report, while
+// TriageStateEquals restricts the listing to one triage state (an untriaged
+// report counts as open). The filter is applied in the store query, before
+// pagination.
+type ModerationTriageStateFilter interface {
+	moderationTriageStateFilter()
+}
+
+type AnyTriageState struct{}
+
+type TriageStateEquals struct {
+	State ModerationTriageState
+}
+
+func (AnyTriageState) moderationTriageStateFilter() {}
+
+func (TriageStateEquals) moderationTriageStateFilter() {}
 
 type ModerationTriageRecord struct {
 	ReportID       core.AuditEventID
@@ -57,38 +123,51 @@ func newMemoryModerationTriageService() *memoryModerationTriageService {
 }
 
 func (service *memoryModerationTriageService) RecordOpen(_ context.Context, event audit.Event) ModerationTriageMutationResult {
-	record := ModerationTriageRecord{ReportID: event.ID, State: "open", ResolutionNote: "", CreatedAt: event.CreatedAt, UpdatedAt: event.CreatedAt}
+	record := ModerationTriageRecord{ReportID: event.ID, State: ModerationTriageStateOpen.String(), ResolutionNote: "", CreatedAt: event.CreatedAt, UpdatedAt: event.CreatedAt}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	service.records[event.ID.String()] = record
 	return ModerationTriageSaved{Value: record}
 }
 
-func (service *memoryModerationTriageService) List(_ context.Context, ids []core.AuditEventID) ModerationTriageListResult {
+// List returns the newest-first page of triage records matching the state
+// filter. Every report recorded through RecordOpen has a triage record, so
+// this in-memory listing is complete for the memory runtime.
+func (service *memoryModerationTriageService) List(_ context.Context, filter ModerationTriageStateFilter, page core.Page) ModerationTriageListResult {
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	values := make([]ModerationTriageRecord, 0, len(ids))
-	for _, id := range ids {
-		record, ok := service.records[id.String()]
-		if !ok {
-			return ModerationTriageListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "moderation report triage state is missing")}
+	values := make([]ModerationTriageRecord, 0, len(service.records))
+	for _, record := range service.records {
+		if equals, restricted := filter.(TriageStateEquals); restricted && record.State != equals.State.String() {
+			continue
 		}
 		values = append(values, record)
 	}
-	return ModerationTriageListed{Values: values}
+	sort.Slice(values, func(left int, right int) bool {
+		if !values[left].CreatedAt.Equal(values[right].CreatedAt) {
+			return values[left].CreatedAt.After(values[right].CreatedAt)
+		}
+		return values[left].ReportID.String() > values[right].ReportID.String()
+	})
+	start := page.Offset()
+	if start > len(values) {
+		start = len(values)
+	}
+	end := start + page.Limit()
+	if end > len(values) {
+		end = len(values)
+	}
+	return ModerationTriageListed{Values: values[start:end]}
 }
 
-func (service *memoryModerationTriageService) Update(_ context.Context, actor core.UserID, reportID core.AuditEventID, state string, note string) ModerationTriageMutationResult {
-	if !validModerationTriageState(state) {
-		return ModerationTriageMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "moderation triage state is invalid")}
-	}
+func (service *memoryModerationTriageService) Update(_ context.Context, actor core.UserID, reportID core.AuditEventID, state ModerationTriageState, note string) ModerationTriageMutationResult {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	record, ok := service.records[reportID.String()]
 	if !ok {
 		return ModerationTriageMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "moderation report was not found")}
 	}
-	record.State = state
+	record.State = state.String()
 	record.ResolutionNote = strings.TrimSpace(note)
 	record.UpdatedBy = actor.String()
 	record.UpdatedAt = time.Now().UTC()
@@ -100,13 +179,17 @@ func (server Server) createModerationReport(w http.ResponseWriter, r *http.Reque
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
+		return
+	}
+
+	if !server.allowBySubject(w, actor.subject.ID.String()) {
 		return
 	}
 
 	var request moderationReportRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 
@@ -151,7 +234,7 @@ func (server Server) createModerationReport(w http.ResponseWriter, r *http.Reque
 	}
 	recorded, recordedMatched := result.(audit.EventRecorded)
 	if !recordedMatched {
-		writeError(w, http.StatusInternalServerError, "moderation report was not recorded")
+		writeError(w, http.StatusInternalServerError, core.ErrorCodeUnavailable, "moderation report was not recorded")
 		return
 	}
 	responseResult := moderationReportFromAuditEvent(recorded.Value)
@@ -175,52 +258,47 @@ func (server Server) listAdminModerationReports(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	filters := audit.NoListFilters()
-	filters.Action = audit.ActionEquals{Value: audit.ActionModerationReportCreated}
 	page, pageOK := parsePageOrReject(w, r)
 	if !pageOK {
 		return
 	}
-	result := server.auditService.List(r.Context(), filters, page)
-	listed, listedMatched := result.(audit.EventsListed)
-	if !listedMatched {
-		writeDomainError(w, result.(audit.ListRejected).Reason)
-		return
+	filter := ModerationTriageStateFilter(AnyTriageState{})
+	if rawState := strings.TrimSpace(r.URL.Query().Get("state")); rawState != "" {
+		stateResult := ParseModerationTriageState(rawState)
+		state, stateMatched := stateResult.(ModerationTriageStateAccepted)
+		if !stateMatched {
+			writeDomainError(w, stateResult.(ModerationTriageStateRejected).Reason)
+			return
+		}
+		filter = TriageStateEquals{State: state.Value}
 	}
 
-	reportIDs := make([]core.AuditEventID, 0, len(listed.Values))
-	for _, event := range listed.Values {
-		reportIDs = append(reportIDs, event.ID)
-	}
-	triageResult := server.moderationTriage.List(r.Context(), reportIDs)
+	// The triage service applies the state filter and the pagination in one
+	// query over all moderation reports (untriaged reports count as open), so
+	// a page is full whenever enough matching reports exist - it is never
+	// shortened by post-filtering.
+	triageResult := server.moderationTriage.List(r.Context(), filter, page.Probe())
 	triageListed, triageMatched := triageResult.(ModerationTriageListed)
 	if !triageMatched {
 		writeDomainError(w, triageResult.(ModerationTriageListRejected).Reason)
 		return
 	}
-	triageByID := map[string]ModerationTriageRecord{}
-	for _, record := range triageListed.Values {
-		triageByID[record.ReportID.String()] = record
-	}
-	stateFilter := strings.TrimSpace(r.URL.Query().Get("state"))
-	response := moderationReportsResponse{Reports: make([]moderationReportResponse, 0, len(listed.Values))}
-	for _, event := range listed.Values {
-		converted := moderationReportFromAuditEvent(event)
+	visible, nextOffset := probeListWindow(len(triageListed.Values), page)
+	response := moderationReportsResponse{Reports: make([]moderationReportResponse, 0, visible), NextOffset: nextOffset}
+	for _, triage := range triageListed.Values[:visible] {
+		eventResult := server.auditService.Get(r.Context(), triage.ReportID)
+		found, foundMatched := eventResult.(audit.EventFound)
+		if !foundMatched {
+			writeDomainError(w, eventResult.(audit.GetRejected).Reason)
+			return
+		}
+		converted := moderationReportFromAuditEvent(found.Value)
 		report, convertedMatched := converted.(moderationReportConverted)
 		if !convertedMatched {
 			writeDomainError(w, converted.(moderationReportConversionRejected).reason)
 			return
 		}
-		triage, ok := triageByID[event.ID.String()]
-		if !ok {
-			writeDomainError(w, core.NewDomainError(core.ErrorCodeInvalidState, "moderation report triage state is missing"))
-			return
-		}
-		withTriage := applyModerationTriage(report.value, triage)
-		if stateFilter != "" && withTriage.State != stateFilter {
-			continue
-		}
-		response.Reports = append(response.Reports, withTriage)
+		response.Reports = append(response.Reports, applyModerationTriage(report.value, triage))
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -238,10 +316,16 @@ func (server Server) triageModerationReport(w http.ResponseWriter, r *http.Reque
 	}
 	var request moderationTriageRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
-	result := server.moderationTriage.Update(r.Context(), actor.subject.ID, reportID.Value, strings.TrimSpace(request.State), request.ResolutionNote)
+	stateResult := ParseModerationTriageState(strings.TrimSpace(request.State))
+	state, stateMatched := stateResult.(ModerationTriageStateAccepted)
+	if !stateMatched {
+		writeDomainError(w, stateResult.(ModerationTriageStateRejected).Reason)
+		return
+	}
+	result := server.moderationTriage.Update(r.Context(), actor.subject.ID, reportID.Value, state.Value, request.ResolutionNote)
 	saved, matched := result.(ModerationTriageSaved)
 	if !matched {
 		writeDomainError(w, result.(ModerationTriageMutationRejected).Reason)
@@ -253,9 +337,7 @@ func (server Server) triageModerationReport(w http.ResponseWriter, r *http.Reque
 		writeDomainError(w, metadataResult.(jsonMetadataRejected).reason)
 		return
 	}
-	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionFromString("moderation_report_triaged"), audit.Subject{Kind: "moderation_report", ID: saved.Value.ReportID.String()}, audit.Metadata{JSON: metadata.value}) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionModerationReportTriaged, audit.Subject{Kind: "moderation_report", ID: saved.Value.ReportID.String()}, audit.Metadata{JSON: metadata.value})
 	getResult := server.auditService.Get(r.Context(), saved.Value.ReportID)
 	found, foundMatched := getResult.(audit.EventFound)
 	if !foundMatched {
@@ -283,15 +365,6 @@ func validModerationSubjectKind(value string) bool {
 func validModerationReason(value string) bool {
 	switch value {
 	case "spam", "abuse", "pii", "policy", "other":
-		return true
-	default:
-		return false
-	}
-}
-
-func validModerationTriageState(value string) bool {
-	switch value {
-	case "open", "resolved", "dismissed":
 		return true
 	default:
 		return false

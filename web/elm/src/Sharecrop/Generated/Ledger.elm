@@ -5,6 +5,36 @@ module Sharecrop.Generated.Ledger exposing (..)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 
+type BanSelection
+    = BanSelectionNone
+    | BanSelectionBanImplementor
+
+banSelectionDecoder : Decoder BanSelection
+banSelectionDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "none" ->
+                        Decode.succeed BanSelectionNone
+
+                    "ban_implementor" ->
+                        Decode.succeed BanSelectionBanImplementor
+
+                    _ ->
+                        Decode.fail "invalid BanSelection"
+            )
+
+banSelectionEncoder : BanSelection -> Encode.Value
+banSelectionEncoder banSelection =
+    case banSelection of
+        BanSelectionNone ->
+            Encode.string "none"
+
+        BanSelectionBanImplementor ->
+            Encode.string "ban_implementor"
+
+
 type LedgerEntryKind
     = LedgerEntryKindSignupGrant
     | LedgerEntryKindTaskFund
@@ -107,17 +137,20 @@ ledgerEntryResponseEncoder ledgerEntryResponse =
 
 type alias LedgerResponse =
     { entries : List LedgerEntryResponse
+    , nextOffset : Int
     }
 
 ledgerResponseDecoder : Decoder LedgerResponse
 ledgerResponseDecoder =
-    Decode.map LedgerResponse
+    Decode.map2 LedgerResponse
         (Decode.field "entries" (Decode.list ledgerEntryResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 ledgerResponseEncoder : LedgerResponse -> Encode.Value
 ledgerResponseEncoder ledgerResponse =
     Encode.object
         [ ( "entries", Encode.list ledgerEntryResponseEncoder ledgerResponse.entries )
+        , ( "next_offset", Encode.int ledgerResponse.nextOffset )
         ]
 
 type alias TaskFundResponse =

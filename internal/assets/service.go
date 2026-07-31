@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 )
 
 type Store interface {
@@ -48,11 +49,25 @@ type RefundRewardStoreCommand struct {
 }
 
 type Service struct {
-	store Store
+	store    Store
+	recorder event.Recorder
 }
 
-func NewService(store Store) Service {
-	return Service{store: store}
+func NewService(store Store, recorder event.Recorder) Service {
+	return Service{store: store, recorder: recorder}
+}
+
+// emitCollectibleAwarded emits the collectible_awarded event after a committed
+// transfer. Emission is post-commit best-effort: a rejected emission never
+// fails the transfer that already committed.
+func (service Service) emitCollectibleAwarded(ctx context.Context, actor event.Actor, subject event.Subject, recipients event.Recipients) {
+	_ = service.recorder.Emit(ctx, event.EmitCommand{
+		Kind:       event.KindCollectibleAwarded,
+		Actor:      actor,
+		Subject:    subject,
+		Metadata:   event.EmptyMetadata(),
+		Recipients: recipients,
+	})
 }
 
 type MintResult interface {
@@ -199,22 +214,38 @@ func (GiftRejected) giftResult() {}
 // ownership, org match, and membership are enforced in the store
 // transaction.
 func (service Service) AwardOrganizationCollectible(ctx context.Context, organizationID core.OrganizationID, collectibleID core.CollectibleID, recipientUserID core.UserID) GiftResult {
-	return service.store.AwardOrganizationCollectible(ctx, AwardOrganizationCollectibleStoreCommand{
+	result := service.store.AwardOrganizationCollectible(ctx, AwardOrganizationCollectibleStoreCommand{
 		OrganizationID:  organizationID,
 		CollectibleID:   collectibleID,
 		RecipientUserID: recipientUserID,
 	})
+	if _, gifted := result.(CollectibleGifted); gifted {
+		// The awarding admin's user id never reaches this service (the HTTP
+		// layer authorizes the award), so the organization's award is recorded
+		// as the system actor with the recipient as the audience.
+		subject := event.NoSubjectRefs()
+		subject.Collectible = event.CollectibleSubject{ID: collectibleID}
+		subject.Organization = event.OrganizationSubject{ID: organizationID}
+		service.emitCollectibleAwarded(ctx, event.ActorSystem{}, subject, event.NewRecipients(recipientUserID))
+	}
+	return result
 }
 
 // GiftCollectible transfers an owned, transferable collectible to another user
 // (a review tip). Ownership, availability, and transfer policy are enforced in
 // the store transaction.
 func (service Service) GiftCollectible(ctx context.Context, from core.UserID, to core.UserID, collectibleID core.CollectibleID) GiftResult {
-	return service.store.GiftCollectible(ctx, GiftStoreCommand{
+	result := service.store.GiftCollectible(ctx, GiftStoreCommand{
 		FromUserID:    from,
 		ToUserID:      to,
 		CollectibleID: collectibleID,
 	})
+	if _, gifted := result.(CollectibleGifted); gifted {
+		subject := event.NoSubjectRefs()
+		subject.Collectible = event.CollectibleSubject{ID: collectibleID}
+		service.emitCollectibleAwarded(ctx, event.ActorUser{ID: from}, subject, event.NewRecipients(to, from))
+	}
+	return result
 }
 
 func (service Service) FundReward(ctx context.Context, funder core.UserID, taskID core.TaskID, collectibleID core.CollectibleID) FundRewardResult {

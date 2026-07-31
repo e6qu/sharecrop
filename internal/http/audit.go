@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -23,7 +24,8 @@ type auditEventResponse struct {
 }
 
 type auditEventsResponse struct {
-	Events []auditEventResponse `json:"events"`
+	Events     []auditEventResponse `json:"events"`
+	NextOffset int                  `json:"next_offset"`
 }
 
 func (auditEventsResponse) writableResponse() {}
@@ -78,19 +80,22 @@ func (service *memoryAuditService) List(_ context.Context, filters audit.ListFil
 		}
 		filtered = append(filtered, event)
 	}
+	// Order newest-first before windowing, matching the Postgres store's
+	// "order by created_at desc" + limit/offset semantics so paging (and the
+	// next_offset probe row) behaves identically on both runtimes.
+	ordered := make([]audit.Event, 0, len(filtered))
+	for index := len(filtered) - 1; index >= 0; index-- {
+		ordered = append(ordered, filtered[index])
+	}
 	start := page.Offset()
-	if start > len(filtered) {
-		start = len(filtered)
+	if start > len(ordered) {
+		start = len(ordered)
 	}
 	end := start + page.Limit()
-	if end > len(filtered) {
-		end = len(filtered)
+	if end > len(ordered) {
+		end = len(ordered)
 	}
-	values := make([]audit.Event, 0, end-start)
-	for index := end - 1; index >= start; index-- {
-		values = append(values, filtered[index])
-	}
-	return audit.EventsListed{Values: values}
+	return audit.EventsListed{Values: ordered[start:end]}
 }
 
 func auditEventMatchesFilters(event audit.Event, filters audit.ListFilters) bool {
@@ -134,15 +139,22 @@ func (server Server) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 	if !pageOK {
 		return
 	}
-	result := server.auditService.List(r.Context(), filters, page)
+	server.writeAuditEventList(w, r, filters, page)
+}
+
+// writeAuditEventList fetches one probed page of audit events and writes the
+// list response with its next_offset.
+func (server Server) writeAuditEventList(w http.ResponseWriter, r *http.Request, filters audit.ListFilters, page core.Page) {
+	result := server.auditService.List(r.Context(), filters, page.Probe())
 	listed, listedMatched := result.(audit.EventsListed)
 	if !listedMatched {
 		writeDomainError(w, result.(audit.ListRejected).Reason)
 		return
 	}
 
-	response := auditEventsResponse{Events: make([]auditEventResponse, 0, len(listed.Values))}
-	for _, event := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := auditEventsResponse{Events: make([]auditEventResponse, 0, visible), NextOffset: nextOffset}
+	for _, event := range listed.Values[:visible] {
 		response.Events = append(response.Events, auditEventToResponse(event))
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -152,14 +164,14 @@ func (server Server) listOrganizationAuditEvents(w http.ResponseWriter, r *http.
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
 	organizationIDResult := parseOrganizationPathValue(r)
 	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
 	if !organizationIDMatched {
-		writeError(w, http.StatusBadRequest, organizationIDResult.(organizationIDRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, organizationIDResult.(organizationIDRejected).reason)
 		return
 	}
 
@@ -175,18 +187,7 @@ func (server Server) listOrganizationAuditEvents(w http.ResponseWriter, r *http.
 	if !pageOK {
 		return
 	}
-	result := server.auditService.List(r.Context(), filters, page)
-	listed, listedMatched := result.(audit.EventsListed)
-	if !listedMatched {
-		writeDomainError(w, result.(audit.ListRejected).Reason)
-		return
-	}
-
-	response := auditEventsResponse{Events: make([]auditEventResponse, 0, len(listed.Values))}
-	for _, event := range listed.Values {
-		response.Events = append(response.Events, auditEventToResponse(event))
-	}
-	writeJSON(w, http.StatusOK, response)
+	server.writeAuditEventList(w, r, filters, page)
 }
 
 func parseAuditListFilters(r *http.Request) audit.ListFilters {
@@ -203,13 +204,17 @@ func parseAuditListFilters(r *http.Request) audit.ListFilters {
 	return filters
 }
 
-func (server Server) recordAudit(w http.ResponseWriter, ctx context.Context, actor core.UserID, action audit.Action, subject audit.Subject, metadata audit.Metadata) bool {
+// recordAuditBestEffort records an audit event for a mutation that has
+// already committed. The state change is durable at that point, so a failed
+// audit write is logged and the request continues instead of reporting an
+// error for work that actually happened. Audit writes that gate a response
+// BEFORE returning data (such as sensitive-field access logging) must not use
+// this helper.
+func (server Server) recordAuditBestEffort(ctx context.Context, actor core.UserID, action audit.Action, subject audit.Subject, metadata audit.Metadata) {
 	result := server.auditService.Record(ctx, actor, action, subject, metadata)
 	if rejected, matched := result.(audit.RecordRejected); matched {
-		writeDomainError(w, rejected.Reason)
-		return false
+		slog.Error("audit record failed after committed mutation", "action", action.String(), "subject_kind", subject.Kind, "subject_id", subject.ID, "reason", rejected.Reason.Description())
 	}
-	return true
 }
 
 func auditEventToResponse(event audit.Event) auditEventResponse {

@@ -16,12 +16,13 @@ import (
 
 // Method names namespace each httpserver.PrivacyService method on the wire.
 const (
-	methodCreate                     = "privacy.Create"
-	methodListForRequester           = "privacy.ListForRequester"
-	methodListAll                    = "privacy.ListAll"
-	methodResolve                    = "privacy.Resolve"
-	methodRecordSensitiveFieldAccess = "privacy.RecordSensitiveFieldAccess"
-	methodRunRetention               = "privacy.RunRetention"
+	methodCreate                          = "privacy.Create"
+	methodListForRequester                = "privacy.ListForRequester"
+	methodListAll                         = "privacy.ListAll"
+	methodResolve                         = "privacy.Resolve"
+	methodRecordSensitiveFieldAccess      = "privacy.RecordSensitiveFieldAccess"
+	methodRecordSensitiveFieldAccessBatch = "privacy.RecordSensitiveFieldAccessBatch"
+	methodRunRetention                    = "privacy.RunRetention"
 )
 
 type createArgs struct {
@@ -46,6 +47,11 @@ type resolveArgs struct {
 type recordSensitiveFieldAccessArgs struct {
 	UserID     string                          `json:"userid"`
 	Submission submissionbridge.SubmissionWire `json:"submission"`
+}
+
+type recordSensitiveFieldAccessBatchArgs struct {
+	UserID      string                            `json:"userid"`
+	Submissions []submissionbridge.SubmissionWire `json:"submissions"`
 }
 
 type runRetentionArgs struct {
@@ -123,6 +129,20 @@ func Dispatch(ctx context.Context, store httpserver.PrivacyService, method strin
 			return nil, err
 		}
 		return json.Marshal(encodeMutationResult(store.RecordSensitiveFieldAccess(ctx, argUserID, argSubmission)))
+	case methodRecordSensitiveFieldAccessBatch:
+		var decoded recordSensitiveFieldAccessBatchArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("privacy bridge: decode RecordSensitiveFieldAccessBatch args: %w", err)
+		}
+		argUserID, err := corewire.DecodeUserID(decoded.UserID)
+		if err != nil {
+			return nil, err
+		}
+		argSubmissions, err := decodeSubmissions(decoded.Submissions)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeMutationResult(store.RecordSensitiveFieldAccessBatch(ctx, argUserID, argSubmissions)))
 	case methodRunRetention:
 		var decoded runRetentionArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -240,6 +260,26 @@ func (g GuestStore) RecordSensitiveFieldAccess(ctx context.Context, argUserID co
 		return httpserver.PrivacyRequestMutationRejected{Reason: guestError(err)}
 	}
 	raw, err := g.invoke(methodRecordSensitiveFieldAccess, args)
+	if err != nil {
+		return httpserver.PrivacyRequestMutationRejected{Reason: guestError(err)}
+	}
+	var wire recordResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return httpserver.PrivacyRequestMutationRejected{Reason: guestError(err)}
+	}
+	result, err := decodeMutationResult(wire)
+	if err != nil {
+		return httpserver.PrivacyRequestMutationRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) RecordSensitiveFieldAccessBatch(ctx context.Context, argUserID core.UserID, argSubmissions []submission.Submission) httpserver.PrivacyMutationResult {
+	args, err := json.Marshal(recordSensitiveFieldAccessBatchArgs{UserID: corewire.EncodeUserID(argUserID), Submissions: encodeSubmissions(argSubmissions)})
+	if err != nil {
+		return httpserver.PrivacyRequestMutationRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodRecordSensitiveFieldAccessBatch, args)
 	if err != nil {
 		return httpserver.PrivacyRequestMutationRejected{Reason: guestError(err)}
 	}

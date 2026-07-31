@@ -24,14 +24,26 @@ func (server Server) operationsStatus(w http.ResponseWriter, r *http.Request) {
 	if !server.secureCookies {
 		secureCookies = "disabled"
 	}
+	ipBucketsResult := server.ipRateLimiter.ActiveBuckets()
+	ipBuckets, ipMatched := ipBucketsResult.(ActiveBucketsCounted)
+	if !ipMatched {
+		writeDomainError(w, ipBucketsResult.(ActiveBucketsUnavailable).Reason)
+		return
+	}
+	subjectBucketsResult := server.subjectRateLimiter.ActiveBuckets()
+	subjectBuckets, subjectMatched := subjectBucketsResult.(ActiveBucketsCounted)
+	if !subjectMatched {
+		writeDomainError(w, subjectBucketsResult.(ActiveBucketsUnavailable).Reason)
+		return
+	}
 	writeJSON(w, http.StatusOK, operationsResponse{
 		Status:                   "ok",
 		AccountTokenDelivery:     server.accountTokens.mode,
 		MCPStorage:               server.mcpSessions.storageKind(),
 		RateLimitStorage:         server.ipRateLimiter.StorageKind(),
 		ActiveMCPSessions:        server.mcpSessions.activeSessionCount(),
-		ActiveIPRateBuckets:      server.ipRateLimiter.ActiveBuckets(),
-		ActiveSubjectRateBuckets: server.subjectRateLimiter.ActiveBuckets(),
+		ActiveIPRateBuckets:      ipBuckets.Count,
+		ActiveSubjectRateBuckets: subjectBuckets.Count,
 		SecureCookies:            secureCookies,
 	})
 }

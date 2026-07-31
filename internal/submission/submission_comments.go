@@ -6,6 +6,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
@@ -103,15 +104,17 @@ func (service Service) AddSubmissionComment(ctx context.Context, actor auth.User
 	if !storedMatched {
 		return SubmissionCommentRejected{Reason: storeResult.(CreateSubmissionCommentStoreRejected).Reason}
 	}
+	service.emitSubmissionEvent(ctx, event.KindSubmissionCommented, actor.ID, value.TaskID, value.ID,
+		event.NewRecipients(taskValue.CreatedBy, value.SubmitterID, actor.ID))
 	return SubmissionCommentAdded{Value: accepted.Value, TaskID: value.TaskID, SubmitterID: value.SubmitterID, TaskCreatorID: taskValue.CreatedBy}
 }
 
-func (service Service) ListSubmissionComments(ctx context.Context, actor auth.Subject, submissionID core.SubmissionID) SubmissionCommentsResult {
+func (service Service) ListSubmissionComments(ctx context.Context, actor auth.Subject, submissionID core.SubmissionID, page core.Page) SubmissionCommentsResult {
 	_, problem := service.loadCommentableSubmission(ctx, actor, submissionID)
 	if problem != nil {
 		return SubmissionCommentsListRejected{Reason: *problem}
 	}
-	storeResult := service.store.ListSubmissionComments(ctx, submissionID)
+	storeResult := service.store.ListSubmissionComments(ctx, submissionID, page)
 	listed, matched := storeResult.(ListSubmissionCommentsStoreAccepted)
 	if !matched {
 		return SubmissionCommentsListRejected{Reason: storeResult.(ListSubmissionCommentsStoreRejected).Reason}

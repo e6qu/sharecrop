@@ -159,6 +159,7 @@ func TestAcceptResultRoundTrip(t *testing.T) {
 	original := ledger.SubmissionAccepted{
 		TaskID:       taskID.Value,
 		SubmissionID: submissionID.Value,
+		WorkerUserID: worker,
 		Payout:       ledger.BundlePayout{WorkerUserID: worker, Amount: amount(t, 40), CollectibleIDs: []core.CollectibleID{collectibleID(t)}},
 		Tip:          ledger.CreditTip{WorkerUserID: worker, Amount: amount(t, 5)},
 	}
@@ -173,11 +174,23 @@ func TestAcceptResultRoundTrip(t *testing.T) {
 	if accepted.TaskID != original.TaskID || accepted.SubmissionID != original.SubmissionID {
 		t.Errorf("accept ids did not round-trip")
 	}
+	if accepted.WorkerUserID != original.WorkerUserID {
+		t.Errorf("accept worker id did not round-trip")
+	}
 	if describePayout(accepted.Payout) != describePayout(original.Payout) {
 		t.Errorf("accept payout did not round-trip")
 	}
 	if describeTip(accepted.Tip) != describeTip(original.Tip) {
 		t.Errorf("accept tip did not round-trip")
+	}
+
+	changes, err := decodeRequestChangesResult(encodeRequestChangesResult(ledger.ChangesRequested{TaskID: taskID.Value, SubmissionID: submissionID.Value, WorkerUserID: worker, ReviewNote: "tighten it up"}))
+	if err != nil {
+		t.Fatalf("decode changes: %v", err)
+	}
+	requested, matched := changes.(ledger.ChangesRequested)
+	if !matched || requested.WorkerUserID != worker || requested.ReviewNote != "tighten it up" {
+		t.Errorf("changes-requested did not round-trip: %+v", changes)
 	}
 }
 

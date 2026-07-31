@@ -69,7 +69,7 @@ func TestPoolServesConcurrentUnitsWithoutCrossTalk(t *testing.T) {
 			wg.Add(1)
 			go func(s seed) {
 				defer wg.Done()
-				listed, matched := bridgeStore.List(ctx, s.recipient, page).(notification.ListStoreAccepted)
+				listed, matched := bridgeStore.List(ctx, s.recipient, notification.AnyState{}, page).(notification.ListStoreAccepted)
 				if !matched {
 					failures <- fmt.Sprintf("recipient %s: list rejected", s.recipient)
 					return

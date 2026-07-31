@@ -15,6 +15,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/mcp"
 	"github.com/e6qu/sharecrop/internal/notification"
@@ -22,6 +23,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
+	"github.com/e6qu/sharecrop/internal/webhook"
 	"github.com/e6qu/sharecrop/web"
 )
 
@@ -83,16 +85,16 @@ type TaskService interface {
 	RemoveTaskFromSeries(context.Context, auth.UserSubject, core.TaskSeriesID, core.TaskID) task.SeriesMutationResult
 	ReorderSeries(context.Context, auth.UserSubject, core.TaskSeriesID, []core.TaskID) task.SeriesMutationResult
 	AddSeriesComment(context.Context, auth.UserSubject, core.TaskSeriesID, task.CommentBody) task.SeriesCommentResult
-	ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID) task.SeriesCommentsResult
+	ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID, core.Page) task.SeriesCommentsResult
 	AddTaskComment(context.Context, auth.UserSubject, core.TaskID, task.CommentBody) task.TaskCommentResult
-	ListTaskComments(context.Context, auth.UserSubject, core.TaskID) task.TaskCommentsResult
+	ListTaskComments(context.Context, auth.UserSubject, core.TaskID, core.Page) task.TaskCommentsResult
 	Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ReserveForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
 	ReserveForTeam(context.Context, auth.UserSubject, core.TaskID, core.TeamID) task.ReservationResult
 	ApproveReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	DeclineReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
-	ListReservations(context.Context, auth.Subject, core.TaskID) task.ReservationsListResult
+	ListReservations(context.Context, auth.Subject, core.TaskID, core.Page) task.ReservationsListResult
 }
 
 type AgentService interface {
@@ -130,7 +132,7 @@ type SubmissionService interface {
 	ListForTask(context.Context, auth.Subject, core.TaskID, core.Page) submission.ListResult
 	ListForSubmitter(context.Context, auth.UserSubject, core.UserID, core.Page) submission.ListResult
 	AddSubmissionComment(context.Context, auth.UserSubject, core.SubmissionID, task.CommentBody) submission.SubmissionCommentResult
-	ListSubmissionComments(context.Context, auth.Subject, core.SubmissionID) submission.SubmissionCommentsResult
+	ListSubmissionComments(context.Context, auth.Subject, core.SubmissionID, core.Page) submission.SubmissionCommentsResult
 }
 
 type LedgerService interface {
@@ -138,7 +140,7 @@ type LedgerService interface {
 	FundTaskFromOrganization(context.Context, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
 	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
 	ReviewAcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult
-	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, submission.ReviewNote) ledger.RequestChangesResult
+	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult
 	RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
 	TaskAllocatedCredits(context.Context, core.TaskID) ledger.TaskAllocatedResult
@@ -155,8 +157,8 @@ type AuditService interface {
 }
 
 type NotificationService interface {
-	Notify(context.Context, core.UserID, core.UserID, notification.Kind, notification.Subject, notification.Metadata) notification.NotifyResult
-	List(context.Context, core.UserID, core.Page) notification.ListResult
+	List(context.Context, core.UserID, notification.StateFilter, core.Page) notification.ListResult
+	CountUnread(context.Context, core.UserID) notification.CountResult
 	MarkRead(context.Context, core.UserID, core.NotificationID) notification.MarkReadResult
 }
 
@@ -166,13 +168,14 @@ type PrivacyService interface {
 	ListAll(context.Context, core.Page) PrivacyListResult
 	Resolve(context.Context, string, string) PrivacyMutationResult
 	RecordSensitiveFieldAccess(context.Context, core.UserID, submission.Submission) PrivacyMutationResult
+	RecordSensitiveFieldAccessBatch(context.Context, core.UserID, []submission.Submission) PrivacyMutationResult
 	RunRetention(context.Context, core.UserID) PrivacyRetentionResult
 }
 
 type ModerationTriageService interface {
 	RecordOpen(context.Context, audit.Event) ModerationTriageMutationResult
-	List(context.Context, []core.AuditEventID) ModerationTriageListResult
-	Update(context.Context, core.UserID, core.AuditEventID, string, string) ModerationTriageMutationResult
+	List(context.Context, ModerationTriageStateFilter, core.Page) ModerationTriageListResult
+	Update(context.Context, core.UserID, core.AuditEventID, ModerationTriageState, string) ModerationTriageMutationResult
 }
 
 type Server struct {
@@ -195,6 +198,8 @@ type Server struct {
 	accountTokens         accountTokenDelivery
 	auditService          AuditService
 	notificationService   NotificationService
+	eventStore            event.Store
+	webhookService        webhook.Service
 	savedQueueViews       SavedQueueViewService
 	privacyService        PrivacyService
 	moderationTriage      ModerationTriageService
@@ -209,6 +214,8 @@ type RuntimeState struct {
 	MCPSessions         *mcpHTTPSessionStore
 	AuditService        AuditService
 	NotificationService NotificationService
+	EventStore          event.Store
+	WebhookStore        webhook.Store
 	SavedQueueViews     SavedQueueViewService
 	PrivacyService      PrivacyService
 	PlatformAdmins      PlatformAdminService
@@ -238,6 +245,8 @@ func DefaultRuntimeState(bootstrapAdmins map[string]bool) RuntimeState {
 		MCPSessions:         newMCPHTTPSessionStore(),
 		AuditService:        newMemoryAuditService(),
 		NotificationService: notification.NewService(notification.NewMemoryStore()),
+		EventStore:          event.NewMemoryStore(),
+		WebhookStore:        webhook.NewMemoryStore(),
 		SavedQueueViews:     newMemorySavedQueueViewService(),
 		PrivacyService:      newMemoryPrivacyService(),
 		PlatformAdmins:      newMemoryPlatformAdminService(bootstrapAdmins),
@@ -252,8 +261,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 }
 
 func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService, runtime RuntimeState) http.Handler {
-	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil || runtime.PlatformAdmins == nil || runtime.ModerationTriage == nil || runtime.OIDCSessions == nil {
-		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, notification service, saved queue views, privacy service, platform admin service, moderation triage service, and OpenID Connect session storage")
+	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.EventStore == nil || runtime.WebhookStore == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil || runtime.PlatformAdmins == nil || runtime.ModerationTriage == nil || runtime.OIDCSessions == nil {
+		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, notification service, event store, webhook store, saved queue views, privacy service, platform admin service, moderation triage service, and OpenID Connect session storage")
 	}
 	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, runtime)
 }
@@ -274,7 +283,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		agentService:         agentService,
 		orgCredentialService: orgCredentialService,
 		assetService:         assetService,
-		mcpServer:            mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: runtime.NotificationService, authService: authService, platformAdmins: runtime.PlatformAdmins, moderationTriage: runtime.ModerationTriage, privacyService: runtime.PrivacyService, auditService: runtime.AuditService}),
+		mcpServer:            mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: runtime.NotificationService, authService: authService, platformAdmins: runtime.PlatformAdmins, moderationTriage: runtime.ModerationTriage, privacyService: runtime.PrivacyService, auditService: runtime.AuditService, webhookService: webhook.NewService(runtime.WebhookStore)}),
 		mcpSessions:          runtime.MCPSessions,
 		// The refresh-token cookie is Secure by default; local plain-HTTP dev can
 		// opt out explicitly with SHARECROP_INSECURE_COOKIES=true.
@@ -284,6 +293,8 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		accountTokens:         newAccountTokenDeliveryFromEnv(),
 		auditService:          runtime.AuditService,
 		notificationService:   runtime.NotificationService,
+		eventStore:            runtime.EventStore,
+		webhookService:        webhook.NewService(runtime.WebhookStore),
 		savedQueueViews:       runtime.SavedQueueViews,
 		privacyService:        runtime.PrivacyService,
 		platformAdmins:        runtime.PlatformAdmins,
@@ -381,7 +392,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("GET /api/collectibles", server.listCollectibles)
 	mux.HandleFunc("GET /api/collectibles/catalog", server.collectibleCatalog)
 	mux.HandleFunc("POST /api/collectibles/award", server.awardCollectible)
-	mux.HandleFunc("POST /api/collectibles/{id}/transfer", server.transferCollectible)
+	mux.HandleFunc("POST /api/collectibles/{collectible_id}/transfer", server.transferCollectible)
 	mux.HandleFunc("GET /api/admin/operations", server.operationsStatus)
 	mux.HandleFunc("GET /api/admin/platform-admins", server.listPlatformAdmins)
 	mux.HandleFunc("POST /api/admin/platform-admins", server.grantPlatformAdmin)
@@ -392,11 +403,18 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("GET /api/admin/privacy-requests", server.listAdminPrivacyRequests)
 	mux.HandleFunc("POST /api/admin/privacy-requests/{privacy_request_id}/resolve", server.resolveAdminPrivacyRequest)
 	mux.HandleFunc("POST /api/admin/privacy-retention/run", server.runPrivacyRetention)
+	mux.HandleFunc("GET /api/events", server.listEvents)
+	mux.HandleFunc("GET /api/events/stream", server.streamEvents)
+	mux.HandleFunc("POST /api/webhook-subscriptions", server.createWebhookSubscription)
+	mux.HandleFunc("GET /api/webhook-subscriptions", server.listWebhookSubscriptions)
+	mux.HandleFunc("DELETE /api/webhook-subscriptions/{subscription_id}", server.revokeWebhookSubscription)
+	mux.HandleFunc("GET /api/webhook-subscriptions/{subscription_id}/deliveries", server.listWebhookDeliveries)
 	mux.HandleFunc("GET /api/notifications", server.listNotifications)
+	mux.HandleFunc("GET /api/notifications/unread-count", server.unreadNotificationCount)
 	mux.HandleFunc("POST /api/notifications/{notification_id}/read", server.markNotificationRead)
-	mux.HandleFunc("GET /api/organizations/{id}/collectibles", server.listOrganizationCollectibles)
-	mux.HandleFunc("POST /api/organizations/{organization_id}/collectibles/{id}/award", server.awardOrganizationCollectible)
-	mux.HandleFunc("GET /api/teams/{id}/collectibles", server.listTeamCollectibles)
+	mux.HandleFunc("GET /api/organizations/{organization_id}/collectibles", server.listOrganizationCollectibles)
+	mux.HandleFunc("POST /api/organizations/{organization_id}/collectibles/{collectible_id}/award", server.awardOrganizationCollectible)
+	mux.HandleFunc("GET /api/teams/{team_id}/collectibles", server.listTeamCollectibles)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-reward", server.fundCollectibleReward)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-refund", server.refundCollectibleReward)
 	mux.HandleFunc("POST /api/agent-credentials", server.createAgentCredential)
@@ -429,8 +447,8 @@ func withRequestBodyLimit(next http.Handler) http.Handler {
 
 // NewMCPServer builds an MCP server backed by the given domain services so the
 // stdio transport can reuse the same tool surface as the HTTP endpoint.
-func NewMCPServer(taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, organizationService OrganizationService, orgCredentialService OrgCredentialService, assetService AssetService, notificationService NotificationService, authService AuthService, platformAdmins PlatformAdminService, moderationTriage ModerationTriageService, privacyService PrivacyService, auditService AuditService) mcp.Server {
-	return mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: notificationService, authService: authService, platformAdmins: platformAdmins, moderationTriage: moderationTriage, privacyService: privacyService, auditService: auditService})
+func NewMCPServer(taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, organizationService OrganizationService, orgCredentialService OrgCredentialService, assetService AssetService, notificationService NotificationService, authService AuthService, platformAdmins PlatformAdminService, moderationTriage ModerationTriageService, privacyService PrivacyService, auditService AuditService, webhookService webhook.Service) mcp.Server {
+	return mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: notificationService, authService: authService, platformAdmins: platformAdmins, moderationTriage: moderationTriage, privacyService: privacyService, auditService: auditService, webhookService: webhookService})
 }
 
 func health(w http.ResponseWriter, r *http.Request) {
@@ -444,7 +462,7 @@ func (server Server) index(w http.ResponseWriter, r *http.Request) {
 	// shell for every in-app route, so deep links and refreshes load the
 	// app. Unmatched API paths still return 404 rather than the shell.
 	if strings.HasPrefix(r.URL.Path, "/api/") {
-		http.NotFound(w, r)
+		writeError(w, http.StatusNotFound, core.ErrorCodeNotFound, "no such API route")
 		return
 	}
 	if server.requireBrowserSession && !server.requireActiveBrowserSession(w, r) {
@@ -684,15 +702,26 @@ type actorRejected struct {
 	reason string
 }
 
+type actorScopeDenied struct {
+	reason string
+}
+
 func (actorAccepted) actorResult() {}
 
 func (actorRejected) actorResult() {}
+
+func (actorScopeDenied) actorResult() {}
 
 // requireUserOrOrgSubject resolves a request to either a user session
 // subject or an org-wide credential's OrgSubject, for handlers on methods
 // widened to accept auth.Subject (full org-token parity). Handlers that stay
 // user-only keep using requireUserSubject and never see an OrgSubject.
-func (server Server) requireUserOrOrgSubject(r *http.Request) actorResult {
+//
+// A user session carries no scope model and is never scope-checked; an
+// organization credential must have been minted with the required scope —
+// the same scope MCP enforces for the equivalent tool — so a read-only org
+// credential cannot mutate over REST.
+func (server Server) requireUserOrOrgSubject(r *http.Request, required agent.Scope) actorResult {
 	if accepted, matched := server.requireUserSubject(r).(userSubjectAccepted); matched {
 		return actorAccepted{actor: accepted.subject}
 	}
@@ -711,7 +740,21 @@ func (server Server) requireUserOrOrgSubject(r *http.Request) actorResult {
 	if !verifyMatched {
 		return actorRejected{reason: verifyResult.(orgcred.VerifyRejected).Reason.Description()}
 	}
+	if _, granted := verified.Credential.Scopes.Allows(required).(agent.ScopeGranted); !granted {
+		return actorScopeDenied{reason: "organization credential lacks the " + required.String() + " scope"}
+	}
 	return actorAccepted{actor: verified.Subject}
+}
+
+// writeActorRejection maps a failed requireUserOrOrgSubject result to its
+// response: missing/invalid credentials are 401, a valid credential without
+// the required scope is 403.
+func writeActorRejection(w http.ResponseWriter, result actorResult) {
+	if denied, matched := result.(actorScopeDenied); matched {
+		writeError(w, http.StatusForbidden, core.ErrorCodePermissionDenied, denied.reason)
+		return
+	}
+	writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, result.(actorRejected).reason)
 }
 
 type organizationIDResult interface {
@@ -819,8 +862,7 @@ type taskRequestResult interface {
 }
 
 type taskRequestAccepted struct {
-	command        task.CreateCommand
-	collectibleIDs []core.CollectibleID
+	command task.CreateCommand
 }
 
 type taskRequestRejected struct {
@@ -1002,10 +1044,22 @@ func parsePageOrReject(w http.ResponseWriter, r *http.Request) (core.Page, bool)
 	pageResult := parsePageStrict(r)
 	accepted, matched := pageResult.(pageParseAccepted)
 	if !matched {
-		writeError(w, http.StatusBadRequest, pageResult.(pageParseRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, pageResult.(pageParseRejected).reason)
 		return core.Page{}, false
 	}
 	return accepted.value, true
+}
+
+// probeListWindow sizes a list page fetched with page.Probe() (limit+1 rows).
+// It reports how many fetched rows belong on this page and the response's
+// next_offset: 0 when this is the last page, offset+limit otherwise. A real
+// further page never yields 0 because offset is non-negative and limit is
+// positive.
+func probeListWindow(fetched int, page core.Page) (visible int, nextOffset int) {
+	if fetched > page.Limit() {
+		return page.Limit(), page.Offset() + page.Limit()
+	}
+	return fetched, 0
 }
 
 type pageParseResult interface {
@@ -1102,7 +1156,7 @@ func authResponseForSubject(subject auth.Subject, accessToken auth.AccessToken) 
 // 429 and returns false when the caller should stop.
 func (server Server) allowByIP(w http.ResponseWriter, r *http.Request) bool {
 	if !server.ipRateLimiter.Allow(r.URL.Path + ":" + clientIP(r)) {
-		writeError(w, http.StatusTooManyRequests, "too many requests; slow down and retry")
+		writeError(w, http.StatusTooManyRequests, core.ErrorCodeRateLimited, "too many requests; slow down and retry")
 		return false
 	}
 	return true
@@ -1112,7 +1166,7 @@ func (server Server) allowByIP(w http.ResponseWriter, r *http.Request) bool {
 // subject so a single account cannot spam transactional review operations.
 func (server Server) allowBySubject(w http.ResponseWriter, subjectID string) bool {
 	if !server.subjectRateLimiter.Allow(subjectID) {
-		writeError(w, http.StatusTooManyRequests, "too many requests; slow down and retry")
+		writeError(w, http.StatusTooManyRequests, core.ErrorCodeRateLimited, "too many requests; slow down and retry")
 		return false
 	}
 	return true
@@ -1285,14 +1339,14 @@ func writeEmptyResponse(w http.ResponseWriter, status int, response emptyRespons
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-func writeError(w http.ResponseWriter, status int, message string) {
+func writeError(w http.ResponseWriter, status int, code core.ErrorCode, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(errorResponse{Error: message})
+	_ = json.NewEncoder(w).Encode(errorResponse{Error: message, Code: code.String()})
 }
 
 func writeDomainError(w http.ResponseWriter, reason core.DomainError) {
-	writeError(w, statusForError(reason), reason.Description())
+	writeError(w, statusForError(reason), reason.Code(), reason.Description())
 }
 
 func statusForError(reason core.DomainError) int {
@@ -1307,6 +1361,12 @@ func statusForError(reason core.DomainError) int {
 		return http.StatusForbidden
 	case core.ErrorCodeConflict:
 		return http.StatusConflict
+	case core.ErrorCodeUnauthenticated:
+		return http.StatusUnauthorized
+	case core.ErrorCodeRateLimited:
+		return http.StatusTooManyRequests
+	case core.ErrorCodeUnavailable:
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
 	}

@@ -5,11 +5,35 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/e6qu/sharecrop/internal/core"
 )
 
+// ActiveBucketsResult is the outcome of counting a limiter's live buckets.
+// The Postgres-backed limiter can fail at the storage boundary, so the count
+// is a sum rather than a bare int that would have to fake a value on error.
+type ActiveBucketsResult interface {
+	activeBucketsResult()
+}
+
+type ActiveBucketsCounted struct {
+	Count int
+}
+
+type ActiveBucketsUnavailable struct {
+	Reason core.DomainError
+}
+
+func (ActiveBucketsCounted) activeBucketsResult() {}
+
+func (ActiveBucketsUnavailable) activeBucketsResult() {}
+
 type RateLimiter interface {
+	// Allow reports whether the key is under budget. Implementations that
+	// can fail (the Postgres-backed limiter) must DENY on a storage error:
+	// rate limiting is a protection control and an outage must not disable it.
 	Allow(key string) bool
-	ActiveBuckets() int
+	ActiveBuckets() ActiveBucketsResult
 	StorageKind() string
 }
 
@@ -80,11 +104,11 @@ func (limiter *rateLimiter) evictFullLocked(now time.Time) {
 	}
 }
 
-func (limiter *rateLimiter) ActiveBuckets() int {
+func (limiter *rateLimiter) ActiveBuckets() ActiveBucketsResult {
 	limiter.mu.Lock()
 	defer limiter.mu.Unlock()
 	limiter.evictFullLocked(limiter.now())
-	return len(limiter.buckets)
+	return ActiveBucketsCounted{Count: len(limiter.buckets)}
 }
 
 func (limiter *rateLimiter) StorageKind() string {

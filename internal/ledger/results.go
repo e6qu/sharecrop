@@ -56,6 +56,10 @@ type AcceptResult interface {
 type SubmissionAccepted struct {
 	TaskID       core.TaskID
 	SubmissionID core.SubmissionID
+	// WorkerUserID is the reviewed submission's author, present even when the
+	// review moved no credits (NoPayout/NoTip), so review events always know
+	// who to notify.
+	WorkerUserID core.UserID
 	Payout       PayoutOutcome
 	Tip          TipOutcome
 }
@@ -105,6 +109,8 @@ type RequestChangesResult interface {
 type ChangesRequested struct {
 	TaskID       core.TaskID
 	SubmissionID core.SubmissionID
+	// WorkerUserID is the reviewed submission's author (see SubmissionAccepted).
+	WorkerUserID core.UserID
 	ReviewNote   string
 }
 
@@ -123,6 +129,8 @@ type RejectResult interface {
 type SubmissionRejected struct {
 	TaskID       core.TaskID
 	SubmissionID core.SubmissionID
+	// WorkerUserID is the reviewed submission's author (see SubmissionAccepted).
+	WorkerUserID core.UserID
 	Payout       PayoutOutcome
 	Tip          TipOutcome
 }

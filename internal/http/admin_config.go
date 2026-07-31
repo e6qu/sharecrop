@@ -135,7 +135,7 @@ func (server Server) requireAdminSubject(w http.ResponseWriter, r *http.Request)
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return userSubjectAccepted{}, false
 	}
 	check := server.platformAdmins.IsAdmin(r.Context(), actor.subject.ID)
@@ -159,14 +159,15 @@ func (server Server) listPlatformAdmins(w http.ResponseWriter, r *http.Request) 
 	if !pageOK {
 		return
 	}
-	result := server.platformAdmins.List(r.Context(), page)
+	result := server.platformAdmins.List(r.Context(), page.Probe())
 	listed, matched := result.(PlatformAdminsListed)
 	if !matched {
 		writeDomainError(w, result.(PlatformAdminListRejected).Reason)
 		return
 	}
-	response := platformAdminsResponse{Admins: make([]platformAdminResponse, 0, len(listed.Values))}
-	for _, record := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := platformAdminsResponse{Admins: make([]platformAdminResponse, 0, visible), NextOffset: nextOffset}
+	for _, record := range listed.Values[:visible] {
 		response.Admins = append(response.Admins, platformAdminToResponse(record))
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -179,7 +180,7 @@ func (server Server) grantPlatformAdmin(w http.ResponseWriter, r *http.Request) 
 	}
 	var request platformAdminRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	userIDResult := core.ParseUserID(request.UserID)
@@ -200,9 +201,7 @@ func (server Server) grantPlatformAdmin(w http.ResponseWriter, r *http.Request) 
 		writeDomainError(w, metadataResult.(jsonMetadataRejected).reason)
 		return
 	}
-	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionFromString("platform_admin_granted"), audit.Subject{Kind: "user", ID: saved.Value.UserID.String()}, audit.Metadata{JSON: metadata.value}) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionPlatformAdminGranted, audit.Subject{Kind: "user", ID: saved.Value.UserID.String()}, audit.Metadata{JSON: metadata.value})
 	writeJSON(w, http.StatusCreated, platformAdminToResponse(saved.Value))
 }
 
@@ -229,9 +228,7 @@ func (server Server) revokePlatformAdmin(w http.ResponseWriter, r *http.Request)
 		writeDomainError(w, metadataResult.(jsonMetadataRejected).reason)
 		return
 	}
-	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionFromString("platform_admin_revoked"), audit.Subject{Kind: "user", ID: saved.Value.UserID.String()}, audit.Metadata{JSON: metadata.value}) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionPlatformAdminRevoked, audit.Subject{Kind: "user", ID: saved.Value.UserID.String()}, audit.Metadata{JSON: metadata.value})
 	writeJSON(w, http.StatusOK, platformAdminToResponse(saved.Value))
 }
 

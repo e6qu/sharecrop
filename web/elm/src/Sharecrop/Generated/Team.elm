@@ -37,17 +37,20 @@ teamResponseEncoder teamResponse =
 
 type alias TeamsResponse =
     { teams : List TeamResponse
+    , nextOffset : Int
     }
 
 teamsResponseDecoder : Decoder TeamsResponse
 teamsResponseDecoder =
-    Decode.map TeamsResponse
+    Decode.map2 TeamsResponse
         (Decode.field "teams" (Decode.list teamResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 teamsResponseEncoder : TeamsResponse -> Encode.Value
 teamsResponseEncoder teamsResponse =
     Encode.object
         [ ( "teams", Encode.list teamResponseEncoder teamsResponse.teams )
+        , ( "next_offset", Encode.int teamsResponse.nextOffset )
         ]
 
 type alias TeamDetailResponse =

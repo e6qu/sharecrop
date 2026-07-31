@@ -49,15 +49,15 @@ func TestNotificationBridgeDualRun(t *testing.T) {
 		if _, matched := bridgeStore.Create(ctx, value).(notification.CreateStoreAccepted); !matched {
 			t.Fatalf("bridge create did not report CreateStoreAccepted")
 		}
-		listed := requireNotificationsListed(t, dbStore.List(ctx, recipient, page))
+		listed := requireNotificationsListed(t, dbStore.List(ctx, recipient, notification.AnyState{}, page))
 		if !containsNotification(listed, value.ID) {
 			t.Errorf("bridge-created notification %s was not persisted", value.ID)
 		}
 	})
 
 	t.Run("list: bridge listing matches a direct store call", func(t *testing.T) {
-		viaBridge := requireNotificationsListed(t, bridgeStore.List(ctx, recipient, page))
-		direct := requireNotificationsListed(t, dbStore.List(ctx, recipient, page))
+		viaBridge := requireNotificationsListed(t, bridgeStore.List(ctx, recipient, notification.AnyState{}, page))
+		direct := requireNotificationsListed(t, dbStore.List(ctx, recipient, notification.AnyState{}, page))
 		if len(viaBridge) != len(direct) {
 			t.Fatalf("list counts: bridge %d, direct %d", len(viaBridge), len(direct))
 		}
@@ -65,6 +65,39 @@ func TestNotificationBridgeDualRun(t *testing.T) {
 			if diff := notificationtest.NotificationDiff(viaBridge[i], direct[i]); diff != "" {
 				t.Errorf("notification %d mismatch: %s", i, diff)
 			}
+		}
+	})
+
+	t.Run("unread filter and count: bridge matches a direct store call", func(t *testing.T) {
+		seeded := seedNotification(t, ctx, dbStore, recipient, actor)
+		if _, matched := dbStore.MarkRead(ctx, recipient, seeded.ID).(notification.MarkReadStoreAccepted); !matched {
+			t.Fatalf("mark seeded notification read rejected")
+		}
+
+		unreadDirect := requireNotificationsListed(t, dbStore.List(ctx, recipient, notification.UnreadOnly{}, page))
+		unreadBridge := requireNotificationsListed(t, bridgeStore.List(ctx, recipient, notification.UnreadOnly{}, page))
+		if len(unreadDirect) != len(unreadBridge) {
+			t.Fatalf("unread counts: bridge %d, direct %d", len(unreadBridge), len(unreadDirect))
+		}
+		for index := range unreadDirect {
+			if unreadDirect[index].State != notification.StateUnread {
+				t.Errorf("unread listing returned a %s row", unreadDirect[index].State.String())
+			}
+		}
+		if containsNotification(unreadDirect, seeded.ID) {
+			t.Errorf("read notification %s appeared in the unread listing", seeded.ID)
+		}
+
+		countDirect, matched := dbStore.CountUnread(ctx, recipient).(notification.CountUnreadCounted)
+		if !matched {
+			t.Fatalf("direct count rejected")
+		}
+		countBridge, matched := bridgeStore.CountUnread(ctx, recipient).(notification.CountUnreadCounted)
+		if !matched {
+			t.Fatalf("bridge count rejected")
+		}
+		if countDirect.Count != int64(len(unreadDirect)) || countBridge.Count != countDirect.Count {
+			t.Errorf("unread counts: direct %d, bridge %d, listed %d", countDirect.Count, countBridge.Count, len(unreadDirect))
 		}
 	})
 

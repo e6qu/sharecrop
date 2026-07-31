@@ -863,7 +863,7 @@ func (testTaskService) AddSeriesComment(context.Context, auth.UserSubject, core.
 	return task.SeriesCommentRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testTaskService) ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID) task.SeriesCommentsResult {
+func (testTaskService) ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID, core.Page) task.SeriesCommentsResult {
 	return task.SeriesCommentsListed{Values: nil}
 }
 
@@ -871,7 +871,7 @@ func (testTaskService) AddTaskComment(context.Context, auth.UserSubject, core.Ta
 	return task.TaskCommentRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testTaskService) ListTaskComments(context.Context, auth.UserSubject, core.TaskID) task.TaskCommentsResult {
+func (testTaskService) ListTaskComments(context.Context, auth.UserSubject, core.TaskID, core.Page) task.TaskCommentsResult {
 	return task.TaskCommentsListed{Values: nil}
 }
 
@@ -924,7 +924,7 @@ func (testTaskService) CancelReservation(context.Context, auth.Subject, core.Tas
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testTaskService) ListReservations(context.Context, auth.Subject, core.TaskID) task.ReservationsListResult {
+func (testTaskService) ListReservations(context.Context, auth.Subject, core.TaskID, core.Page) task.ReservationsListResult {
 	return task.ReservationsListed{Values: []task.Reservation{}}
 }
 
@@ -993,7 +993,7 @@ func (testSubmissionService) AddSubmissionComment(_ context.Context, actor auth.
 	}
 }
 
-func (testSubmissionService) ListSubmissionComments(context.Context, auth.Subject, core.SubmissionID) submission.SubmissionCommentsResult {
+func (testSubmissionService) ListSubmissionComments(context.Context, auth.Subject, core.SubmissionID, core.Page) submission.SubmissionCommentsResult {
 	return submission.SubmissionCommentsListed{Values: []submission.SubmissionComment{}}
 }
 
@@ -1017,7 +1017,7 @@ func (testLedgerService) ReviewAcceptSubmission(_ context.Context, _ core.UserID
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
-func (testLedgerService) RequestChanges(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, note submission.ReviewNote) ledger.RequestChangesResult {
+func (testLedgerService) RequestChanges(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, note submission.ReviewNote) ledger.RequestChangesResult {
 	return ledger.ChangesRequested{TaskID: taskID, SubmissionID: submissionID, ReviewNote: note.String()}
 }
 

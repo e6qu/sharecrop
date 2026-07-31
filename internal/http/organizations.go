@@ -15,13 +15,13 @@ func (server Server) createOrganization(w http.ResponseWriter, r *http.Request) 
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
 	var request organizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 
@@ -41,9 +41,7 @@ func (server Server) createOrganization(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionOrganizationCreated, audit.Subject{Kind: "organization", ID: created.Value.ID.String()}, audit.EmptyMetadata()) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionOrganizationCreated, audit.Subject{Kind: "organization", ID: created.Value.ID.String()}, audit.EmptyMetadata())
 	writeOrganizationResponse(w, http.StatusCreated, organizationToResponse(created.Value))
 }
 
@@ -52,7 +50,7 @@ func (server Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -60,7 +58,7 @@ func (server Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 	if !pageOK {
 		return
 	}
-	result := server.organizationService.ListOrganizations(r.Context(), actor.subject, r.URL.Query().Get("query"), page)
+	result := server.organizationService.ListOrganizations(r.Context(), actor.subject, r.URL.Query().Get("query"), page.Probe())
 	listed, matched := result.(org.OrganizationsListed)
 	if !matched {
 		rejected := result.(org.ListOrganizationsRejected)
@@ -68,8 +66,9 @@ func (server Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := organizationsResponse{Organizations: make([]organizationResponse, 0, len(listed.Values))}
-	for _, organization := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := organizationsResponse{Organizations: make([]organizationResponse, 0, visible), NextOffset: nextOffset}
+	for _, organization := range listed.Values[:visible] {
 		response.Organizations = append(response.Organizations, organizationToResponse(organization))
 	}
 	writeOrganizationsResponse(w, http.StatusOK, response)
@@ -80,7 +79,7 @@ func (server Server) listOrganizationMembers(w http.ResponseWriter, r *http.Requ
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -88,7 +87,7 @@ func (server Server) listOrganizationMembers(w http.ResponseWriter, r *http.Requ
 	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
 	if !organizationIDMatched {
 		rejected := organizationIDResult.(organizationIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
@@ -96,15 +95,16 @@ func (server Server) listOrganizationMembers(w http.ResponseWriter, r *http.Requ
 	if !pageOK {
 		return
 	}
-	result := server.organizationService.ListMembers(r.Context(), actor.subject, organizationIDAccepted.value, page)
+	result := server.organizationService.ListMembers(r.Context(), actor.subject, organizationIDAccepted.value, page.Probe())
 	listed, matched := result.(org.MembersListed)
 	if !matched {
 		writeDomainError(w, result.(org.ListMembersRejected).Reason)
 		return
 	}
 
-	response := organizationMembersResponse{Members: make([]organizationMemberResponse, 0, len(listed.Values))}
-	for _, member := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := organizationMembersResponse{Members: make([]organizationMemberResponse, 0, visible), NextOffset: nextOffset}
+	for _, member := range listed.Values[:visible] {
 		response.Members = append(response.Members, memberToResponse(member))
 	}
 	writeOrganizationMembersResponse(w, http.StatusOK, response)
@@ -115,7 +115,7 @@ func (server Server) provisionOrganizationMember(w http.ResponseWriter, r *http.
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -123,7 +123,7 @@ func (server Server) provisionOrganizationMember(w http.ResponseWriter, r *http.
 	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
 	if !organizationIDMatched {
 		rejected := organizationIDResult.(organizationIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
@@ -131,7 +131,7 @@ func (server Server) provisionOrganizationMember(w http.ResponseWriter, r *http.
 	requestAccepted, requestMatched := requestResult.(provisionMemberAccepted)
 	if !requestMatched {
 		rejected := requestResult.(provisionMemberRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
@@ -143,12 +143,8 @@ func (server Server) provisionOrganizationMember(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionOrganizationMemberProvision, audit.Subject{Kind: "organization_member", ID: provisioned.Value.ID.String()}, audit.EmptyMetadata()) {
-		return
-	}
-	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionOrganizationMemberProvision, audit.Subject{Kind: "organization", ID: organizationIDAccepted.value.String()}, audit.EmptyMetadata()) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionOrganizationMemberProvision, audit.Subject{Kind: "organization_member", ID: provisioned.Value.ID.String()}, audit.EmptyMetadata())
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionOrganizationMemberProvision, audit.Subject{Kind: "organization", ID: organizationIDAccepted.value.String()}, audit.EmptyMetadata())
 	writeOrganizationMemberResponse(w, http.StatusCreated, memberToResponse(provisioned.Value))
 }
 
@@ -165,12 +161,8 @@ func (server Server) deactivateOrganizationMember(w http.ResponseWriter, r *http
 		return
 	}
 
-	if !server.recordAudit(w, r.Context(), target.actor.ID, audit.ActionOrganizationMemberDisabled, audit.Subject{Kind: "organization_user", ID: target.organizationID.String() + ":" + target.userID.String()}, audit.EmptyMetadata()) {
-		return
-	}
-	if !server.recordAudit(w, r.Context(), target.actor.ID, audit.ActionOrganizationMemberDisabled, audit.Subject{Kind: "organization", ID: target.organizationID.String()}, audit.EmptyMetadata()) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), target.actor.ID, audit.ActionOrganizationMemberDisabled, audit.Subject{Kind: "organization_user", ID: target.organizationID.String() + ":" + target.userID.String()}, audit.EmptyMetadata())
+	server.recordAuditBestEffort(r.Context(), target.actor.ID, audit.ActionOrganizationMemberDisabled, audit.Subject{Kind: "organization", ID: target.organizationID.String()}, audit.EmptyMetadata())
 	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "deactivated"})
 }
 
@@ -182,13 +174,13 @@ func (server Server) updateOrganizationMemberRoles(w http.ResponseWriter, r *htt
 
 	var request updateMemberRolesRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	rolesResult := parseOrganizationRoles(request.Roles)
 	rolesAccepted, rolesMatched := rolesResult.(organizationRolesAccepted)
 	if !rolesMatched {
-		writeError(w, http.StatusBadRequest, rolesResult.(organizationRolesRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rolesResult.(organizationRolesRejected).reason)
 		return
 	}
 
@@ -199,12 +191,8 @@ func (server Server) updateOrganizationMemberRoles(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if !server.recordAudit(w, r.Context(), target.actor.ID, audit.ActionOrganizationMemberRoles, audit.Subject{Kind: "organization_member", ID: updated.Value.ID.String()}, audit.EmptyMetadata()) {
-		return
-	}
-	if !server.recordAudit(w, r.Context(), target.actor.ID, audit.ActionOrganizationMemberRoles, audit.Subject{Kind: "organization", ID: target.organizationID.String()}, audit.EmptyMetadata()) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), target.actor.ID, audit.ActionOrganizationMemberRoles, audit.Subject{Kind: "organization_member", ID: updated.Value.ID.String()}, audit.EmptyMetadata())
+	server.recordAuditBestEffort(r.Context(), target.actor.ID, audit.ActionOrganizationMemberRoles, audit.Subject{Kind: "organization", ID: target.organizationID.String()}, audit.EmptyMetadata())
 	writeOrganizationMemberResponse(w, http.StatusOK, memberToResponse(updated.Value))
 }
 
@@ -219,7 +207,7 @@ func (server Server) organizationMemberTarget(w http.ResponseWriter, r *http.Req
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return organizationMemberTarget{}, false
 	}
 
@@ -227,7 +215,7 @@ func (server Server) organizationMemberTarget(w http.ResponseWriter, r *http.Req
 	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
 	if !organizationIDMatched {
 		rejected := organizationIDResult.(organizationIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return organizationMemberTarget{}, false
 	}
 
@@ -247,7 +235,7 @@ func (server Server) createOrganizationTeam(w http.ResponseWriter, r *http.Reque
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -255,13 +243,13 @@ func (server Server) createOrganizationTeam(w http.ResponseWriter, r *http.Reque
 	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
 	if !organizationIDMatched {
 		rejected := organizationIDResult.(organizationIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
 	var request teamRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 
@@ -289,7 +277,7 @@ func (server Server) listOrganizationTeams(w http.ResponseWriter, r *http.Reques
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -297,7 +285,7 @@ func (server Server) listOrganizationTeams(w http.ResponseWriter, r *http.Reques
 	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
 	if !organizationIDMatched {
 		rejected := organizationIDResult.(organizationIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
@@ -305,7 +293,7 @@ func (server Server) listOrganizationTeams(w http.ResponseWriter, r *http.Reques
 	if !pageOK {
 		return
 	}
-	result := server.organizationService.ListOrganizationTeams(r.Context(), actor.subject, organizationIDAccepted.value, r.URL.Query().Get("query"), page)
+	result := server.organizationService.ListOrganizationTeams(r.Context(), actor.subject, organizationIDAccepted.value, r.URL.Query().Get("query"), page.Probe())
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)
@@ -313,8 +301,9 @@ func (server Server) listOrganizationTeams(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	response := teamsResponse{Teams: make([]teamResponse, 0, len(listed.Values))}
-	for _, team := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := teamsResponse{Teams: make([]teamResponse, 0, visible), NextOffset: nextOffset}
+	for _, team := range listed.Values[:visible] {
 		response.Teams = append(response.Teams, teamToResponse(team))
 	}
 	writeTeamsResponse(w, http.StatusOK, response)
@@ -325,13 +314,13 @@ func (server Server) createStandaloneTeam(w http.ResponseWriter, r *http.Request
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
 	var request teamRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 
@@ -359,7 +348,7 @@ func (server Server) listStandaloneTeams(w http.ResponseWriter, r *http.Request)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -367,7 +356,7 @@ func (server Server) listStandaloneTeams(w http.ResponseWriter, r *http.Request)
 	if !pageOK {
 		return
 	}
-	result := server.organizationService.ListStandaloneTeams(r.Context(), actor.subject, r.URL.Query().Get("query"), page)
+	result := server.organizationService.ListStandaloneTeams(r.Context(), actor.subject, r.URL.Query().Get("query"), page.Probe())
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		rejected := result.(org.ListTeamsRejected)
@@ -375,8 +364,9 @@ func (server Server) listStandaloneTeams(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	response := teamsResponse{Teams: make([]teamResponse, 0, len(listed.Values))}
-	for _, team := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := teamsResponse{Teams: make([]teamResponse, 0, visible), NextOffset: nextOffset}
+	for _, team := range listed.Values[:visible] {
 		response.Teams = append(response.Teams, teamToResponse(team))
 	}
 	writeTeamsResponse(w, http.StatusOK, response)

@@ -16,10 +16,13 @@ import (
 const mcpSessionHeader = "Mcp-Session-Id"
 const mcpLastEventIDHeader = "Last-Event-ID"
 
-// mcpSessionTTL bounds how long an idle MCP session is retained in memory.
-// Sessions are evicted lazily on the next store operation after they go idle,
-// so abandoned sessions cannot accumulate without bound.
-const mcpSessionTTL = 30 * time.Minute
+// MCPSessionTTL bounds how long an idle MCP session is retained. Sessions are
+// evicted lazily on the next store operation after they go idle, and the
+// lifecycle runner sweeps persisted rows past this TTL, so abandoned sessions
+// cannot accumulate without bound.
+const MCPSessionTTL = 30 * time.Minute
+
+const mcpSessionTTL = MCPSessionTTL
 
 // Bounds on concurrent MCP sessions to keep an authenticated agent (or a stolen
 // credential) from exhausting memory by bursting initialize calls. Sessions are

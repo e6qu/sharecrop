@@ -21,6 +21,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/e6qu/sharecrop/internal/auth"
+	"github.com/e6qu/sharecrop/internal/core"
 	"golang.org/x/oauth2"
 )
 
@@ -274,33 +275,33 @@ func (c shauthConfig) decodeTransaction(value string) (shauthTransaction, error)
 
 func (server Server) shauthLogin(w http.ResponseWriter, r *http.Request) {
 	if !server.shauth.enabled() {
-		writeError(w, http.StatusServiceUnavailable, "Shauth sign-in is not configured")
+		writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "Shauth sign-in is not configured")
 		return
 	}
 	provider, _, _, err := server.shauth.discoveredProvider(r.Context())
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "Shauth discovery failed")
+		writeError(w, http.StatusBadGateway, core.ErrorCodeUnavailable, "Shauth discovery failed")
 		return
 	}
 	state, err := randomSHAUTHValue()
 	if err != nil {
-		writeError(w, 500, "could not create Shauth transaction")
+		writeError(w, http.StatusInternalServerError, core.ErrorCodeUnavailable, "could not create Shauth transaction")
 		return
 	}
 	nonce, err := randomSHAUTHValue()
 	if err != nil {
-		writeError(w, 500, "could not create Shauth transaction")
+		writeError(w, http.StatusInternalServerError, core.ErrorCodeUnavailable, "could not create Shauth transaction")
 		return
 	}
 	verifier, err := randomSHAUTHValue()
 	if err != nil {
-		writeError(w, 500, "could not create Shauth transaction")
+		writeError(w, http.StatusInternalServerError, core.ErrorCodeUnavailable, "could not create Shauth transaction")
 		return
 	}
 	tx := shauthTransaction{State: state, Nonce: nonce, Verifier: verifier, Expires: time.Now().Add(10 * time.Minute).Unix()}
 	encoded, err := server.shauth.encodeTransaction(tx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create Shauth transaction")
+		writeError(w, http.StatusInternalServerError, core.ErrorCodeUnavailable, "could not create Shauth transaction")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "sharecrop_shauth_tx", Value: encoded, Path: "/api/auth/shauth", HttpOnly: true, Secure: server.secureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600})
@@ -309,56 +310,56 @@ func (server Server) shauthLogin(w http.ResponseWriter, r *http.Request) {
 }
 func (server Server) shauthCallback(w http.ResponseWriter, r *http.Request) {
 	if !server.shauth.enabled() {
-		writeError(w, http.StatusServiceUnavailable, "Shauth sign-in is not configured")
+		writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "Shauth sign-in is not configured")
 		return
 	}
 	cookie, err := r.Cookie("sharecrop_shauth_tx")
 	if err != nil {
-		writeError(w, 400, "Shauth transaction is missing")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "Shauth transaction is missing")
 		return
 	}
 	tx, err := server.shauth.decodeTransaction(cookie.Value)
 	if err != nil || tx.Expires < time.Now().Unix() || subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("state")), []byte(tx.State)) != 1 {
-		writeError(w, 400, "Shauth transaction is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "Shauth transaction is invalid")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "sharecrop_shauth_tx", Path: "/api/auth/shauth", MaxAge: -1, HttpOnly: true, Secure: server.secureCookies, SameSite: http.SameSiteLaxMode})
 	provider, verifier, endSessionEndpoint, err := server.shauth.discoveredProvider(r.Context())
 	if err != nil {
-		writeError(w, 502, "Shauth discovery failed")
+		writeError(w, http.StatusBadGateway, core.ErrorCodeUnavailable, "Shauth discovery failed")
 		return
 	}
 	config := server.shauth.oauthConfig(provider.Endpoint())
 	tokens, err := config.Exchange(r.Context(), r.URL.Query().Get("code"), oauth2.VerifierOption(tx.Verifier))
 	if err != nil {
-		writeError(w, 401, "Shauth code exchange failed")
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, "Shauth code exchange failed")
 		return
 	}
 	rawID, ok := tokens.Extra("id_token").(string)
 	if !ok {
-		writeError(w, 401, "Shauth did not return an ID token")
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, "Shauth did not return an ID token")
 		return
 	}
 	token, err := verifier.Verify(r.Context(), rawID)
 	if err != nil {
-		writeError(w, 401, "Shauth ID token verification failed")
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, "Shauth ID token verification failed")
 		return
 	}
 	var claims shauthIdentityClaims
 	if token.Claims(&claims) != nil || !claims.valid(tx.Nonce, token.Subject) {
-		writeError(w, 401, "Shauth ID token claims were invalid")
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, "Shauth ID token claims were invalid")
 		return
 	}
 	email := auth.NewEmailAddress(claims.Email)
 	accepted, ok := email.(auth.EmailAddressAccepted)
 	if !ok {
-		writeError(w, 401, "Shauth ID token did not contain a valid email")
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, "Shauth ID token did not contain a valid email")
 		return
 	}
 	result := server.authService.LoginExternal(r.Context(), token.Issuer, token.Subject, accepted.Value)
 	login, ok := result.(auth.ExternalLoginAccepted)
 	if !ok {
-		writeError(w, 401, result.(auth.ExternalLoginRejected).Reason.Description())
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, result.(auth.ExternalLoginRejected).Reason.Description())
 		return
 	}
 	session := auth.OpenIDConnectSession{
@@ -370,7 +371,7 @@ func (server Server) shauthCallback(w http.ResponseWriter, r *http.Request) {
 	stored := server.oidcSessions.StoreOpenIDConnectSession(r.Context(), auth.HashRefreshToken(login.RefreshToken), session)
 	if _, ok := stored.(auth.OpenIDConnectSessionStored); !ok {
 		server.authService.Logout(r.Context(), login.RefreshToken)
-		writeError(w, http.StatusServiceUnavailable, "Sharecrop OpenID Connect session could not be stored")
+		writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "Sharecrop OpenID Connect session could not be stored")
 		return
 	}
 	server.setRefreshCookie(w, login.RefreshToken)
@@ -393,7 +394,7 @@ func (server Server) shauthFrontchannelLogout(w http.ResponseWriter, r *http.Req
 			Provider: "shauth", Issuer: issuer, ClientID: server.shauth.clientID, SID: sid,
 		})
 		if _, ok := result.(auth.FrontchannelLogoutApplied); !ok {
-			writeError(w, http.StatusServiceUnavailable, "logout could not be completed")
+			writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "logout could not be completed")
 			return
 		}
 	}
@@ -441,17 +442,17 @@ func (server Server) verifyBackchannelLogout(ctx context.Context, raw string) (*
 
 func (server Server) shauthBackchannelLogout(w http.ResponseWriter, r *http.Request) {
 	if !server.shauth.enabled() {
-		writeError(w, http.StatusServiceUnavailable, "Shauth sign-in is not configured")
+		writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "Shauth sign-in is not configured")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err != nil {
-		writeError(w, http.StatusBadRequest, "logout token is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "logout token is invalid")
 		return
 	}
 	token, claims, err := server.verifyBackchannelLogout(r.Context(), strings.TrimSpace(r.Form.Get("logout_token")))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "logout token is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "logout token is invalid")
 		return
 	}
 	result := server.oidcSessions.ApplyBackchannelLogout(r.Context(), auth.OpenIDConnectLogoutClaim{
@@ -461,10 +462,10 @@ func (server Server) shauthBackchannelLogout(w http.ResponseWriter, r *http.Requ
 	switch result.(type) {
 	case auth.BackchannelLogoutApplied:
 	case auth.BackchannelLogoutReplay:
-		writeError(w, http.StatusBadRequest, "logout token was already used")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "logout token was already used")
 		return
 	default:
-		writeError(w, http.StatusServiceUnavailable, "logout could not be completed")
+		writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "logout could not be completed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -510,7 +511,7 @@ func (server Server) shauthValidation(w http.ResponseWriter, r *http.Request) {
 	}
 	found, ok := server.oidcSessions.FindOpenIDConnectSession(r.Context(), auth.HashRefreshToken(parsed.Value)).(auth.OpenIDConnectSessionFound)
 	if !ok || found.Session.Provider != "shauth" || found.Session.Issuer != server.shauth.issuer || found.Session.ClientID != server.shauth.clientID || found.Session.Username == "" || found.Session.Email == "" || (found.Session.Role != "developer" && found.Session.Role != "admin") {
-		writeError(w, http.StatusServiceUnavailable, "Shauth validation identity is unavailable")
+		writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "Shauth validation identity is unavailable")
 		return
 	}
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
@@ -541,7 +542,7 @@ func (server Server) shauthSignedOut(w http.ResponseWriter, r *http.Request) {
 		parsed, accepted := auth.ParseRefreshTokenPlain(cookie.Value).(auth.RefreshTokenPlainAccepted)
 		if accepted {
 			if _, done := server.authService.Logout(r.Context(), parsed.Value).(auth.LogoutDone); !done {
-				writeError(w, http.StatusServiceUnavailable, "Sharecrop session could not be revoked")
+				writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "Sharecrop session could not be revoked")
 				return
 			}
 		}

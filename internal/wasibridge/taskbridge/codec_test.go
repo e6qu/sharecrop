@@ -117,21 +117,22 @@ func TestTaskRoundTrip(t *testing.T) {
 func TestCreateCommandRoundTrip(t *testing.T) {
 	value := sampleTask(t)
 	command := task.CreateCommand{
-		Actor:          auth.UserSubject{ID: value.CreatedBy},
-		Owner:          value.Owner,
-		Title:          tasktest.Title(t, "Review the bridge"),
-		Description:    tasktest.Description(t, "Check the bridge end to end."),
-		Type:           value.Type,
-		Reference:      value.Reference,
-		Reward:         value.Reward,
-		Participation:  value.Participation,
-		AssigneeScope:  value.AssigneeScope,
-		ReservationTTL: value.ReservationTTL,
-		Visibility:     value.Visibility,
-		Placement:      value.Placement,
-		ResponseSchema: tasktest.SchemaSource(t, `{"kind":"freeform"}`),
-		Payload:        value.Payload,
-		Attachments:    value.Attachments,
+		Actor:              auth.UserSubject{ID: value.CreatedBy},
+		Owner:              value.Owner,
+		Title:              tasktest.Title(t, "Review the bridge"),
+		Description:        tasktest.Description(t, "Check the bridge end to end."),
+		Type:               value.Type,
+		Reference:          value.Reference,
+		Reward:             value.Reward,
+		Participation:      value.Participation,
+		AssigneeScope:      value.AssigneeScope,
+		ReservationTTL:     value.ReservationTTL,
+		Visibility:         value.Visibility,
+		Placement:          value.Placement,
+		ResponseSchema:     tasktest.SchemaSource(t, `{"kind":"freeform"}`),
+		Payload:            value.Payload,
+		Attachments:        value.Attachments,
+		FundCollectibleIDs: []core.CollectibleID{newCollectibleID(t), newCollectibleID(t)},
 	}
 	restored, err := decodeCreateCommand(encodeCreateCommand(command))
 	if err != nil {
@@ -146,6 +147,23 @@ func TestCreateCommandRoundTrip(t *testing.T) {
 	if rewardKindKey(restored.Reward) != rewardKindKey(command.Reward) {
 		t.Errorf("reward did not round-trip")
 	}
+	if len(restored.FundCollectibleIDs) != len(command.FundCollectibleIDs) {
+		t.Fatalf("fund collectible ids did not round-trip: %d != %d", len(restored.FundCollectibleIDs), len(command.FundCollectibleIDs))
+	}
+	for index := range command.FundCollectibleIDs {
+		if restored.FundCollectibleIDs[index] != command.FundCollectibleIDs[index] {
+			t.Errorf("fund collectible id %d did not round-trip", index)
+		}
+	}
+}
+
+func newCollectibleID(t *testing.T) core.CollectibleID {
+	t.Helper()
+	created, matched := core.NewCollectibleID().(core.CollectibleIDCreated)
+	if !matched {
+		t.Fatalf("collectible id rejected")
+	}
+	return created.Value
 }
 
 func TestSeriesRoundTrip(t *testing.T) {

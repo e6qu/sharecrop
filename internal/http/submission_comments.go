@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/core"
-	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -20,7 +19,8 @@ type submissionCommentResponse struct {
 }
 
 type submissionCommentsResponse struct {
-	Comments []submissionCommentResponse `json:"comments"`
+	Comments   []submissionCommentResponse `json:"comments"`
+	NextOffset int                         `json:"next_offset"`
 }
 
 type submissionCommentRequest struct {
@@ -40,18 +40,26 @@ func (server Server) listSubmissionComments(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	result := server.submissionService.ListSubmissionComments(r.Context(), actor, submissionID)
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.submissionService.ListSubmissionComments(r.Context(), actor, submissionID, page.Probe())
 	listed, matched := result.(submission.SubmissionCommentsListed)
 	if !matched {
 		writeDomainError(w, result.(submission.SubmissionCommentsListRejected).Reason)
 		return
 	}
-	writeJSON(w, http.StatusOK, submissionCommentsResponse{Comments: submissionCommentsToResponse(listed.Values)})
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	writeJSON(w, http.StatusOK, submissionCommentsResponse{Comments: submissionCommentsToResponse(listed.Values[:visible]), NextOffset: nextOffset})
 }
 
 func (server Server) addSubmissionComment(w http.ResponseWriter, r *http.Request) {
 	actor, ok := server.seriesActor(w, r)
 	if !ok {
+		return
+	}
+	if !server.allowBySubject(w, actor.ID.String()) {
 		return
 	}
 	submissionID, ok := server.parseSubmissionCommentID(w, r.PathValue("submission_id"))
@@ -60,27 +68,21 @@ func (server Server) addSubmissionComment(w http.ResponseWriter, r *http.Request
 	}
 	var request submissionCommentRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	bodyResult := task.NewCommentBody(request.Body)
 	body, matched := bodyResult.(task.CommentBodyAccepted)
 	if !matched {
-		writeError(w, http.StatusBadRequest, bodyResult.(task.CommentBodyRejected).Reason.Description())
+		writeDomainError(w, bodyResult.(task.CommentBodyRejected).Reason)
 		return
 	}
+	// The counterparty's notification is fanned out by the submission
+	// service's event emission.
 	result := server.submissionService.AddSubmissionComment(r.Context(), actor, submissionID, body.Value)
 	added, addedMatched := result.(submission.SubmissionCommentAdded)
 	if !addedMatched {
 		writeDomainError(w, result.(submission.SubmissionCommentRejected).Reason)
-		return
-	}
-
-	recipient := added.SubmitterID
-	if actor.ID == added.SubmitterID {
-		recipient = added.TaskCreatorID
-	}
-	if !server.notify(w, r.Context(), recipient, actor.ID, notification.KindSubmissionCommented, notificationSubjectForSubmission(submissionID), taskNotificationMetadata(added.TaskID)) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, submissionCommentToResponse(added.Value))
@@ -90,7 +92,7 @@ func (server Server) parseSubmissionCommentID(w http.ResponseWriter, raw string)
 	result := core.ParseSubmissionID(raw)
 	submissionID, matched := result.(core.SubmissionIDCreated)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(core.SubmissionIDRejected).Reason.Description())
+		writeDomainError(w, result.(core.SubmissionIDRejected).Reason)
 		return core.SubmissionID{}, false
 	}
 	return submissionID.Value, true

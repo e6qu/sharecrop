@@ -2,8 +2,10 @@ package taskbridge
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/auth"
+	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/wasibridge/attachmentwire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
@@ -30,26 +32,72 @@ type createCommandWire struct {
 	ResponseSchema string                `json:"response_schema"`
 	Payload        dataPayloadWire       `json:"payload"`
 	Attachments    []attachmentwire.Wire `json:"attachments,omitempty"`
+	// ExpiresAt carries the ExpirationPolicy sum: the RFC3339 instant for
+	// ExpiresAt, or the empty string for NoExpiration.
+	ExpiresAt string `json:"expires_at,omitempty"`
+	// FundCollectibleIDs carries CreateCommand.FundCollectibleIDs so the host
+	// store escrows those collectibles inside the create transaction.
+	FundCollectibleIDs []string `json:"fund_collectible_ids,omitempty"`
+}
+
+// encodeExpirationPolicy renders the ExpirationPolicy sum onto the wire: the
+// RFC3339 instant for ExpiresAt, or "" for NoExpiration (an unset policy from
+// legacy constructors also crosses as "").
+func encodeExpirationPolicy(policy task.ExpirationPolicy) string {
+	return task.ExpirationInstantString(policy)
+}
+
+func decodeExpirationPolicy(raw string) (task.ExpirationPolicy, error) {
+	if raw == "" {
+		return task.NoExpiration{}, nil
+	}
+	instant, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, fmt.Errorf("decode expiration policy: %w", err)
+	}
+	return task.ExpiresAt{Instant: instant.UTC()}, nil
 }
 
 func encodeCreateCommand(command task.CreateCommand) createCommandWire {
 	return createCommandWire{
-		ActorID:        corewire.EncodeUserID(command.Actor.ID),
-		Owner:          encodeOwner(command.Owner),
-		Title:          encodeTitle(command.Title),
-		Description:    encodeDescription(command.Description),
-		Type:           encodeTaskType(command.Type),
-		Reference:      encodeReferenceURL(command.Reference),
-		Reward:         encodeRewardSpec(command.Reward),
-		Participation:  encodeParticipationPolicy(command.Participation),
-		AssigneeScope:  encodeAssigneeScope(command.AssigneeScope),
-		ReservationTTL: encodeReservationTTL(command.ReservationTTL),
-		Visibility:     encodeVisibility(command.Visibility),
-		Placement:      encodeSeriesPlacement(command.Placement),
-		ResponseSchema: encodeResponseSchema(command.ResponseSchema),
-		Payload:        encodeDataPayload(command.Payload),
-		Attachments:    attachmentwire.EncodeSlice(command.Attachments),
+		ActorID:            corewire.EncodeUserID(command.Actor.ID),
+		Owner:              encodeOwner(command.Owner),
+		Title:              encodeTitle(command.Title),
+		Description:        encodeDescription(command.Description),
+		Type:               encodeTaskType(command.Type),
+		Reference:          encodeReferenceURL(command.Reference),
+		Reward:             encodeRewardSpec(command.Reward),
+		Participation:      encodeParticipationPolicy(command.Participation),
+		AssigneeScope:      encodeAssigneeScope(command.AssigneeScope),
+		ReservationTTL:     encodeReservationTTL(command.ReservationTTL),
+		Visibility:         encodeVisibility(command.Visibility),
+		Placement:          encodeSeriesPlacement(command.Placement),
+		ResponseSchema:     encodeResponseSchema(command.ResponseSchema),
+		Payload:            encodeDataPayload(command.Payload),
+		Attachments:        attachmentwire.EncodeSlice(command.Attachments),
+		ExpiresAt:          encodeExpirationPolicy(command.Expiration),
+		FundCollectibleIDs: encodeCollectibleIDs(command.FundCollectibleIDs),
 	}
+}
+
+func encodeCollectibleIDs(ids []core.CollectibleID) []string {
+	encoded := make([]string, 0, len(ids))
+	for index := range ids {
+		encoded = append(encoded, corewire.EncodeCollectibleID(ids[index]))
+	}
+	return encoded
+}
+
+func decodeCollectibleIDs(raw []string) ([]core.CollectibleID, error) {
+	ids := make([]core.CollectibleID, 0, len(raw))
+	for index := range raw {
+		id, err := corewire.DecodeCollectibleID(raw[index])
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 func decodeCreateCommand(wire createCommandWire) (task.CreateCommand, error) {
@@ -113,22 +161,32 @@ func decodeCreateCommand(wire createCommandWire) (task.CreateCommand, error) {
 	if err != nil {
 		return task.CreateCommand{}, err
 	}
+	fundCollectibleIDs, err := decodeCollectibleIDs(wire.FundCollectibleIDs)
+	if err != nil {
+		return task.CreateCommand{}, err
+	}
+	expiration, err := decodeExpirationPolicy(wire.ExpiresAt)
+	if err != nil {
+		return task.CreateCommand{}, err
+	}
 	return task.CreateCommand{
-		Actor:          auth.UserSubject{ID: actorID},
-		Owner:          owner,
-		Title:          title,
-		Description:    description,
-		Type:           taskType,
-		Reference:      reference,
-		Reward:         reward,
-		Participation:  participation,
-		AssigneeScope:  assigneeScope,
-		ReservationTTL: reservationTTL,
-		Visibility:     visibility,
-		Placement:      placement,
-		ResponseSchema: responseSchema,
-		Payload:        payload,
-		Attachments:    attachments,
+		Actor:              auth.UserSubject{ID: actorID},
+		Owner:              owner,
+		Title:              title,
+		Description:        description,
+		Type:               taskType,
+		Reference:          reference,
+		Reward:             reward,
+		Participation:      participation,
+		AssigneeScope:      assigneeScope,
+		ReservationTTL:     reservationTTL,
+		Visibility:         visibility,
+		Placement:          placement,
+		ResponseSchema:     responseSchema,
+		Payload:            payload,
+		Attachments:        attachments,
+		Expiration:         expiration,
+		FundCollectibleIDs: fundCollectibleIDs,
 	}, nil
 }
 

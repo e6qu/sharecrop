@@ -191,7 +191,7 @@ func (server Server) callCreateOrganization(ctx context.Context, subject auth.Us
 	result := server.services.CreateOrganization(ctx, subject, name.Value)
 	created, matched := result.(org.OrganizationCreated)
 	if !matched {
-		return toolFailed{message: result.(org.CreateOrganizationRejected).Reason.Description()}
+		return toolFailed{code: result.(org.CreateOrganizationRejected).Reason.Code(), message: result.(org.CreateOrganizationRejected).Reason.Description()}
 	}
 	return marshalPayload(organizationToSummary(created.Value))
 }
@@ -208,7 +208,7 @@ func (server Server) callListOrganizations(ctx context.Context, subject auth.Use
 	result := server.services.ListOrganizations(ctx, subject, args.Query, core.DefaultPage())
 	listed, matched := result.(org.OrganizationsListed)
 	if !matched {
-		return toolFailed{message: result.(org.ListOrganizationsRejected).Reason.Description()}
+		return toolFailed{code: result.(org.ListOrganizationsRejected).Reason.Code(), message: result.(org.ListOrganizationsRejected).Reason.Description()}
 	}
 	summaries := make([]organizationSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -225,7 +225,7 @@ func (server Server) callListOrgMembers(ctx context.Context, subject auth.UserSu
 	result := server.services.ListOrganizationMembers(ctx, subject, organizationID, core.DefaultPage())
 	listed, matched := result.(org.MembersListed)
 	if !matched {
-		return toolFailed{message: result.(org.ListMembersRejected).Reason.Description()}
+		return toolFailed{code: result.(org.ListMembersRejected).Reason.Code(), message: result.(org.ListMembersRejected).Reason.Description()}
 	}
 	summaries := make([]memberSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -260,7 +260,7 @@ func (server Server) callProvisionOrgMember(ctx context.Context, subject auth.Us
 	result := server.services.ProvisionOrganizationMember(ctx, subject, organizationID.Value, email.Value, roles)
 	provisioned, matched := result.(org.MemberProvisioned)
 	if !matched {
-		return toolFailed{message: result.(org.ProvisionMemberRejected).Reason.Description()}
+		return toolFailed{code: result.(org.ProvisionMemberRejected).Reason.Code(), message: result.(org.ProvisionMemberRejected).Reason.Description()}
 	}
 	return marshalPayload(memberToSummary(provisioned.Value))
 }
@@ -287,7 +287,7 @@ func (server Server) callDeactivateOrgMember(ctx context.Context, subject auth.U
 	}
 	result := server.services.DeactivateOrganizationMember(ctx, subject, organizationID.Value, userID.Value)
 	if _, matched := result.(org.MemberDeactivationAccepted); !matched {
-		return toolFailed{message: result.(org.DeactivateMemberRejected).Reason.Description()}
+		return toolFailed{code: result.(org.DeactivateMemberRejected).Reason.Code(), message: result.(org.DeactivateMemberRejected).Reason.Description()}
 	}
 	return toolSucceeded{payload: json.RawMessage(`{"status":"deactivated"}`)}
 }
@@ -318,7 +318,7 @@ func (server Server) callUpdateOrgMemberRoles(ctx context.Context, subject auth.
 	result := server.services.UpdateOrganizationMemberRoles(ctx, subject, organizationID.Value, userID.Value, roles)
 	updated, matched := result.(org.MemberRolesUpdatedResult)
 	if !matched {
-		return toolFailed{message: result.(org.UpdateMemberRolesRejected).Reason.Description()}
+		return toolFailed{code: result.(org.UpdateMemberRolesRejected).Reason.Code(), message: result.(org.UpdateMemberRolesRejected).Reason.Description()}
 	}
 	return marshalPayload(memberToSummary(updated.Value))
 }
@@ -342,7 +342,7 @@ func (server Server) callCreateOrganizationTeam(ctx context.Context, subject aut
 	result := server.services.CreateOrganizationTeam(ctx, subject, organizationID, name.Value)
 	created, matched := result.(org.TeamCreated)
 	if !matched {
-		return toolFailed{message: result.(org.CreateTeamRejected).Reason.Description()}
+		return toolFailed{code: result.(org.CreateTeamRejected).Reason.Code(), message: result.(org.CreateTeamRejected).Reason.Description()}
 	}
 	return marshalPayload(teamToSummary(created.Value))
 }
@@ -363,7 +363,7 @@ func (server Server) callListOrganizationTeams(ctx context.Context, subject auth
 	result := server.services.ListOrganizationTeams(ctx, subject, organizationID, args.Query, core.DefaultPage())
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
-		return toolFailed{message: result.(org.ListTeamsRejected).Reason.Description()}
+		return toolFailed{code: result.(org.ListTeamsRejected).Reason.Code(), message: result.(org.ListTeamsRejected).Reason.Description()}
 	}
 	summaries := make([]teamSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -387,7 +387,7 @@ func (server Server) callCreateStandaloneTeam(ctx context.Context, subject auth.
 	result := server.services.CreateStandaloneTeam(ctx, subject, name.Value)
 	created, matched := result.(org.TeamCreated)
 	if !matched {
-		return toolFailed{message: result.(org.CreateTeamRejected).Reason.Description()}
+		return toolFailed{code: result.(org.CreateTeamRejected).Reason.Code(), message: result.(org.CreateTeamRejected).Reason.Description()}
 	}
 	return marshalPayload(teamToSummary(created.Value))
 }
@@ -402,7 +402,7 @@ func (server Server) callListStandaloneTeams(ctx context.Context, subject auth.U
 	result := server.services.ListStandaloneTeams(ctx, subject, args.Query, core.DefaultPage())
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
-		return toolFailed{message: result.(org.ListTeamsRejected).Reason.Description()}
+		return toolFailed{code: result.(org.ListTeamsRejected).Reason.Code(), message: result.(org.ListTeamsRejected).Reason.Description()}
 	}
 	summaries := make([]teamSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -419,7 +419,7 @@ func (server Server) callGetTeam(ctx context.Context, subject auth.Subject, argu
 	result := server.services.GetTeam(ctx, subject, teamID)
 	got, matched := result.(org.TeamGot)
 	if !matched {
-		return toolFailed{message: result.(org.GetTeamRejected).Reason.Description()}
+		return toolFailed{code: result.(org.GetTeamRejected).Reason.Code(), message: result.(org.GetTeamRejected).Reason.Description()}
 	}
 	members := make([]string, 0, len(got.Members))
 	for index := range got.Members {
@@ -436,7 +436,7 @@ func (server Server) callGetTeamWork(ctx context.Context, subject auth.UserSubje
 	result := server.services.GetTeamWork(ctx, subject, teamID, task.NoListFilters(), core.DefaultPage())
 	listed, matched := result.(task.TasksListed)
 	if !matched {
-		return toolFailed{message: result.(task.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
 	summaries := make([]taskSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -463,7 +463,7 @@ func (server Server) callAddTeamMember(ctx context.Context, subject auth.Subject
 	}
 	result := server.services.AddTeamMember(ctx, subject, teamID, email.Value)
 	if _, matched := result.(org.TeamMemberAddedResult); !matched {
-		return toolFailed{message: result.(org.AddTeamMemberRejected).Reason.Description()}
+		return toolFailed{code: result.(org.AddTeamMemberRejected).Reason.Code(), message: result.(org.AddTeamMemberRejected).Reason.Description()}
 	}
 	return toolSucceeded{payload: json.RawMessage(`{"status":"added"}`)}
 }
@@ -483,7 +483,7 @@ func (server Server) callCreateOrgCredential(ctx context.Context, subject auth.U
 	}
 	permissionCheck := server.services.CheckOrganizationPermission(ctx, organizationID, subject.ID, org.PermissionManageMembers)
 	if _, denied := permissionCheck.(org.PermissionDenied); denied {
-		return toolFailed{message: "organization credential management access denied"}
+		return toolFailed{code: core.ErrorCodePermissionDenied, message: "organization credential management access denied"}
 	}
 	labelResult := agent.NewLabel(args.Label)
 	label, labelMatched := labelResult.(agent.LabelAccepted)
@@ -505,7 +505,7 @@ func (server Server) callCreateOrgCredential(ctx context.Context, subject auth.U
 	result := server.services.CreateOrgCredential(ctx, organizationID, label.Value, scopes, expiresAt)
 	created, matched := result.(orgcred.CredentialCreated)
 	if !matched {
-		return toolFailed{message: result.(orgcred.CreateRejected).Reason.Description()}
+		return toolFailed{code: result.(orgcred.CreateRejected).Reason.Code(), message: result.(orgcred.CreateRejected).Reason.Description()}
 	}
 	return marshalPayload(orgCredentialCreatedPayload{
 		Credential: orgCredentialToSummary(created.Value),
@@ -537,12 +537,12 @@ func (server Server) callListOrgCredentials(ctx context.Context, subject auth.Us
 	}
 	permissionCheck := server.services.CheckOrganizationPermission(ctx, organizationID, subject.ID, org.PermissionManageMembers)
 	if _, denied := permissionCheck.(org.PermissionDenied); denied {
-		return toolFailed{message: "organization credential management access denied"}
+		return toolFailed{code: core.ErrorCodePermissionDenied, message: "organization credential management access denied"}
 	}
 	result := server.services.ListOrgCredentials(ctx, organizationID, core.DefaultPage())
 	listed, matched := result.(orgcred.CredentialsListed)
 	if !matched {
-		return toolFailed{message: result.(orgcred.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(orgcred.ListRejected).Reason.Code(), message: result.(orgcred.ListRejected).Reason.Description()}
 	}
 	summaries := make([]orgCredentialSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -564,7 +564,7 @@ func (server Server) callRevokeOrgCredential(ctx context.Context, subject auth.U
 	}
 	permissionCheck := server.services.CheckOrganizationPermission(ctx, organizationID, subject.ID, org.PermissionManageMembers)
 	if _, denied := permissionCheck.(org.PermissionDenied); denied {
-		return toolFailed{message: "organization credential management access denied"}
+		return toolFailed{code: core.ErrorCodePermissionDenied, message: "organization credential management access denied"}
 	}
 	credentialIDResult := core.ParseOrgCredentialID(args.CredentialID)
 	credentialID, credentialIDMatched := credentialIDResult.(core.OrgCredentialIDCreated)
@@ -574,7 +574,7 @@ func (server Server) callRevokeOrgCredential(ctx context.Context, subject auth.U
 	result := server.services.RevokeOrgCredential(ctx, organizationID, credentialID.Value)
 	revoked, matched := result.(orgcred.CredentialRevoked)
 	if !matched {
-		return toolFailed{message: result.(orgcred.RevokeRejected).Reason.Description()}
+		return toolFailed{code: result.(orgcred.RevokeRejected).Reason.Code(), message: result.(orgcred.RevokeRejected).Reason.Description()}
 	}
 	return marshalPayload(orgCredentialToSummary(revoked.Value))
 }

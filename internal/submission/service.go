@@ -7,6 +7,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/authz"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/schema"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -19,7 +20,7 @@ type Store interface {
 	ListForTask(context.Context, core.TaskID, core.Page) ListSubmissionsStoreResult
 	ListForSubmitter(context.Context, core.UserID, core.Page) ListSubmissionsStoreResult
 	CreateSubmissionComment(context.Context, SubmissionComment) CreateSubmissionCommentStoreResult
-	ListSubmissionComments(context.Context, core.SubmissionID) ListSubmissionCommentsStoreResult
+	ListSubmissionComments(context.Context, core.SubmissionID, core.Page) ListSubmissionCommentsStoreResult
 }
 
 type TaskFinder interface {
@@ -35,10 +36,27 @@ type Service struct {
 	store                   Store
 	taskStore               TaskFinder
 	organizationPermissions OrganizationPermissions
+	recorder                event.Recorder
 }
 
-func NewService(store Store, taskStore TaskFinder, organizationPermissions OrganizationPermissions) Service {
-	return Service{store: store, taskStore: taskStore, organizationPermissions: organizationPermissions}
+func NewService(store Store, taskStore TaskFinder, organizationPermissions OrganizationPermissions, recorder event.Recorder) Service {
+	return Service{store: store, taskStore: taskStore, organizationPermissions: organizationPermissions, recorder: recorder}
+}
+
+// emitSubmissionEvent emits one task+submission-subject event after a
+// committed mutation. Emission is post-commit best-effort: a rejected
+// emission never fails the operation that already committed.
+func (service Service) emitSubmissionEvent(ctx context.Context, kind event.Kind, actor core.UserID, taskID core.TaskID, submissionID core.SubmissionID, recipients event.Recipients) {
+	subject := event.NoSubjectRefs()
+	subject.Task = event.TaskSubject{ID: taskID}
+	subject.Submission = event.SubmissionSubject{ID: submissionID}
+	_ = service.recorder.Emit(ctx, event.EmitCommand{
+		Kind:       kind,
+		Actor:      event.ActorUser{ID: actor},
+		Subject:    subject,
+		Metadata:   event.TaskMetadata(taskID),
+		Recipients: recipients,
+	})
 }
 
 type SubmitCommand struct {
@@ -129,6 +147,8 @@ func (service Service) Submit(ctx context.Context, command SubmitCommand) Submit
 		return SubmitRejected{Reason: rejected.Reason}
 	}
 
+	service.emitSubmissionEvent(ctx, event.KindSubmissionCreated, command.SubmitterID, command.TaskID, created.Value.ID,
+		event.NewRecipients(taskFound.Value.CreatedBy, command.SubmitterID))
 	return SubmissionCreated{Value: created.Value, ReceiptToken: receiptTokenCreated.Value}
 }
 

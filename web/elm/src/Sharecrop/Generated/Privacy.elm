@@ -80,17 +80,20 @@ privacyRequestResponseEncoder privacyRequestResponse =
 
 type alias PrivacyRequestsResponse =
     { requests : List PrivacyRequestResponse
+    , nextOffset : Int
     }
 
 privacyRequestsResponseDecoder : Decoder PrivacyRequestsResponse
 privacyRequestsResponseDecoder =
-    Decode.map PrivacyRequestsResponse
+    Decode.map2 PrivacyRequestsResponse
         (Decode.field "requests" (Decode.list privacyRequestResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 privacyRequestsResponseEncoder : PrivacyRequestsResponse -> Encode.Value
 privacyRequestsResponseEncoder privacyRequestsResponse =
     Encode.object
         [ ( "requests", Encode.list privacyRequestResponseEncoder privacyRequestsResponse.requests )
+        , ( "next_offset", Encode.int privacyRequestsResponse.nextOffset )
         ]
 
 type alias PrivacyRetentionRunResponse =

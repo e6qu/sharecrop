@@ -40,15 +40,18 @@ savedQueueViewResponseEncoder savedQueueViewResponse =
 
 type alias SavedQueueViewsResponse =
     { views : List SavedQueueViewResponse
+    , nextOffset : Int
     }
 
 savedQueueViewsResponseDecoder : Decoder SavedQueueViewsResponse
 savedQueueViewsResponseDecoder =
-    Decode.map SavedQueueViewsResponse
+    Decode.map2 SavedQueueViewsResponse
         (Decode.field "views" (Decode.list savedQueueViewResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 savedQueueViewsResponseEncoder : SavedQueueViewsResponse -> Encode.Value
 savedQueueViewsResponseEncoder savedQueueViewsResponse =
     Encode.object
         [ ( "views", Encode.list savedQueueViewResponseEncoder savedQueueViewsResponse.views )
+        , ( "next_offset", Encode.int savedQueueViewsResponse.nextOffset )
         ]

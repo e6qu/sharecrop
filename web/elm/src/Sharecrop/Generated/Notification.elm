@@ -5,11 +5,153 @@ module Sharecrop.Generated.Notification exposing (..)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 
+type NotificationKind
+    = NotificationKindSubmissionCreated
+    | NotificationKindSubmissionAccepted
+    | NotificationKindSubmissionChangesRequested
+    | NotificationKindSubmissionRejected
+    | NotificationKindSubmissionCommented
+    | NotificationKindTaskFunded
+    | NotificationKindTaskCancelled
+    | NotificationKindTaskExpired
+    | NotificationKindTaskCommented
+    | NotificationKindSeriesCommented
+    | NotificationKindReservationRequested
+    | NotificationKindReservationApproved
+    | NotificationKindReservationDeclined
+    | NotificationKindReservationCancelled
+    | NotificationKindReservationExpired
+    | NotificationKindPayoutReceived
+    | NotificationKindTipReceived
+    | NotificationKindCollectibleAwarded
+
+notificationKindDecoder : Decoder NotificationKind
+notificationKindDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "submission_created" ->
+                        Decode.succeed NotificationKindSubmissionCreated
+
+                    "submission_accepted" ->
+                        Decode.succeed NotificationKindSubmissionAccepted
+
+                    "submission_changes_requested" ->
+                        Decode.succeed NotificationKindSubmissionChangesRequested
+
+                    "submission_rejected" ->
+                        Decode.succeed NotificationKindSubmissionRejected
+
+                    "submission_commented" ->
+                        Decode.succeed NotificationKindSubmissionCommented
+
+                    "task_funded" ->
+                        Decode.succeed NotificationKindTaskFunded
+
+                    "task_cancelled" ->
+                        Decode.succeed NotificationKindTaskCancelled
+
+                    "task_expired" ->
+                        Decode.succeed NotificationKindTaskExpired
+
+                    "task_commented" ->
+                        Decode.succeed NotificationKindTaskCommented
+
+                    "series_commented" ->
+                        Decode.succeed NotificationKindSeriesCommented
+
+                    "reservation_requested" ->
+                        Decode.succeed NotificationKindReservationRequested
+
+                    "reservation_approved" ->
+                        Decode.succeed NotificationKindReservationApproved
+
+                    "reservation_declined" ->
+                        Decode.succeed NotificationKindReservationDeclined
+
+                    "reservation_cancelled" ->
+                        Decode.succeed NotificationKindReservationCancelled
+
+                    "reservation_expired" ->
+                        Decode.succeed NotificationKindReservationExpired
+
+                    "payout_received" ->
+                        Decode.succeed NotificationKindPayoutReceived
+
+                    "tip_received" ->
+                        Decode.succeed NotificationKindTipReceived
+
+                    "collectible_awarded" ->
+                        Decode.succeed NotificationKindCollectibleAwarded
+
+                    _ ->
+                        Decode.fail "invalid NotificationKind"
+            )
+
+notificationKindEncoder : NotificationKind -> Encode.Value
+notificationKindEncoder notificationKind =
+    case notificationKind of
+        NotificationKindSubmissionCreated ->
+            Encode.string "submission_created"
+
+        NotificationKindSubmissionAccepted ->
+            Encode.string "submission_accepted"
+
+        NotificationKindSubmissionChangesRequested ->
+            Encode.string "submission_changes_requested"
+
+        NotificationKindSubmissionRejected ->
+            Encode.string "submission_rejected"
+
+        NotificationKindSubmissionCommented ->
+            Encode.string "submission_commented"
+
+        NotificationKindTaskFunded ->
+            Encode.string "task_funded"
+
+        NotificationKindTaskCancelled ->
+            Encode.string "task_cancelled"
+
+        NotificationKindTaskExpired ->
+            Encode.string "task_expired"
+
+        NotificationKindTaskCommented ->
+            Encode.string "task_commented"
+
+        NotificationKindSeriesCommented ->
+            Encode.string "series_commented"
+
+        NotificationKindReservationRequested ->
+            Encode.string "reservation_requested"
+
+        NotificationKindReservationApproved ->
+            Encode.string "reservation_approved"
+
+        NotificationKindReservationDeclined ->
+            Encode.string "reservation_declined"
+
+        NotificationKindReservationCancelled ->
+            Encode.string "reservation_cancelled"
+
+        NotificationKindReservationExpired ->
+            Encode.string "reservation_expired"
+
+        NotificationKindPayoutReceived ->
+            Encode.string "payout_received"
+
+        NotificationKindTipReceived ->
+            Encode.string "tip_received"
+
+        NotificationKindCollectibleAwarded ->
+            Encode.string "collectible_awarded"
+
+
 type alias NotificationResponse =
     { id : String
     , recipientUserID : String
     , actorUserID : String
-    , kind : String
+    , kind : NotificationKind
     , subjectKind : String
     , subjectID : String
     , state : String
@@ -23,7 +165,7 @@ notificationResponseDecoder =
         (Decode.field "id" Decode.string)
         (Decode.field "recipient_user_id" Decode.string)
         (Decode.field "actor_user_id" Decode.string)
-        (Decode.field "kind" Decode.string)
+        (Decode.field "kind" notificationKindDecoder)
         (Decode.field "subject_kind" Decode.string)
         (Decode.field "subject_id" Decode.string)
         (Decode.field "state" Decode.string)
@@ -40,7 +182,7 @@ notificationResponseEncoder notificationResponse =
         [ ( "id", Encode.string notificationResponse.id )
         , ( "recipient_user_id", Encode.string notificationResponse.recipientUserID )
         , ( "actor_user_id", Encode.string notificationResponse.actorUserID )
-        , ( "kind", Encode.string notificationResponse.kind )
+        , ( "kind", notificationKindEncoder notificationResponse.kind )
         , ( "subject_kind", Encode.string notificationResponse.subjectKind )
         , ( "subject_id", Encode.string notificationResponse.subjectID )
         , ( "state", Encode.string notificationResponse.state )
@@ -50,15 +192,33 @@ notificationResponseEncoder notificationResponse =
 
 type alias NotificationsResponse =
     { notifications : List NotificationResponse
+    , nextOffset : Int
     }
 
 notificationsResponseDecoder : Decoder NotificationsResponse
 notificationsResponseDecoder =
-    Decode.map NotificationsResponse
+    Decode.map2 NotificationsResponse
         (Decode.field "notifications" (Decode.list notificationResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 notificationsResponseEncoder : NotificationsResponse -> Encode.Value
 notificationsResponseEncoder notificationsResponse =
     Encode.object
         [ ( "notifications", Encode.list notificationResponseEncoder notificationsResponse.notifications )
+        , ( "next_offset", Encode.int notificationsResponse.nextOffset )
+        ]
+
+type alias NotificationUnreadCountResponse =
+    { unreadCount : Int
+    }
+
+notificationUnreadCountResponseDecoder : Decoder NotificationUnreadCountResponse
+notificationUnreadCountResponseDecoder =
+    Decode.map NotificationUnreadCountResponse
+        (Decode.field "unread_count" Decode.int)
+
+notificationUnreadCountResponseEncoder : NotificationUnreadCountResponse -> Encode.Value
+notificationUnreadCountResponseEncoder notificationUnreadCountResponse =
+    Encode.object
+        [ ( "unread_count", Encode.int notificationUnreadCountResponse.unreadCount )
         ]

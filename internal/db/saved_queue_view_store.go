@@ -21,22 +21,20 @@ func NewSavedQueueViewStoreFromHandle(handle Beginner) SavedQueueViewStore {
 	return SavedQueueViewStore{db: handle}
 }
 
-func (store SavedQueueViewStore) List(ctx context.Context, userID core.UserID, scope string) httpserver.SavedQueueViewsListResult {
+func (store SavedQueueViewStore) List(ctx context.Context, userID core.UserID, scope string, page core.Page) httpserver.SavedQueueViewsListResult {
 	query := `
 		select id::text, user_id::text, scope, name, query_text, state_filter, type_filter, sort_order
 		from saved_queue_views
 		where user_id = $1
 	`
-	if scope != "" {
-		query += " and scope = $2"
-	}
-	query += " order by updated_at desc, name"
 	var rows Rows
 	var err error
 	if scope == "" {
-		rows, err = store.db.Query(ctx, query, userID.String())
+		query += " order by updated_at desc, name limit $2 offset $3"
+		rows, err = store.db.Query(ctx, query, userID.String(), page.Limit(), page.Offset())
 	} else {
-		rows, err = store.db.Query(ctx, query, userID.String(), scope)
+		query += " and scope = $2 order by updated_at desc, name limit $3 offset $4"
+		rows, err = store.db.Query(ctx, query, userID.String(), scope, page.Limit(), page.Offset())
 	}
 	if err != nil {
 		return httpserver.SavedQueueViewsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list saved queue views failed")}

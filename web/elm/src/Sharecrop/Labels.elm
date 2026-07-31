@@ -3,7 +3,9 @@ module Sharecrop.Labels exposing (..)
 import Http
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Collectible as Collectible
+import Sharecrop.Generated.Events as Events
 import Sharecrop.Generated.Ledger as Ledger
+import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 
@@ -282,6 +284,12 @@ scopeTag scope =
         Agent.AgentScopeCredentialsManage ->
             "credentials_manage"
 
+        Agent.AgentScopeWebhooksRead ->
+            "webhooks_read"
+
+        Agent.AgentScopeWebhooksManage ->
+            "webhooks_manage"
+
 
 scopeLabel : Agent.AgentScope -> String
 scopeLabel scope =
@@ -342,6 +350,12 @@ scopeLabel scope =
 
         Agent.AgentScopeCredentialsManage ->
             "Manage own credentials"
+
+        Agent.AgentScopeWebhooksRead ->
+            "Read webhook subscriptions"
+
+        Agent.AgentScopeWebhooksManage ->
+            "Manage webhook subscriptions"
 
 
 credentialStateLabel : Agent.AgentCredentialState -> String
@@ -431,6 +445,195 @@ kindLabel kind =
 
         Ledger.LedgerEntryKindManualAdjustment ->
             "Manual adjustment"
+
+
+{-| The wire tag for a notification kind, unchanged from when the field was a
+raw string, so inbox rows read exactly as before the kind became an enum.
+-}
+notificationKindLabel : Notification.NotificationKind -> String
+notificationKindLabel kind =
+    case kind of
+        Notification.NotificationKindSubmissionCreated ->
+            "submission_created"
+
+        Notification.NotificationKindSubmissionAccepted ->
+            "submission_accepted"
+
+        Notification.NotificationKindSubmissionChangesRequested ->
+            "submission_changes_requested"
+
+        Notification.NotificationKindSubmissionRejected ->
+            "submission_rejected"
+
+        Notification.NotificationKindSubmissionCommented ->
+            "submission_commented"
+
+        Notification.NotificationKindTaskFunded ->
+            "task_funded"
+
+        Notification.NotificationKindTaskCancelled ->
+            "task_cancelled"
+
+        Notification.NotificationKindTaskExpired ->
+            "task_expired"
+
+        Notification.NotificationKindTaskCommented ->
+            "task_commented"
+
+        Notification.NotificationKindSeriesCommented ->
+            "series_commented"
+
+        Notification.NotificationKindReservationRequested ->
+            "reservation_requested"
+
+        Notification.NotificationKindReservationApproved ->
+            "reservation_approved"
+
+        Notification.NotificationKindReservationDeclined ->
+            "reservation_declined"
+
+        Notification.NotificationKindReservationCancelled ->
+            "reservation_cancelled"
+
+        Notification.NotificationKindReservationExpired ->
+            "reservation_expired"
+
+        Notification.NotificationKindPayoutReceived ->
+            "payout_received"
+
+        Notification.NotificationKindTipReceived ->
+            "tip_received"
+
+        Notification.NotificationKindCollectibleAwarded ->
+            "collectible_awarded"
+
+
+{-| Human phrasing for a domain event kind, for the Overview activity feed
+and webhook subscription rows.
+-}
+domainEventKindLabel : Events.DomainEventKind -> String
+domainEventKindLabel kind =
+    case kind of
+        Events.DomainEventKindTaskOpened ->
+            "Task opened"
+
+        Events.DomainEventKindTaskFunded ->
+            "Task funded"
+
+        Events.DomainEventKindTaskCancelled ->
+            "Task cancelled"
+
+        Events.DomainEventKindTaskExpired ->
+            "Task expired"
+
+        Events.DomainEventKindTaskCommented ->
+            "Task commented"
+
+        Events.DomainEventKindSeriesCommented ->
+            "Series commented"
+
+        Events.DomainEventKindReservationRequested ->
+            "Reservation requested"
+
+        Events.DomainEventKindReservationApproved ->
+            "Reservation approved"
+
+        Events.DomainEventKindReservationDeclined ->
+            "Reservation declined"
+
+        Events.DomainEventKindReservationCancelled ->
+            "Reservation cancelled"
+
+        Events.DomainEventKindReservationExpired ->
+            "Reservation expired"
+
+        Events.DomainEventKindSubmissionCreated ->
+            "Submission received"
+
+        Events.DomainEventKindSubmissionAccepted ->
+            "Submission accepted"
+
+        Events.DomainEventKindSubmissionChangesRequested ->
+            "Changes requested"
+
+        Events.DomainEventKindSubmissionRejected ->
+            "Submission rejected"
+
+        Events.DomainEventKindSubmissionCommented ->
+            "Submission commented"
+
+        Events.DomainEventKindPayoutReceived ->
+            "Payout received"
+
+        Events.DomainEventKindTipReceived ->
+            "Tip received"
+
+        Events.DomainEventKindCollectibleAwarded ->
+            "Collectible awarded"
+
+
+{-| The wire tag for a domain event kind - used for webhook checkbox testids
+and the create-subscription request body.
+-}
+domainEventKindTag : Events.DomainEventKind -> String
+domainEventKindTag kind =
+    case kind of
+        Events.DomainEventKindTaskOpened ->
+            "task_opened"
+
+        Events.DomainEventKindTaskFunded ->
+            "task_funded"
+
+        Events.DomainEventKindTaskCancelled ->
+            "task_cancelled"
+
+        Events.DomainEventKindTaskExpired ->
+            "task_expired"
+
+        Events.DomainEventKindTaskCommented ->
+            "task_commented"
+
+        Events.DomainEventKindSeriesCommented ->
+            "series_commented"
+
+        Events.DomainEventKindReservationRequested ->
+            "reservation_requested"
+
+        Events.DomainEventKindReservationApproved ->
+            "reservation_approved"
+
+        Events.DomainEventKindReservationDeclined ->
+            "reservation_declined"
+
+        Events.DomainEventKindReservationCancelled ->
+            "reservation_cancelled"
+
+        Events.DomainEventKindReservationExpired ->
+            "reservation_expired"
+
+        Events.DomainEventKindSubmissionCreated ->
+            "submission_created"
+
+        Events.DomainEventKindSubmissionAccepted ->
+            "submission_accepted"
+
+        Events.DomainEventKindSubmissionChangesRequested ->
+            "submission_changes_requested"
+
+        Events.DomainEventKindSubmissionRejected ->
+            "submission_rejected"
+
+        Events.DomainEventKindSubmissionCommented ->
+            "submission_commented"
+
+        Events.DomainEventKindPayoutReceived ->
+            "payout_received"
+
+        Events.DomainEventKindTipReceived ->
+            "tip_received"
+
+        Events.DomainEventKindCollectibleAwarded ->
+            "collectible_awarded"
 
 
 rewardLabel : String -> Int -> Int -> String

@@ -166,6 +166,41 @@ func DecodeTaskCommentID(raw string) (core.TaskCommentID, error) {
 	return created.Value, nil
 }
 
+// EncodeDomainEventID / DecodeDomainEventID carry a core.DomainEventID.
+func EncodeDomainEventID(id core.DomainEventID) string { return id.String() }
+
+func DecodeDomainEventID(raw string) (core.DomainEventID, error) {
+	created, matched := core.ParseDomainEventID(raw).(core.DomainEventIDCreated)
+	if !matched {
+		return core.DomainEventID{}, fmt.Errorf("invalid domain event id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeWebhookSubscriptionID / DecodeWebhookSubscriptionID carry a
+// core.WebhookSubscriptionID.
+func EncodeWebhookSubscriptionID(id core.WebhookSubscriptionID) string { return id.String() }
+
+func DecodeWebhookSubscriptionID(raw string) (core.WebhookSubscriptionID, error) {
+	created, matched := core.ParseWebhookSubscriptionID(raw).(core.WebhookSubscriptionIDCreated)
+	if !matched {
+		return core.WebhookSubscriptionID{}, fmt.Errorf("invalid webhook subscription id %q", raw)
+	}
+	return created.Value, nil
+}
+
+// EncodeWebhookDeliveryID / DecodeWebhookDeliveryID carry a
+// core.WebhookDeliveryID.
+func EncodeWebhookDeliveryID(id core.WebhookDeliveryID) string { return id.String() }
+
+func DecodeWebhookDeliveryID(raw string) (core.WebhookDeliveryID, error) {
+	created, matched := core.ParseWebhookDeliveryID(raw).(core.WebhookDeliveryIDCreated)
+	if !matched {
+		return core.WebhookDeliveryID{}, fmt.Errorf("invalid webhook delivery id %q", raw)
+	}
+	return created.Value, nil
+}
+
 // EncodeTeamID / DecodeTeamID carry a core.TeamID.
 func EncodeTeamID(id core.TeamID) string { return id.String() }
 

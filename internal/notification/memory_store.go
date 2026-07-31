@@ -23,15 +23,20 @@ func (store *MemoryStore) Create(_ context.Context, value Notification) CreateSt
 	return CreateStoreAccepted{}
 }
 
-func (store *MemoryStore) List(_ context.Context, recipient core.UserID, page core.Page) ListStoreResult {
+func (store *MemoryStore) List(_ context.Context, recipient core.UserID, filter StateFilter, page core.Page) ListStoreResult {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	_, unreadOnly := filter.(UnreadOnly)
 	matching := make([]Notification, 0)
 	for index := len(store.values) - 1; index >= 0; index-- {
 		value := store.values[index]
-		if value.RecipientID == recipient {
-			matching = append(matching, value)
+		if value.RecipientID != recipient {
+			continue
 		}
+		if unreadOnly && value.State != StateUnread {
+			continue
+		}
+		matching = append(matching, value)
 	}
 	start := page.Offset()
 	if start > len(matching) {
@@ -44,6 +49,19 @@ func (store *MemoryStore) List(_ context.Context, recipient core.UserID, page co
 	values := make([]Notification, end-start)
 	copy(values, matching[start:end])
 	return ListStoreAccepted{Values: values}
+}
+
+func (store *MemoryStore) CountUnread(_ context.Context, recipient core.UserID) CountStoreResult {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	count := int64(0)
+	for index := range store.values {
+		value := store.values[index]
+		if value.RecipientID == recipient && value.State == StateUnread {
+			count++
+		}
+	}
+	return CountUnreadCounted{Count: count}
 }
 
 func (store *MemoryStore) MarkRead(_ context.Context, recipient core.UserID, id core.NotificationID) MarkReadStoreResult {

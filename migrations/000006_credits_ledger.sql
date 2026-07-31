@@ -21,9 +21,13 @@ create table if not exists ledger_entries (
 	constraint ledger_entries_kind_check check (
 		kind in ('signup_grant', 'task_escrow', 'task_refund', 'task_payout', 'manual_adjustment')
 	),
-	constraint ledger_entries_amount_nonzero_check check (amount <> 0),
-	constraint ledger_entries_idempotency_key_unique unique (idempotency_key)
+	constraint ledger_entries_amount_nonzero_check check (amount <> 0)
 );
+
+-- Idempotency keys are unique per funding account, not globally; see
+-- 000037_ledger_idempotency_scope.sql. Fresh builds (including the SQLite
+-- demo, which cannot replay DROP CONSTRAINT) must never create the old
+-- global unique constraint, so it is absent here.
 
 create table if not exists task_escrows (
 	task_id uuid primary key references tasks(id),

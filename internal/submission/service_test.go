@@ -7,6 +7,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event/eventtest"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -14,7 +15,7 @@ import (
 func TestSubmissionCreatesReceipt(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
-	service := NewService(store, taskStore, submissionPermissionStore{})
+	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
 	result := service.Submit(context.Background(), command)
@@ -30,7 +31,7 @@ func TestSubmissionCreatesReceipt(t *testing.T) {
 func TestInvalidSubmissionIsRecordedWithValidationErrors(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"object","fields":[{"name":"answer","presence":"required","schema":{"kind":"string"},"sensitivity":{"category":"","retention":"","redaction":""}}]}`)
-	service := NewService(store, taskStore, submissionPermissionStore{})
+	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":12}`)
 
 	result := service.Submit(context.Background(), command)
@@ -53,7 +54,7 @@ func TestInvalidSubmissionIsRecordedWithValidationErrors(t *testing.T) {
 func TestReceiptStatusRedactsSensitiveFields(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"object","fields":[{"name":"email","presence":"required","schema":{"kind":"string"},"sensitivity":{"category":"pii","retention":"delete_on_request","redaction":"replace"}}]}`)
-	service := NewService(store, taskStore, submissionPermissionStore{})
+	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"email":"person@example.com"}`)
 
 	result := service.Submit(context.Background(), command)
@@ -76,7 +77,7 @@ func TestSubmitRejectsClosedTask(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
 	taskStore.value.State = task.StateClosed
-	service := NewService(store, taskStore, submissionPermissionStore{})
+	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
 	result := service.Submit(context.Background(), command)
@@ -89,7 +90,7 @@ func TestSubmitRejectsIneligibleReservation(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
 	taskStore.eligible = false
-	service := NewService(store, taskStore, submissionPermissionStore{})
+	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
 	result := service.Submit(context.Background(), command)
@@ -107,7 +108,7 @@ func TestSubmitRejectsTaskHiddenFromSubmitter(t *testing.T) {
 	taskStore := newSubmissionTaskStore(t, task.UserVisibility{UserID: ownerID}, `{"kind":"freeform"}`)
 	taskStore.value.CreatedBy = ownerID
 	taskStore.value.Owner = task.UserOwner{UserID: ownerID}
-	service := NewService(store, taskStore, submissionPermissionStore{})
+	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
 	result := service.Submit(context.Background(), command)
@@ -121,7 +122,7 @@ func TestOrganizationReviewerCanListSubmissions(t *testing.T) {
 	organizationID := submissionTestOrganizationID(t)
 	taskStore := newSubmissionTaskStore(t, task.OrganizationVisibility{OrganizationID: organizationID}, `{"kind":"freeform"}`)
 	taskStore.value.Owner = task.OrganizationOwner{OrganizationID: organizationID}
-	service := NewService(store, taskStore, submissionPermissionStore{organizationID: organizationID, roles: []org.Role{org.RoleReviewer}})
+	service := NewService(store, taskStore, submissionPermissionStore{organizationID: organizationID, roles: []org.Role{org.RoleReviewer}}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 	if _, matched := service.Submit(context.Background(), command).(SubmissionCreated); !matched {
 		t.Fatalf("submit was rejected")
@@ -136,7 +137,7 @@ func TestOrganizationReviewerCanListSubmissions(t *testing.T) {
 func TestSubmissionCommentVisibility(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
-	service := NewService(store, taskStore, submissionPermissionStore{})
+	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 
 	submitterID := submissionTestUserID(t)
 	command := SubmitCommand{TaskID: taskStore.value.ID, SubmitterID: submitterID, ResponseSource: acceptedResponseSource(t, `{"answer":"done"}`)}
@@ -159,7 +160,7 @@ func TestSubmissionCommentVisibility(t *testing.T) {
 		t.Fatalf("task owner comment was not added")
 	}
 
-	listed, listMatched := service.ListSubmissionComments(context.Background(), testAuthSubject(t, ownerID), created.Value.ID).(SubmissionCommentsListed)
+	listed, listMatched := service.ListSubmissionComments(context.Background(), testAuthSubject(t, ownerID), created.Value.ID, core.DefaultPage()).(SubmissionCommentsListed)
 	if !listMatched {
 		t.Fatalf("task owner could not list submission comments")
 	}
@@ -172,7 +173,7 @@ func TestSubmissionCommentVisibility(t *testing.T) {
 	if _, matched := service.AddSubmissionComment(context.Background(), testAuthSubject(t, strangerID), created.Value.ID, body).(SubmissionCommentRejected); !matched {
 		t.Fatalf("stranger comment was not rejected")
 	}
-	if _, matched := service.ListSubmissionComments(context.Background(), testAuthSubject(t, strangerID), created.Value.ID).(SubmissionCommentsListRejected); !matched {
+	if _, matched := service.ListSubmissionComments(context.Background(), testAuthSubject(t, strangerID), created.Value.ID, core.DefaultPage()).(SubmissionCommentsListRejected); !matched {
 		t.Fatalf("stranger list was not rejected")
 	}
 }
@@ -217,7 +218,7 @@ func (store *submissionMemoryStore) CreateSubmissionComment(_ context.Context, c
 	return CreateSubmissionCommentStoreAccepted{Value: comment}
 }
 
-func (store *submissionMemoryStore) ListSubmissionComments(_ context.Context, submissionID core.SubmissionID) ListSubmissionCommentsStoreResult {
+func (store *submissionMemoryStore) ListSubmissionComments(_ context.Context, submissionID core.SubmissionID, _ core.Page) ListSubmissionCommentsStoreResult {
 	return ListSubmissionCommentsStoreAccepted{Values: store.commentsBySubmission[submissionID.String()]}
 }
 

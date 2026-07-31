@@ -24,6 +24,8 @@ import (
 func appmuxStores(pool *pgxpool.Pool) appmux.Stores {
 	return appmux.Stores{
 		Auth:               db.NewAuthStore(pool),
+		Event:              db.NewEventStore(pool),
+		Webhook:            db.NewWebhookStore(pool),
 		Notification:       db.NewNotificationStore(pool),
 		Organization:       db.NewOrgStore(pool),
 		Task:               db.NewTaskStore(pool),

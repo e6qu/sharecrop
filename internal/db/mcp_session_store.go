@@ -136,6 +136,43 @@ func (store MCPSessionStore) AppendMCPEvent(ctx context.Context, sessionID strin
 	return eventID, copied, nil
 }
 
+// DeleteExpiredMCPSessions removes sessions whose last activity predates the
+// cutoff (idle past the HTTP transport's session TTL) or that were closed,
+// together with their replay events. The request path already treats such
+// sessions as gone (TouchMCPSession's cutoff predicate); this sweep reclaims
+// the rows. It reports how many sessions were deleted.
+func (store MCPSessionStore) DeleteExpiredMCPSessions(ctx context.Context, cutoff time.Time) (int, error) {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		rollbackErr := tx.Rollback(ctx)
+		_ = rollbackErr
+	}()
+
+	if _, err := tx.Exec(ctx, `
+		delete from mcp_http_events
+		where session_id in (
+			select id from mcp_http_sessions
+			where last_seen_at < $1 or closed_at is not null
+		)
+	`, cutoff); err != nil {
+		return 0, err
+	}
+	deleted, err := tx.Exec(ctx, `
+		delete from mcp_http_sessions
+		where last_seen_at < $1 or closed_at is not null
+	`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return int(deleted), nil
+}
+
 func (store MCPSessionStore) ListMCPEvents(ctx context.Context, sessionID string, lastEventID string, limit int) ([]string, [][]byte, error) {
 	var afterSequence int64
 	if lastEventID != "" {

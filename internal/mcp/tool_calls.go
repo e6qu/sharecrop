@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
@@ -41,6 +42,9 @@ type taskDetail struct {
 	PayloadKind        string `json:"payload_kind"`
 	PayloadJSON        string `json:"payload_json"`
 	CreatedBy          string `json:"created_by"`
+	// ExpiresAt is the task's expiration instant in RFC3339, empty when the
+	// task has no expiration policy (matching the REST task response).
+	ExpiresAt string `json:"expires_at"`
 }
 
 type tasksPayload struct {
@@ -83,12 +87,13 @@ type submissionsPayload struct {
 }
 
 type acceptPayload struct {
-	TaskID       string `json:"task_id"`
-	SubmissionID string `json:"submission_id"`
-	PayoutKind   string `json:"payout_kind"`
-	PayoutAmount int64  `json:"payout_amount"`
-	WorkerUserID string `json:"worker_user_id"`
-	TipAmount    int64  `json:"tip_amount"`
+	TaskID         string   `json:"task_id"`
+	SubmissionID   string   `json:"submission_id"`
+	PayoutKind     string   `json:"payout_kind"`
+	PayoutAmount   int64    `json:"payout_amount"`
+	WorkerUserID   string   `json:"worker_user_id"`
+	CollectibleIDs []string `json:"collectible_ids"`
+	TipAmount      int64    `json:"tip_amount"`
 }
 
 type reviewPayload struct {
@@ -126,7 +131,16 @@ type reservationsPayload struct {
 func (server Server) callListTasks(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
 	var args struct {
 		Scope string `json:"scope"`
-		State string `json:"state"`
+		// State is the deprecated single-state alias kept for existing
+		// callers; States is the REST-parity repeated filter.
+		State               string   `json:"state"`
+		States              []string `json:"states"`
+		ParticipationPolicy string   `json:"participation_policy"`
+		Query               string   `json:"query"`
+		TaskType            string   `json:"task_type"`
+		Sort                string   `json:"sort"`
+		Limit               int      `json:"limit"`
+		Offset              int      `json:"offset"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
@@ -139,27 +153,78 @@ func (server Server) callListTasks(ctx context.Context, subject auth.Subject, ar
 	case "user":
 		userActor, isUser := subject.(auth.UserSubject)
 		if !isUser {
-			return toolFailed{message: "scope \"user\" requires a personal agent credential, not an organization credential"}
+			return toolFailed{code: core.ErrorCodePermissionDenied, message: "scope \"user\" requires a personal agent credential, not an organization credential"}
 		}
 		scope = task.UserListScope{UserID: userActor.ID}
 	default:
 		return toolProtocolError{code: codeInvalidParams, message: "scope must be public or user"}
 	}
 
-	filters := task.NoListFilters()
+	// Mirrors REST's parseTaskListFilters (internal/http/tasks.go): repeated
+	// states, participation_policy, query, task_type, and sort.
+	rawStates := args.States
 	if args.State != "" {
-		stateResult := task.ParseState(args.State)
-		stateAccepted, stateMatched := stateResult.(task.StateAccepted)
-		if !stateMatched {
-			return toolProtocolError{code: codeInvalidParams, message: stateResult.(task.StateRejected).Reason.Description()}
+		rawStates = append(rawStates, args.State)
+	}
+	filters := task.NoListFilters()
+	if len(rawStates) > 0 {
+		states := make([]task.State, len(rawStates))
+		for index, rawState := range rawStates {
+			stateResult := task.ParseState(rawState)
+			stateAccepted, stateMatched := stateResult.(task.StateAccepted)
+			if !stateMatched {
+				return toolProtocolError{code: codeInvalidParams, message: stateResult.(task.StateRejected).Reason.Description()}
+			}
+			states[index] = stateAccepted.Value
 		}
-		filters.State = task.StateEquals{Value: stateAccepted.Value}
+		if len(states) == 1 {
+			filters.State = task.StateEquals{Value: states[0]}
+		} else {
+			filters.State = task.StateIn{Values: states}
+		}
+	}
+	if args.ParticipationPolicy != "" {
+		policyResult := task.ParseParticipationPolicy(args.ParticipationPolicy)
+		policyAccepted, policyMatched := policyResult.(task.ParticipationPolicyAccepted)
+		if !policyMatched {
+			return toolProtocolError{code: codeInvalidParams, message: policyResult.(task.ParticipationPolicyRejected).Reason.Description()}
+		}
+		filters.Participation = task.ParticipationPolicyEquals{Value: policyAccepted.Value}
+	}
+	if args.Query != "" {
+		searchResult := task.NewSearchText(args.Query)
+		searchAccepted, searchMatched := searchResult.(task.SearchTextAccepted)
+		if !searchMatched {
+			return toolProtocolError{code: codeInvalidParams, message: searchResult.(task.SearchTextRejected).Reason.Description()}
+		}
+		filters.Search = task.SearchContains{Value: searchAccepted.Value}
+	}
+	if args.TaskType != "" {
+		typeResult := task.ParseTaskType(args.TaskType)
+		typeAccepted, typeMatched := typeResult.(task.TaskTypeAccepted)
+		if !typeMatched {
+			return toolProtocolError{code: codeInvalidParams, message: typeResult.(task.TaskTypeRejected).Reason.Description()}
+		}
+		filters.Type = task.TypeEquals{Value: typeAccepted.Value}
+	}
+	if args.Sort != "" {
+		sortResult := task.ParseSortOrder(args.Sort)
+		sortAccepted, sortMatched := sortResult.(task.SortOrderAccepted)
+		if !sortMatched {
+			return toolProtocolError{code: codeInvalidParams, message: sortResult.(task.SortOrderRejected).Reason.Description()}
+		}
+		filters.Sort = sortAccepted.Value
 	}
 
-	result := server.services.ListTasks(ctx, subject, scope, filters)
+	page, pageProblem := parseMCPPage(args.Limit, args.Offset)
+	if pageProblem != nil {
+		return pageProblem
+	}
+
+	result := server.services.ListTasks(ctx, subject, scope, filters, page)
 	listed, matched := result.(task.TasksListed)
 	if !matched {
-		return toolFailed{message: result.(task.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
 
 	summaries := make([]taskSummary, 0, len(listed.Values))
@@ -167,6 +232,42 @@ func (server Server) callListTasks(ctx context.Context, subject auth.Subject, ar
 		summaries = append(summaries, taskToSummary(listed.Values[index].Task))
 	}
 	return marshalPayload(tasksPayload{Tasks: summaries})
+}
+
+// parseMCPPage maps optional limit/offset tool arguments onto core.Page.
+// Both absent (zero) means the default page. A zero limit with an offset
+// keeps the default limit; negatives are rejected like REST's page parsing.
+func parseMCPPage(limit int, offset int) (core.Page, toolResult) {
+	if limit == 0 && offset == 0 {
+		return core.DefaultPage(), nil
+	}
+	effectiveLimit := limit
+	if effectiveLimit == 0 {
+		effectiveLimit = core.DefaultPage().Limit()
+	}
+	pageResult := core.NewPage(effectiveLimit, offset)
+	page, matched := pageResult.(core.PageAccepted)
+	if !matched {
+		return core.Page{}, toolProtocolError{code: codeInvalidParams, message: pageResult.(core.PageRejected).Reason.Description()}
+	}
+	return page.Value, nil
+}
+
+// mcpPageArguments is the optional limit/offset pair shared by the list
+// tools that take no other arguments beyond their subject id.
+type mcpPageArguments struct {
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+}
+
+// parseMCPPageArguments extracts the optional limit/offset arguments from a
+// tool call whose other arguments are parsed separately.
+func parseMCPPageArguments(arguments json.RawMessage) (core.Page, toolResult) {
+	var args mcpPageArguments
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return core.Page{}, invalidArguments()
+	}
+	return parseMCPPage(args.Limit, args.Offset)
 }
 
 func (server Server) callGetTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -177,7 +278,7 @@ func (server Server) callGetTask(ctx context.Context, subject auth.UserSubject, 
 	result := server.services.GetTask(ctx, subject, taskID)
 	got, matched := result.(task.TaskGot)
 	if !matched {
-		return toolFailed{message: result.(task.GetRejected).Reason.Description()}
+		return toolFailed{code: result.(task.GetRejected).Reason.Code(), message: result.(task.GetRejected).Reason.Description()}
 	}
 	return marshalPayload(taskToDetail(got.Value))
 }
@@ -190,22 +291,49 @@ func (server Server) callGetTaskSchema(ctx context.Context, subject auth.UserSub
 	result := server.services.GetTask(ctx, subject, taskID)
 	got, matched := result.(task.TaskGot)
 	if !matched {
-		return toolFailed{message: result.(task.GetRejected).Reason.Description()}
+		return toolFailed{code: result.(task.GetRejected).Reason.Code(), message: result.(task.GetRejected).Reason.Description()}
 	}
 	return marshalPayload(schemaPayload{TaskID: got.Value.ID.String(), ResponseSchemaJSON: got.Value.ResponseSchema.String()})
 }
 
+// mcpTaskOwnerArgs mirrors REST's taskOwnerRequest DTO field names.
+type mcpTaskOwnerArgs struct {
+	Kind           string `json:"kind"`
+	UserID         string `json:"user_id"`
+	TeamID         string `json:"team_id"`
+	OrganizationID string `json:"organization_id"`
+}
+
+// mcpAttachmentArgs mirrors REST's attachmentRequest DTO field names.
+type mcpAttachmentArgs struct {
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	DataURL     string `json:"data_url"`
+}
+
 func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	var args struct {
-		Title               string `json:"title"`
-		Description         string `json:"description"`
-		ResponseSchemaJSON  string `json:"response_schema_json"`
-		Visibility          string `json:"visibility"`
-		RewardKind          string `json:"reward_kind"`
-		RewardCreditAmount  int64  `json:"reward_credit_amount"`
-		ParticipationPolicy string `json:"participation_policy"`
-		TaskType            string `json:"task_type"`
-		ReferenceURL        string `json:"reference_url"`
+		Title                    string              `json:"title"`
+		Description              string              `json:"description"`
+		ResponseSchemaJSON       string              `json:"response_schema_json"`
+		Owner                    mcpTaskOwnerArgs    `json:"owner"`
+		Visibility               string              `json:"visibility"`
+		VisibilityUserID         string              `json:"visibility_user_id"`
+		VisibilityTeamID         string              `json:"visibility_team_id"`
+		VisibilityOrganizationID string              `json:"visibility_organization_id"`
+		RewardKind               string              `json:"reward_kind"`
+		RewardCreditAmount       int64               `json:"reward_credit_amount"`
+		RewardCollectibleIDs     []string            `json:"reward_collectible_ids"`
+		ParticipationPolicy      string              `json:"participation_policy"`
+		AssigneeScope            string              `json:"assignee_scope"`
+		ReservationExpiryHours   int                 `json:"reservation_expiry_hours"`
+		TaskType                 string              `json:"task_type"`
+		ReferenceURL             string              `json:"reference_url"`
+		SeriesID                 string              `json:"series_id"`
+		SeriesPosition           int                 `json:"series_position"`
+		PayloadJSON              string              `json:"payload_json"`
+		Attachments              []mcpAttachmentArgs `json:"attachments"`
+		ExpiresAt                string              `json:"expires_at"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
@@ -241,21 +369,23 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 		return toolProtocolError{code: codeInvalidParams, message: schemaSourceResult.(task.ResponseSchemaSourceRejected).Reason.Description()}
 	}
 
-	var visibility task.Visibility
-	switch args.Visibility {
-	case "user":
-		visibility = task.UserVisibility{UserID: subject.ID}
-	case "public":
-		visibility = task.PublicVisibility{}
-	default:
-		return toolProtocolError{code: codeInvalidParams, message: "visibility must be user or public"}
+	owner, ownerProblem := parseMCPTaskOwner(args.Owner, subject)
+	if ownerProblem != nil {
+		return ownerProblem
 	}
-	rewardResult := parseMCPReward(args.RewardKind, args.RewardCreditAmount)
+	visibility, visibilityProblem := parseMCPTaskVisibility(args.Visibility, args.VisibilityUserID, args.VisibilityTeamID, args.VisibilityOrganizationID, owner, subject)
+	if visibilityProblem != nil {
+		return visibilityProblem
+	}
+	rewardResult := parseMCPReward(args.RewardKind, args.RewardCreditAmount, args.RewardCollectibleIDs)
 	reward, rewardMatched := rewardResult.(mcpRewardAccepted)
 	if !rewardMatched {
 		return toolProtocolError{code: codeInvalidParams, message: rewardResult.(mcpRewardRejected).reason}
 	}
 
+	// Participation mirrors REST's parseTaskParticipationRequest: policy
+	// defaults to open, assignee scope to user, and the reservation expiry
+	// to the default TTL.
 	participationRaw := args.ParticipationPolicy
 	if participationRaw == "" {
 		participationRaw = task.ParticipationPolicyOpen.String()
@@ -265,29 +395,242 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 	if !participationMatched {
 		return toolProtocolError{code: codeInvalidParams, message: participationResult.(task.ParticipationPolicyRejected).Reason.Description()}
 	}
+	assigneeScopeRaw := args.AssigneeScope
+	if assigneeScopeRaw == "" {
+		assigneeScopeRaw = task.AssigneeScopeUser.String()
+	}
+	assigneeScopeResult := task.ParseAssigneeScope(assigneeScopeRaw)
+	assigneeScopeAccepted, assigneeScopeMatched := assigneeScopeResult.(task.AssigneeScopeAccepted)
+	if !assigneeScopeMatched {
+		return toolProtocolError{code: codeInvalidParams, message: assigneeScopeResult.(task.AssigneeScopeRejected).Reason.Description()}
+	}
+	reservationTTL := task.DefaultReservationTTL()
+	if args.ReservationExpiryHours != 0 {
+		ttlResult := task.NewReservationTTL(args.ReservationExpiryHours)
+		ttlAccepted, ttlMatched := ttlResult.(task.ReservationTTLAccepted)
+		if !ttlMatched {
+			return toolProtocolError{code: codeInvalidParams, message: ttlResult.(task.ReservationTTLRejected).Reason.Description()}
+		}
+		reservationTTL = ttlAccepted.Value
+	}
+
+	placement, placementProblem := parseMCPPlacement(args.SeriesID, args.SeriesPosition)
+	if placementProblem != nil {
+		return placementProblem
+	}
+	payload, payloadProblem := parseMCPPayload(args.PayloadJSON)
+	if payloadProblem != nil {
+		return payloadProblem
+	}
+	attachments, attachmentsProblem := parseMCPAttachments(args.Attachments)
+	if attachmentsProblem != nil {
+		return attachmentsProblem
+	}
+	expirationResult := task.ParseExpirationPolicy(args.ExpiresAt, time.Now().UTC())
+	expirationAccepted, expirationMatched := expirationResult.(task.ExpirationPolicyAccepted)
+	if !expirationMatched {
+		return toolProtocolError{code: codeInvalidParams, message: expirationResult.(task.ExpirationPolicyRejected).Reason.Description()}
+	}
 
 	command := task.CreateCommand{
-		Actor:          subject,
-		Owner:          task.UserOwner{UserID: subject.ID},
-		Title:          titleAccepted.Value,
-		Description:    descriptionAccepted.Value,
-		Type:           taskTypeAccepted.Value,
-		Reference:      referenceAccepted.Value,
-		Reward:         reward.value,
-		Participation:  participationAccepted.Value,
-		AssigneeScope:  task.AssigneeScopeUser,
-		ReservationTTL: task.DefaultReservationTTL(),
-		Visibility:     visibility,
-		Placement:      task.StandalonePlacement{},
-		ResponseSchema: schemaSourceAccepted.Value,
-		Payload:        task.NoDataPayload{},
+		Actor:              subject,
+		Owner:              owner,
+		Title:              titleAccepted.Value,
+		Description:        descriptionAccepted.Value,
+		Type:               taskTypeAccepted.Value,
+		Reference:          referenceAccepted.Value,
+		Reward:             reward.value,
+		Participation:      participationAccepted.Value,
+		AssigneeScope:      assigneeScopeAccepted.Value,
+		ReservationTTL:     reservationTTL,
+		Visibility:         visibility,
+		Placement:          placement,
+		ResponseSchema:     schemaSourceAccepted.Value,
+		Payload:            payload,
+		Attachments:        attachments,
+		Expiration:         expirationAccepted.Value,
+		FundCollectibleIDs: reward.collectibleIDs,
 	}
 	result := server.services.CreateTask(ctx, command)
 	created, matched := result.(task.TaskCreated)
 	if !matched {
-		return toolFailed{message: result.(task.CreateRejected).Reason.Description()}
+		return toolFailed{code: result.(task.CreateRejected).Reason.Code(), message: result.(task.CreateRejected).Reason.Description()}
 	}
 	return marshalPayload(taskToDetail(created.Value))
+}
+
+// parseMCPTaskOwner mirrors REST's parseTaskOwnerRequest with one MCP
+// ergonomic default: an absent owner object (or absent user_id on a
+// user-kind owner) means the calling agent's own user.
+func parseMCPTaskOwner(args mcpTaskOwnerArgs, subject auth.UserSubject) (task.Owner, toolResult) {
+	switch args.Kind {
+	case "", task.OwnerKindUser.String():
+		if args.UserID == "" {
+			return task.UserOwner{UserID: subject.ID}, nil
+		}
+		userIDResult := core.ParseUserID(args.UserID)
+		userID, matched := userIDResult.(core.UserIDCreated)
+		if !matched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: userIDResult.(core.UserIDRejected).Reason.Description()}
+		}
+		return task.UserOwner{UserID: userID.Value}, nil
+	case task.OwnerKindTeam.String():
+		teamIDResult := core.ParseTeamID(args.TeamID)
+		teamID, matched := teamIDResult.(core.TeamIDCreated)
+		if !matched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: teamIDResult.(core.TeamIDRejected).Reason.Description()}
+		}
+		return task.TeamOwner{TeamID: teamID.Value}, nil
+	case task.OwnerKindOrganization.String():
+		organizationIDResult := core.ParseOrganizationID(args.OrganizationID)
+		organizationID, matched := organizationIDResult.(core.OrganizationIDCreated)
+		if !matched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+		}
+		return task.OrganizationOwner{OrganizationID: organizationID.Value}, nil
+	case task.OwnerKindOrganizationTeam.String():
+		organizationIDResult := core.ParseOrganizationID(args.OrganizationID)
+		organizationID, organizationMatched := organizationIDResult.(core.OrganizationIDCreated)
+		if !organizationMatched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+		}
+		teamIDResult := core.ParseTeamID(args.TeamID)
+		teamID, teamMatched := teamIDResult.(core.TeamIDCreated)
+		if !teamMatched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: teamIDResult.(core.TeamIDRejected).Reason.Description()}
+		}
+		return task.OrganizationTeamOwner{OrganizationID: organizationID.Value, TeamID: teamID.Value}, nil
+	default:
+		return nil, toolProtocolError{code: codeInvalidParams, message: "task owner kind is invalid"}
+	}
+}
+
+// parseMCPTaskVisibility mirrors REST's parseTaskVisibilityRequest, including
+// the "default" kind that derives visibility from the owner
+// (defaultVisibilityForOwner). An absent visibility means "default"; a
+// user-kind visibility with no explicit id means the calling agent's user
+// (the historical MCP behavior).
+func parseMCPTaskVisibility(kind string, rawUserID string, rawTeamID string, rawOrganizationID string, owner task.Owner, subject auth.UserSubject) (task.Visibility, toolResult) {
+	switch kind {
+	case "", "default":
+		return defaultMCPVisibilityForOwner(owner)
+	case task.VisibilityKindPublic.String():
+		return task.PublicVisibility{}, nil
+	case task.VisibilityKindUser.String():
+		if rawUserID == "" {
+			return task.UserVisibility{UserID: subject.ID}, nil
+		}
+		userIDResult := core.ParseUserID(rawUserID)
+		userID, matched := userIDResult.(core.UserIDCreated)
+		if !matched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: userIDResult.(core.UserIDRejected).Reason.Description()}
+		}
+		return task.UserVisibility{UserID: userID.Value}, nil
+	case task.VisibilityKindTeam.String():
+		teamIDResult := core.ParseTeamID(rawTeamID)
+		teamID, matched := teamIDResult.(core.TeamIDCreated)
+		if !matched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: teamIDResult.(core.TeamIDRejected).Reason.Description()}
+		}
+		return task.TeamVisibility{TeamID: teamID.Value}, nil
+	case task.VisibilityKindOrganization.String():
+		organizationIDResult := core.ParseOrganizationID(rawOrganizationID)
+		organizationID, matched := organizationIDResult.(core.OrganizationIDCreated)
+		if !matched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+		}
+		return task.OrganizationVisibility{OrganizationID: organizationID.Value}, nil
+	case task.VisibilityKindOrganizationTeam.String():
+		organizationIDResult := core.ParseOrganizationID(rawOrganizationID)
+		organizationID, organizationMatched := organizationIDResult.(core.OrganizationIDCreated)
+		if !organizationMatched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+		}
+		teamIDResult := core.ParseTeamID(rawTeamID)
+		teamID, teamMatched := teamIDResult.(core.TeamIDCreated)
+		if !teamMatched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: teamIDResult.(core.TeamIDRejected).Reason.Description()}
+		}
+		return task.OrganizationTeamVisibility{OrganizationID: organizationID.Value, TeamID: teamID.Value}, nil
+	default:
+		return nil, toolProtocolError{code: codeInvalidParams, message: "task visibility kind is invalid"}
+	}
+}
+
+// defaultMCPVisibilityForOwner replicates REST's defaultVisibilityForOwner.
+func defaultMCPVisibilityForOwner(owner task.Owner) (task.Visibility, toolResult) {
+	switch typed := owner.(type) {
+	case task.UserOwner:
+		return task.UserVisibility{UserID: typed.UserID}, nil
+	case task.TeamOwner:
+		return task.TeamVisibility{TeamID: typed.TeamID}, nil
+	case task.OrganizationOwner:
+		return task.OrganizationVisibility{OrganizationID: typed.OrganizationID}, nil
+	case task.OrganizationTeamOwner:
+		return task.OrganizationTeamVisibility{OrganizationID: typed.OrganizationID, TeamID: typed.TeamID}, nil
+	default:
+		return nil, toolProtocolError{code: codeInvalidParams, message: "task owner is invalid"}
+	}
+}
+
+// parseMCPPlacement maps the optional series arguments onto the placement
+// sum: no series_id means a standalone task; a series_id targets an existing
+// series at series_position (default 1), like REST's "existing_series"
+// placement kind.
+func parseMCPPlacement(rawSeriesID string, rawPosition int) (task.SeriesPlacement, toolResult) {
+	if rawSeriesID == "" {
+		return task.StandalonePlacement{}, nil
+	}
+	seriesIDResult := core.ParseTaskSeriesID(rawSeriesID)
+	seriesID, seriesMatched := seriesIDResult.(core.TaskSeriesIDCreated)
+	if !seriesMatched {
+		return nil, toolProtocolError{code: codeInvalidParams, message: seriesIDResult.(core.TaskSeriesIDRejected).Reason.Description()}
+	}
+	position := rawPosition
+	if position == 0 {
+		position = 1
+	}
+	positionResult := task.NewSeriesPosition(position)
+	positionAccepted, positionMatched := positionResult.(task.SeriesPositionAccepted)
+	if !positionMatched {
+		return nil, toolProtocolError{code: codeInvalidParams, message: positionResult.(task.SeriesPositionRejected).Reason.Description()}
+	}
+	return task.ExistingSeriesPlacement{SeriesID: seriesID.Value, Position: positionAccepted.Value}, nil
+}
+
+// parseMCPPayload maps the optional payload_json argument onto the payload
+// sum, applying the same JSON validity check as REST's "json" payload kind.
+func parseMCPPayload(rawPayloadJSON string) (task.DataPayload, toolResult) {
+	if rawPayloadJSON == "" {
+		return task.NoDataPayload{}, nil
+	}
+	if !json.Valid([]byte(rawPayloadJSON)) {
+		return nil, toolProtocolError{code: codeInvalidParams, message: "task payload JSON is invalid"}
+	}
+	sourceResult := task.NewPayloadSource(rawPayloadJSON)
+	source, matched := sourceResult.(task.PayloadSourceAccepted)
+	if !matched {
+		return nil, toolProtocolError{code: codeInvalidParams, message: sourceResult.(task.PayloadSourceRejected).Reason.Description()}
+	}
+	return task.JSONDataPayload{Source: source.Value}, nil
+}
+
+// parseMCPAttachments mirrors REST's attachmentsFromRequest: same DTO field
+// names, same count bound, same per-attachment constructor.
+func parseMCPAttachments(values []mcpAttachmentArgs) ([]attachment.Attachment, toolResult) {
+	if len(values) > attachment.MaxCount {
+		return nil, toolProtocolError{code: codeInvalidParams, message: "too many attachments"}
+	}
+	attachments := make([]attachment.Attachment, 0, len(values))
+	for index := range values {
+		result := attachment.NewAttachment(values[index].Name, values[index].ContentType, values[index].DataURL)
+		accepted, matched := result.(attachment.AttachmentAccepted)
+		if !matched {
+			return nil, toolProtocolError{code: codeInvalidParams, message: result.(attachment.AttachmentRejected).Reason.Description()}
+		}
+		attachments = append(attachments, accepted.Value)
+	}
+	return attachments, nil
 }
 
 func (server Server) callOpenTask(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
@@ -298,7 +641,7 @@ func (server Server) callOpenTask(ctx context.Context, subject auth.Subject, arg
 	result := server.services.OpenTask(ctx, subject, taskID)
 	changed, matched := result.(task.TaskStateChanged)
 	if !matched {
-		return toolFailed{message: result.(task.ChangeStateRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ChangeStateRejected).Reason.Code(), message: result.(task.ChangeStateRejected).Reason.Description()}
 	}
 	return marshalPayload(taskToDetail(changed.Value))
 }
@@ -311,7 +654,7 @@ func (server Server) callCancelTask(ctx context.Context, subject auth.Subject, a
 	result := server.services.CancelTask(ctx, subject, taskID)
 	changed, matched := result.(task.TaskStateChanged)
 	if !matched {
-		return toolFailed{message: result.(task.ChangeStateRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ChangeStateRejected).Reason.Code(), message: result.(task.ChangeStateRejected).Reason.Description()}
 	}
 	return marshalPayload(taskToDetail(changed.Value))
 }
@@ -343,7 +686,7 @@ func (server Server) callFundTask(ctx context.Context, subject auth.UserSubject,
 	result := server.services.FundTask(ctx, subject.ID, taskID.Value, amount.Value, key.Value)
 	funded, matched := result.(ledger.TaskFunded)
 	if !matched {
-		return toolFailed{message: result.(ledger.FundRejected).Reason.Description()}
+		return toolFailed{code: result.(ledger.FundRejected).Reason.Code(), message: result.(ledger.FundRejected).Reason.Description()}
 	}
 	return marshalPayload(fundPayload{
 		TaskID:       funded.Fund.TaskID.String(),
@@ -372,7 +715,7 @@ func (server Server) callRefundTask(ctx context.Context, subject auth.UserSubjec
 	result := server.services.RefundTask(ctx, subject.ID, taskID.Value, key.Value)
 	refunded, matched := result.(ledger.TaskRefunded)
 	if !matched {
-		return toolFailed{message: result.(ledger.RefundRejected).Reason.Description()}
+		return toolFailed{code: result.(ledger.RefundRejected).Reason.Code(), message: result.(ledger.RefundRejected).Reason.Description()}
 	}
 	return marshalPayload(fundPayload{
 		TaskID:       refunded.Fund.TaskID.String(),
@@ -386,6 +729,9 @@ type mcpRewardResult interface {
 
 type mcpRewardAccepted struct {
 	value task.RewardSpec
+	// collectibleIDs are the reward collectibles to escrow inside the create
+	// transaction (CreateCommand.FundCollectibleIDs).
+	collectibleIDs []core.CollectibleID
 }
 
 type mcpRewardRejected struct {
@@ -396,31 +742,82 @@ func (mcpRewardAccepted) mcpRewardResult() {}
 
 func (mcpRewardRejected) mcpRewardResult() {}
 
-func parseMCPReward(kind string, creditAmount int64) mcpRewardResult {
+// parseMCPReward mirrors REST's parseTaskRewardRequest exactly: a
+// collectible reward requires at least one collectible id and its count is
+// len(ids); a bundle takes the credit amount plus optional ids (count
+// defaults to 1 when none are named, matching the declare-now/fund-later
+// flow REST supports).
+func parseMCPReward(kind string, creditAmount int64, rawCollectibleIDs []string) mcpRewardResult {
 	switch kind {
 	case task.RewardKindNone.String():
-		return mcpRewardAccepted{value: task.NoRewardSpec{}}
+		return mcpRewardAccepted{value: task.NoRewardSpec{}, collectibleIDs: []core.CollectibleID{}}
 	case task.RewardKindCredit.String():
 		amountResult := task.NewCreditRewardAmount(creditAmount)
 		amount, matched := amountResult.(task.CreditRewardAmountAccepted)
 		if !matched {
 			return mcpRewardRejected{reason: amountResult.(task.CreditRewardAmountRejected).Reason.Description()}
 		}
-		return mcpRewardAccepted{value: task.CreditRewardSpec{Amount: amount.Value}}
+		return mcpRewardAccepted{value: task.CreditRewardSpec{Amount: amount.Value}, collectibleIDs: []core.CollectibleID{}}
 	case task.RewardKindCollectible.String():
-		count := task.NewCollectibleRewardCount(1).(task.CollectibleRewardCountAccepted)
-		return mcpRewardAccepted{value: task.CollectibleRewardSpec{Count: count.Value}}
+		collectibleIDs, idsProblem := parseMCPRewardCollectibleIDs(rawCollectibleIDs)
+		if idsProblem != "" {
+			return mcpRewardRejected{reason: idsProblem}
+		}
+		countResult := task.NewCollectibleRewardCount(len(collectibleIDs))
+		count, countMatched := countResult.(task.CollectibleRewardCountAccepted)
+		if !countMatched {
+			return mcpRewardRejected{reason: countResult.(task.CollectibleRewardCountRejected).Reason.Description()}
+		}
+		return mcpRewardAccepted{value: task.CollectibleRewardSpec{Count: count.Value}, collectibleIDs: collectibleIDs}
 	case task.RewardKindBundle.String():
 		amountResult := task.NewCreditRewardAmount(creditAmount)
 		amount, matched := amountResult.(task.CreditRewardAmountAccepted)
 		if !matched {
 			return mcpRewardRejected{reason: amountResult.(task.CreditRewardAmountRejected).Reason.Description()}
 		}
-		count := task.NewCollectibleRewardCount(1).(task.CollectibleRewardCountAccepted)
-		return mcpRewardAccepted{value: task.BundleRewardSpec{Credit: amount.Value, Collectible: count.Value}}
+		collectibleIDs := []core.CollectibleID{}
+		countValue := 1
+		if len(rawCollectibleIDs) > 0 {
+			parsedIDs, idsProblem := parseMCPRewardCollectibleIDs(rawCollectibleIDs)
+			if idsProblem != "" {
+				return mcpRewardRejected{reason: idsProblem}
+			}
+			collectibleIDs = parsedIDs
+			countValue = len(parsedIDs)
+		}
+		countResult := task.NewCollectibleRewardCount(countValue)
+		count, countMatched := countResult.(task.CollectibleRewardCountAccepted)
+		if !countMatched {
+			return mcpRewardRejected{reason: countResult.(task.CollectibleRewardCountRejected).Reason.Description()}
+		}
+		return mcpRewardAccepted{value: task.BundleRewardSpec{Credit: amount.Value, Collectible: count.Value}, collectibleIDs: collectibleIDs}
 	default:
 		return mcpRewardRejected{reason: "reward_kind must be none, credit, collectible, or bundle"}
 	}
+}
+
+// parseMCPRewardCollectibleIDs mirrors REST's parseRewardCollectibleIDs:
+// at least one id, no duplicates, every id valid. A non-empty report string
+// is the rejection reason.
+func parseMCPRewardCollectibleIDs(rawIDs []string) ([]core.CollectibleID, string) {
+	if len(rawIDs) == 0 {
+		return nil, "at least one collectible is required for this reward"
+	}
+	values := make([]core.CollectibleID, 0, len(rawIDs))
+	seen := make(map[string]bool, len(rawIDs))
+	for _, rawID := range rawIDs {
+		if seen[rawID] {
+			return nil, "collectible reward ids must be unique"
+		}
+		idResult := core.ParseCollectibleID(rawID)
+		id, matched := idResult.(core.CollectibleIDCreated)
+		if !matched {
+			return nil, idResult.(core.CollectibleIDRejected).Reason.Description()
+		}
+		seen[rawID] = true
+		values = append(values, id.Value)
+	}
+	return values, ""
 }
 
 func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -450,7 +847,7 @@ func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSu
 	result := server.services.SubmitResponse(ctx, command)
 	created, matched := result.(submission.SubmissionCreated)
 	if !matched {
-		return toolFailed{message: result.(submission.SubmitRejected).Reason.Description()}
+		return toolFailed{code: result.(submission.SubmitRejected).Reason.Code(), message: result.(submission.SubmitRejected).Reason.Description()}
 	}
 	return marshalPayload(submitPayload{
 		SubmissionID: created.Value.ID.String(),
@@ -474,7 +871,7 @@ func (server Server) callGetSubmissionStatus(ctx context.Context, arguments json
 	result := server.services.GetSubmissionStatus(ctx, token.Value)
 	found, matched := result.(submission.ReceiptStatusFound)
 	if !matched {
-		return toolFailed{message: result.(submission.ReceiptStatusRejected).Reason.Description()}
+		return toolFailed{code: result.(submission.ReceiptStatusRejected).Reason.Code(), message: result.(submission.ReceiptStatusRejected).Reason.Description()}
 	}
 	return marshalPayload(statusPayload{
 		SubmissionID: found.Value.ID.String(),
@@ -490,10 +887,14 @@ func (server Server) callListTaskSubmissions(ctx context.Context, subject auth.U
 	if problem != nil {
 		return problem
 	}
-	result := server.services.ListTaskSubmissions(ctx, subject, taskID)
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListTaskSubmissions(ctx, subject, taskID, page)
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
-		return toolFailed{message: result.(submission.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(submission.ListRejected).Reason.Code(), message: result.(submission.ListRejected).Reason.Description()}
 	}
 	summaries := make([]submissionSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -504,11 +905,12 @@ func (server Server) callListTaskSubmissions(ctx context.Context, subject auth.U
 
 func (server Server) callAcceptSubmission(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	var args struct {
-		TaskID         string `json:"task_id"`
-		SubmissionID   string `json:"submission_id"`
-		IdempotencyKey string `json:"idempotency_key"`
-		PayoutAmount   int64  `json:"payout_amount"`
-		TipAmount      int64  `json:"tip_amount"`
+		TaskID           string `json:"task_id"`
+		SubmissionID     string `json:"submission_id"`
+		IdempotencyKey   string `json:"idempotency_key"`
+		PayoutAmount     int64  `json:"payout_amount"`
+		TipAmount        int64  `json:"tip_amount"`
+		TipCollectibleID string `json:"tip_collectible_id"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
@@ -532,58 +934,134 @@ func (server Server) callAcceptSubmission(ctx context.Context, subject auth.User
 	if !tipSelectionMatched {
 		return toolProtocolError{code: codeInvalidParams, message: tipSelectionResult.(mcpTipSelectionRejected).message}
 	}
+	// The optional collectible tip mirrors REST's acceptSubmission handler
+	// (internal/http/reviews.go): an absent id means no collectible tip.
+	collectibleTip := ledger.CollectibleTipSelection(ledger.NoCollectibleTipSelection{})
+	if args.TipCollectibleID != "" {
+		collectibleIDResult := core.ParseCollectibleID(args.TipCollectibleID)
+		collectibleIDAccepted, collectibleIDMatched := collectibleIDResult.(core.CollectibleIDCreated)
+		if !collectibleIDMatched {
+			return toolProtocolError{code: codeInvalidParams, message: collectibleIDResult.(core.CollectibleIDRejected).Reason.Description()}
+		}
+		collectibleTip = ledger.CollectibleTipSelected{ID: collectibleIDAccepted.Value}
+	}
 
-	result := server.services.ReviewAcceptSubmission(ctx, subject.ID, ids.taskID, ids.submissionID, key.Value, creditSelection.value, tipSelection.value, ledger.NoCollectibleTipSelection{})
+	result := server.services.ReviewAcceptSubmission(ctx, subject.ID, ids.taskID, ids.submissionID, key.Value, creditSelection.value, tipSelection.value, collectibleTip)
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
-		return toolFailed{message: result.(ledger.AcceptRejected).Reason.Description()}
+		return toolFailed{code: result.(ledger.AcceptRejected).Reason.Code(), message: result.(ledger.AcceptRejected).Reason.Description()}
 	}
+	// The payout/tip rendering mirrors REST's acceptToResponse
+	// (internal/http/reviews.go), including the collectible outcomes.
 	payload := acceptPayload{
-		TaskID:       accepted.TaskID.String(),
-		SubmissionID: accepted.SubmissionID.String(),
-		PayoutKind:   "none",
+		TaskID:         accepted.TaskID.String(),
+		SubmissionID:   accepted.SubmissionID.String(),
+		PayoutKind:     "none",
+		CollectibleIDs: []string{},
 	}
-	if payout, payoutMatched := accepted.Payout.(ledger.CreditPayout); payoutMatched {
+	switch payout := accepted.Payout.(type) {
+	case ledger.CreditPayout:
 		payload.PayoutKind = "credit"
 		payload.PayoutAmount = payout.Amount.Int64()
 		payload.WorkerUserID = payout.WorkerUserID.String()
-	}
-	if payout, payoutMatched := accepted.Payout.(ledger.BundlePayout); payoutMatched {
+	case ledger.CollectiblePayout:
+		payload.PayoutKind = "collectible"
+		payload.CollectibleIDs = collectibleIDsToStrings(payout.CollectibleIDs)
+		payload.WorkerUserID = payout.WorkerUserID.String()
+	case ledger.BundlePayout:
 		payload.PayoutKind = "bundle"
 		payload.PayoutAmount = payout.Amount.Int64()
+		payload.CollectibleIDs = collectibleIDsToStrings(payout.CollectibleIDs)
 		payload.WorkerUserID = payout.WorkerUserID.String()
 	}
-	if tip, tipMatched := accepted.Tip.(ledger.CreditTip); tipMatched {
+	switch tip := accepted.Tip.(type) {
+	case ledger.CreditTip:
 		payload.TipAmount = tip.Amount.Int64()
 		if payload.WorkerUserID == "" {
 			payload.WorkerUserID = tip.WorkerUserID.String()
 		}
+	case ledger.CollectibleTip:
+		payload.CollectibleIDs = append(payload.CollectibleIDs, tip.CollectibleID.String())
+		if payload.WorkerUserID == "" {
+			payload.WorkerUserID = tip.WorkerUserID.String()
+		}
+		payload.PayoutKind = appendMCPCollectiblePayoutKind(payload.PayoutKind)
+	case ledger.BundleTip:
+		payload.TipAmount = tip.Amount.Int64()
+		payload.CollectibleIDs = append(payload.CollectibleIDs, tip.CollectibleID.String())
+		if payload.WorkerUserID == "" {
+			payload.WorkerUserID = tip.WorkerUserID.String()
+		}
+		payload.PayoutKind = appendMCPCollectiblePayoutKind(payload.PayoutKind)
 	}
 	return marshalPayload(payload)
 }
 
+func collectibleIDsToStrings(ids []core.CollectibleID) []string {
+	values := make([]string, 0, len(ids))
+	for index := range ids {
+		values = append(values, ids[index].String())
+	}
+	return values
+}
+
+// appendMCPCollectiblePayoutKind matches REST's appendCollectiblePayoutKind:
+// a collectible tip upgrades the reported payout kind.
+func appendMCPCollectiblePayoutKind(current string) string {
+	if current == "none" {
+		return "collectible"
+	}
+	if current == "credit" {
+		return "bundle"
+	}
+	return current
+}
+
+// keyedReviewArguments is the (ids, idempotency key, required note) triple
+// shared by the keyed review tools (request changes, reject).
+type keyedReviewArguments struct {
+	ids     parsedTaskSubmissionIDs
+	key     ledger.IdempotencyKey
+	note    submission.ReviewNote
+	problem toolResult
+}
+
+func parseKeyedReviewArguments(taskID string, submissionID string, rawKey string, rawNote string) keyedReviewArguments {
+	ids := parseTaskSubmissionIDs(taskID, submissionID)
+	if ids.problem != nil {
+		return keyedReviewArguments{problem: ids.problem}
+	}
+	keyResult := ledger.NewIdempotencyKey(rawKey)
+	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
+	if !keyMatched {
+		return keyedReviewArguments{problem: toolProtocolError{code: codeInvalidParams, message: keyResult.(ledger.IdempotencyKeyRejected).Reason.Description()}}
+	}
+	noteResult := submission.NewRequiredReviewNote(rawNote)
+	note, noteMatched := noteResult.(submission.ReviewNoteAccepted)
+	if !noteMatched {
+		return keyedReviewArguments{problem: toolProtocolError{code: codeInvalidParams, message: noteResult.(submission.ReviewNoteRejected).Reason.Description()}}
+	}
+	return keyedReviewArguments{ids: ids, key: key.Value, note: note.Value}
+}
+
 func (server Server) callRequestChanges(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	var args struct {
-		TaskID       string `json:"task_id"`
-		SubmissionID string `json:"submission_id"`
-		ReviewNote   string `json:"review_note"`
+		TaskID         string `json:"task_id"`
+		SubmissionID   string `json:"submission_id"`
+		IdempotencyKey string `json:"idempotency_key"`
+		ReviewNote     string `json:"review_note"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
 	}
-	ids := parseTaskSubmissionIDs(args.TaskID, args.SubmissionID)
-	if ids.problem != nil {
-		return ids.problem
+	parsed := parseKeyedReviewArguments(args.TaskID, args.SubmissionID, args.IdempotencyKey, args.ReviewNote)
+	if parsed.problem != nil {
+		return parsed.problem
 	}
-	noteResult := submission.NewRequiredReviewNote(args.ReviewNote)
-	note, noteMatched := noteResult.(submission.ReviewNoteAccepted)
-	if !noteMatched {
-		return toolProtocolError{code: codeInvalidParams, message: noteResult.(submission.ReviewNoteRejected).Reason.Description()}
-	}
-	result := server.services.RequestChanges(ctx, subject.ID, ids.taskID, ids.submissionID, note.Value)
+	result := server.services.RequestChanges(ctx, subject.ID, parsed.ids.taskID, parsed.ids.submissionID, parsed.key, parsed.note)
 	changed, matched := result.(ledger.ChangesRequested)
 	if !matched {
-		return toolFailed{message: result.(ledger.RequestChangesRejected).Reason.Description()}
+		return toolFailed{code: result.(ledger.RequestChangesRejected).Reason.Code(), message: result.(ledger.RequestChangesRejected).Reason.Description()}
 	}
 	return marshalPayload(reviewPayload{
 		TaskID:       changed.TaskID.String(),
@@ -602,24 +1080,14 @@ func (server Server) callRejectSubmission(ctx context.Context, subject auth.User
 		ReviewNote          string `json:"review_note"`
 		PartialCreditAmount int64  `json:"partial_credit_amount"`
 		TipAmount           int64  `json:"tip_amount"`
-		BanImplementor      bool   `json:"ban_implementor"`
+		BanSelection        string `json:"ban_selection"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
 	}
-	ids := parseTaskSubmissionIDs(args.TaskID, args.SubmissionID)
-	if ids.problem != nil {
-		return ids.problem
-	}
-	keyResult := ledger.NewIdempotencyKey(args.IdempotencyKey)
-	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
-	if !keyMatched {
-		return toolProtocolError{code: codeInvalidParams, message: keyResult.(ledger.IdempotencyKeyRejected).Reason.Description()}
-	}
-	noteResult := submission.NewRequiredReviewNote(args.ReviewNote)
-	note, noteMatched := noteResult.(submission.ReviewNoteAccepted)
-	if !noteMatched {
-		return toolProtocolError{code: codeInvalidParams, message: noteResult.(submission.ReviewNoteRejected).Reason.Description()}
+	parsed := parseKeyedReviewArguments(args.TaskID, args.SubmissionID, args.IdempotencyKey, args.ReviewNote)
+	if parsed.problem != nil {
+		return parsed.problem
 	}
 	creditSelectionResult := rejectCreditSelection(args.PartialCreditAmount)
 	creditSelection, creditSelectionMatched := creditSelectionResult.(mcpCreditSelectionAccepted)
@@ -631,20 +1099,25 @@ func (server Server) callRejectSubmission(ctx context.Context, subject auth.User
 	if !tipSelectionMatched {
 		return toolProtocolError{code: codeInvalidParams, message: tipSelectionResult.(mcpTipSelectionRejected).message}
 	}
-	banSelection := ledger.BanSelection(ledger.NoBanSelection{})
-	if args.BanImplementor {
+	var banSelection ledger.BanSelection
+	switch args.BanSelection {
+	case "", "none":
+		banSelection = ledger.NoBanSelection{}
+	case "ban_implementor":
 		banSelection = ledger.BanImplementorSelection{}
+	default:
+		return toolProtocolError{code: codeInvalidParams, message: "ban_selection must be none or ban_implementor"}
 	}
-	result := server.services.RejectSubmission(ctx, subject.ID, ids.taskID, ids.submissionID, key.Value, note.Value, creditSelection.value, tipSelection.value, banSelection)
+	result := server.services.RejectSubmission(ctx, subject.ID, parsed.ids.taskID, parsed.ids.submissionID, parsed.key, parsed.note, creditSelection.value, tipSelection.value, banSelection)
 	rejected, matched := result.(ledger.SubmissionRejected)
 	if !matched {
-		return toolFailed{message: result.(ledger.RejectRejected).Reason.Description()}
+		return toolFailed{code: result.(ledger.RejectRejected).Reason.Code(), message: result.(ledger.RejectRejected).Reason.Description()}
 	}
 	payload := reviewPayload{
 		TaskID:       rejected.TaskID.String(),
 		SubmissionID: rejected.SubmissionID.String(),
 		State:        "rejected",
-		ReviewNote:   note.Value.String(),
+		ReviewNote:   parsed.note.String(),
 		PayoutKind:   "none",
 	}
 	if payout, payoutMatched := rejected.Payout.(ledger.CreditPayout); payoutMatched {
@@ -706,7 +1179,7 @@ func (server Server) callListTaskSeries(ctx context.Context, subject auth.UserSu
 	result := server.services.ListSeries(ctx, subject)
 	listed, matched := result.(task.SeriesListed)
 	if !matched {
-		return toolFailed{message: result.(task.ListSeriesRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ListSeriesRejected).Reason.Code(), message: result.(task.ListSeriesRejected).Reason.Description()}
 	}
 	summaries := make([]seriesSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -730,7 +1203,7 @@ func (server Server) callGetTaskSeries(ctx context.Context, subject auth.UserSub
 	result := server.services.GetSeries(ctx, subject, seriesID.Value)
 	got, matched := result.(task.SeriesGot)
 	if !matched {
-		return toolFailed{message: result.(task.GetSeriesRejected).Reason.Description()}
+		return toolFailed{code: result.(task.GetSeriesRejected).Reason.Code(), message: result.(task.GetSeriesRejected).Reason.Description()}
 	}
 	tasks := make([]taskSummary, 0, len(got.Value.Tasks))
 	for index := range got.Value.Tasks {
@@ -752,7 +1225,7 @@ func (server Server) callReserveTask(ctx context.Context, subject auth.UserSubje
 	}
 	created, matched := result.(task.ReservationCreated)
 	if !matched {
-		return toolFailed{message: result.(task.ReservationRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ReservationRejected).Reason.Code(), message: result.(task.ReservationRejected).Reason.Description()}
 	}
 	return marshalPayload(reservationPayload{Reservation: reservationToSummary(created.Value, created.IssuedWorkerCredentialSecret)})
 }
@@ -807,10 +1280,14 @@ func (server Server) callListReservations(ctx context.Context, subject auth.Subj
 	if problem != nil {
 		return problem
 	}
-	result := server.services.ListReservations(ctx, subject, taskID)
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListReservations(ctx, subject, taskID, page)
 	listed, matched := result.(task.ReservationsListed)
 	if !matched {
-		return toolFailed{message: result.(task.ReservationsListRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ReservationsListRejected).Reason.Code(), message: result.(task.ReservationsListRejected).Reason.Description()}
 	}
 	reservations := make([]reservationSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -829,7 +1306,7 @@ func (server Server) callChangeReservation(ctx context.Context, subject auth.Sub
 	result := changer(ctx, subject, ids.taskID, ids.reservationID)
 	changed, matched := result.(task.ReservationStateChanged)
 	if !matched {
-		return toolFailed{message: result.(task.ReservationStateChangeRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ReservationStateChangeRejected).Reason.Code(), message: result.(task.ReservationStateChangeRejected).Reason.Description()}
 	}
 	return marshalPayload(reservationPayload{Reservation: reservationToSummary(changed.Value, changed.IssuedWorkerCredentialSecret)})
 }
@@ -1063,7 +1540,7 @@ func (server Server) callAddSeriesComment(ctx context.Context, subject auth.User
 	result := server.services.AddSeriesComment(ctx, subject, seriesID.Value, body.Value)
 	added, matched := result.(task.SeriesCommentAdded)
 	if !matched {
-		return toolFailed{message: result.(task.SeriesCommentRejected).Reason.Description()}
+		return toolFailed{code: result.(task.SeriesCommentRejected).Reason.Code(), message: result.(task.SeriesCommentRejected).Reason.Description()}
 	}
 	return marshalPayload(commentToSummary(added.Value))
 }
@@ -1073,10 +1550,14 @@ func (server Server) callListSeriesComments(ctx context.Context, subject auth.Us
 	if problem != nil {
 		return problem
 	}
-	result := server.services.ListSeriesComments(ctx, subject, seriesID)
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListSeriesComments(ctx, subject, seriesID, page)
 	listed, matched := result.(task.SeriesCommentsListed)
 	if !matched {
-		return toolFailed{message: result.(task.SeriesCommentsListRejected).Reason.Description()}
+		return toolFailed{code: result.(task.SeriesCommentsListRejected).Reason.Code(), message: result.(task.SeriesCommentsListRejected).Reason.Description()}
 	}
 	comments := make([]seriesCommentSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -1106,7 +1587,7 @@ func (server Server) callAddTaskComment(ctx context.Context, subject auth.UserSu
 	result := server.services.AddTaskComment(ctx, subject, taskID.Value, body.Value)
 	added, matched := result.(task.TaskCommentAdded)
 	if !matched {
-		return toolFailed{message: result.(task.TaskCommentRejected).Reason.Description()}
+		return toolFailed{code: result.(task.TaskCommentRejected).Reason.Code(), message: result.(task.TaskCommentRejected).Reason.Description()}
 	}
 	return marshalPayload(seriesCommentSummary{
 		ID:        added.Value.ID.String(),
@@ -1121,10 +1602,14 @@ func (server Server) callListTaskComments(ctx context.Context, subject auth.User
 	if problem != nil {
 		return problem
 	}
-	result := server.services.ListTaskComments(ctx, subject, taskID)
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListTaskComments(ctx, subject, taskID, page)
 	listed, matched := result.(task.TaskCommentsListed)
 	if !matched {
-		return toolFailed{message: result.(task.TaskCommentsListRejected).Reason.Description()}
+		return toolFailed{code: result.(task.TaskCommentsListRejected).Reason.Code(), message: result.(task.TaskCommentsListRejected).Reason.Description()}
 	}
 	comments := make([]seriesCommentSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -1159,7 +1644,7 @@ func (server Server) callAddSubmissionComment(ctx context.Context, subject auth.
 	result := server.services.AddSubmissionComment(ctx, subject, submissionID.Value, body.Value)
 	added, matched := result.(submission.SubmissionCommentAdded)
 	if !matched {
-		return toolFailed{message: result.(submission.SubmissionCommentRejected).Reason.Description()}
+		return toolFailed{code: result.(submission.SubmissionCommentRejected).Reason.Code(), message: result.(submission.SubmissionCommentRejected).Reason.Description()}
 	}
 	return marshalPayload(submissionCommentToSummary(added.Value))
 }
@@ -1176,10 +1661,14 @@ func (server Server) callListSubmissionComments(ctx context.Context, subject aut
 	if !submissionMatched {
 		return toolProtocolError{code: codeInvalidParams, message: submissionResult.(core.SubmissionIDRejected).Reason.Description()}
 	}
-	result := server.services.ListSubmissionComments(ctx, subject, submissionID.Value)
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListSubmissionComments(ctx, subject, submissionID.Value, page)
 	listed, matched := result.(submission.SubmissionCommentsListed)
 	if !matched {
-		return toolFailed{message: result.(submission.SubmissionCommentsListRejected).Reason.Description()}
+		return toolFailed{code: result.(submission.SubmissionCommentsListRejected).Reason.Code(), message: result.(submission.SubmissionCommentsListRejected).Reason.Description()}
 	}
 	comments := make([]submissionCommentSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -1206,7 +1695,7 @@ func (server Server) callUnpublishTask(ctx context.Context, subject auth.Subject
 	result := server.services.UnpublishTask(ctx, subject, taskID)
 	changed, matched := result.(task.TaskStateChanged)
 	if !matched {
-		return toolFailed{message: result.(task.ChangeStateRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ChangeStateRejected).Reason.Code(), message: result.(task.ChangeStateRejected).Reason.Description()}
 	}
 	return marshalPayload(taskToDetail(changed.Value))
 }
@@ -1214,7 +1703,7 @@ func (server Server) callUnpublishTask(ctx context.Context, subject auth.Subject
 func (server Server) seriesMutationResult(result task.SeriesMutationResult) toolResult {
 	mutated, matched := result.(task.SeriesMutated)
 	if !matched {
-		return toolFailed{message: result.(task.SeriesMutationRejected).Reason.Description()}
+		return toolFailed{code: result.(task.SeriesMutationRejected).Reason.Code(), message: result.(task.SeriesMutationRejected).Reason.Description()}
 	}
 	return marshalPayload(seriesDetailToPayload(mutated.Value))
 }
@@ -1318,6 +1807,7 @@ func taskToDetail(value task.Task) taskDetail {
 		PayloadKind:        payloadKind,
 		PayloadJSON:        payloadJSON,
 		CreatedBy:          value.CreatedBy.String(),
+		ExpiresAt:          task.ExpirationInstantString(value.Expiration),
 	}
 }
 

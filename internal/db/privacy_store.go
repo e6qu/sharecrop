@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/core/id"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
@@ -27,10 +28,10 @@ func NewPrivacyStoreFromHandle(handle Beginner) PrivacyStore {
 }
 
 func (store PrivacyStore) Create(ctx context.Context, requester core.UserID, kind string) httpserver.PrivacyMutationResult {
-	requestIDResult := id.New()
-	requestID, requestIDMatched := requestIDResult.(id.IDCreated)
+	requestIDResult := core.NewPrivacyRequestID()
+	requestID, requestIDMatched := requestIDResult.(core.PrivacyRequestIDCreated)
 	if !requestIDMatched {
-		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidID, requestIDResult.(id.IDRejected).Description)}
+		return httpserver.PrivacyRequestMutationRejected{Reason: requestIDResult.(core.PrivacyRequestIDRejected).Reason}
 	}
 	record := httpserver.PrivacyRequestRecord{ID: requestID.Value.String(), RequestedBy: requester, Kind: kind, State: "queued", CreatedAt: time.Now().UTC()}
 	_, err := store.db.Exec(ctx, `
@@ -187,6 +188,39 @@ func (store PrivacyStore) RecordSensitiveFieldAccess(ctx context.Context, actor 
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit sensitive-field access recording failed")}
+	}
+	return httpserver.PrivacyRequestSaved{Value: httpserver.PrivacyRequestRecord{CreatedAt: time.Now().UTC()}}
+}
+
+// RecordSensitiveFieldAccessBatch records one audit event covering a rendered
+// submission list instead of one write per row: the ids of every listed
+// submission that carries sensitive fields land in the event metadata JSON.
+// A list with no sensitive fields records nothing.
+func (store PrivacyStore) RecordSensitiveFieldAccessBatch(ctx context.Context, actor core.UserID, submissions []submission.Submission) httpserver.PrivacyMutationResult {
+	submissionIDs := make([]string, 0, len(submissions))
+	for index := range submissions {
+		if len(submissions[index].SensitiveFields) == 0 {
+			continue
+		}
+		submissionIDs = append(submissionIDs, submissions[index].ID.String())
+	}
+	if len(submissionIDs) == 0 {
+		return httpserver.PrivacyRequestSaved{Value: httpserver.PrivacyRequestRecord{CreatedAt: time.Now().UTC()}}
+	}
+	eventIDResult := core.NewAuditEventID()
+	eventID, eventIDMatched := eventIDResult.(core.AuditEventIDCreated)
+	if !eventIDMatched {
+		return httpserver.PrivacyRequestMutationRejected{Reason: eventIDResult.(core.AuditEventIDRejected).Reason}
+	}
+	metadataBytes, err := json.Marshal(map[string][]string{"submission_ids": submissionIDs})
+	if err != nil {
+		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "encode sensitive-field access metadata failed")}
+	}
+	if _, err := store.db.Exec(ctx, `
+		insert into audit_events (id, actor_user_id, action, subject_kind, subject_id, metadata_json, created_at)
+		values ($1, $2, $3, $4, $5, $6::jsonb, $7)
+	`, eventID.Value.String(), actor.String(), audit.ActionSensitiveFieldsAccessed.String(), "submission_list", actor.String(), string(metadataBytes), time.Now().UTC()); err != nil {
+		return httpserver.PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record sensitive-field access batch failed")}
 	}
 	return httpserver.PrivacyRequestSaved{Value: httpserver.PrivacyRequestRecord{CreatedAt: time.Now().UTC()}}
 }

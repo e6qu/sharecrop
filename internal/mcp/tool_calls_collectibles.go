@@ -86,7 +86,7 @@ func (server Server) callMintCollectible(ctx context.Context, subject auth.UserS
 	result := server.services.MintCollectible(ctx, assets.CollectibleOwnerKindUser, subject.ID.String(), "", name.Value, kind.Value, policy.Value, args.Art)
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
-		return toolFailed{message: result.(assets.MintRejected).Reason.Description()}
+		return toolFailed{code: result.(assets.MintRejected).Reason.Code(), message: result.(assets.MintRejected).Reason.Description()}
 	}
 	return marshalPayload(collectibleToSummary(minted.Value))
 }
@@ -127,7 +127,7 @@ func (server Server) callTransferCollectible(ctx context.Context, subject auth.U
 	result := server.services.TransferCollectible(ctx, subject.ID, recipient.Value, collectibleID.Value)
 	gifted, matched := result.(assets.CollectibleGifted)
 	if !matched {
-		return toolFailed{message: result.(assets.GiftRejected).Reason.Description()}
+		return toolFailed{code: result.(assets.GiftRejected).Reason.Code(), message: result.(assets.GiftRejected).Reason.Description()}
 	}
 	return marshalPayload(collectibleToSummary(gifted.Value))
 }
@@ -136,7 +136,7 @@ func (server Server) callListCollectibles(ctx context.Context, subject auth.User
 	result := server.services.ListCollectibles(ctx, subject.ID, core.DefaultPage())
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
-		return toolFailed{message: result.(assets.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(assets.ListRejected).Reason.Code(), message: result.(assets.ListRejected).Reason.Description()}
 	}
 	summaries := make([]collectibleSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -164,7 +164,7 @@ func (server Server) callFundCollectibleReward(ctx context.Context, subject auth
 	result := server.services.FundCollectibleReward(ctx, subject.ID, taskID, collectibleID.Value)
 	funded, matched := result.(assets.RewardFunded)
 	if !matched {
-		return toolFailed{message: result.(assets.FundRewardRejected).Reason.Description()}
+		return toolFailed{code: result.(assets.FundRewardRejected).Reason.Code(), message: result.(assets.FundRewardRejected).Reason.Description()}
 	}
 	return marshalPayload(collectibleToSummary(funded.Value))
 }
@@ -177,7 +177,7 @@ func (server Server) callRefundCollectibleReward(ctx context.Context, subject au
 	result := server.services.RefundCollectibleReward(ctx, subject.ID, taskID)
 	refunded, matched := result.(assets.RewardRefunded)
 	if !matched {
-		return toolFailed{message: result.(assets.RefundRewardRejected).Reason.Description()}
+		return toolFailed{code: result.(assets.RefundRewardRejected).Reason.Code(), message: result.(assets.RefundRewardRejected).Reason.Description()}
 	}
 	summaries := make([]collectibleSummary, 0, len(refunded.Values))
 	for index := range refunded.Values {
@@ -209,7 +209,7 @@ func (server Server) listCollectiblesByOwner(ctx context.Context, ownerKind stri
 	result := server.services.ListCollectiblesByOwner(ctx, ownerKind, ownerID, core.DefaultPage())
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
-		return toolFailed{message: result.(assets.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(assets.ListRejected).Reason.Code(), message: result.(assets.ListRejected).Reason.Description()}
 	}
 	summaries := make([]collectibleSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -241,7 +241,7 @@ func (server Server) callAwardCollectible(ctx context.Context, subject auth.User
 	result := server.services.AwardCollectible(ctx, strings.TrimSpace(args.Slug), recipientKind, strings.TrimSpace(args.RecipientID), strings.TrimSpace(args.OrganizationID))
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
-		return toolFailed{message: result.(assets.MintRejected).Reason.Description()}
+		return toolFailed{code: result.(assets.MintRejected).Reason.Code(), message: result.(assets.MintRejected).Reason.Description()}
 	}
 	return marshalPayload(collectibleToSummary(minted.Value))
 }

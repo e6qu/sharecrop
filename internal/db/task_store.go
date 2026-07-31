@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -46,11 +47,11 @@ func (store TaskStore) CreateTask(ctx context.Context, seriesID core.TaskSeriesI
 		insert into tasks (
 			id, series_id, series_position, owner_kind, user_id, team_id, organization_id, title, description,
 			task_type, reference_url, reward_kind, reward_credit_amount, participation_policy, assignee_scope, reservation_expires_after_hours,
-			state, response_schema_json, data_payload_kind, data_payload_json, created_by_user_id
+			state, response_schema_json, data_payload_kind, data_payload_json, created_by_user_id, expires_at
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20::jsonb, $21)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20::jsonb, $21, $22)
 	`, taskID.String(), seriesColumns.seriesID, seriesColumns.position, ownerColumns.kind, ownerColumns.userID, ownerColumns.teamID, ownerColumns.organizationID,
-		command.Title.String(), command.Description.String(), command.Type.String(), command.Reference.String(), rewardColumns.kind, rewardColumns.creditAmount, command.Participation.String(), command.AssigneeScope.String(), command.ReservationTTL.Hours(), task.StateDraft.String(), command.ResponseSchema.String(), payloadColumns.kind, payloadColumns.source, command.Actor.ID.String())
+		command.Title.String(), command.Description.String(), command.Type.String(), command.Reference.String(), rewardColumns.kind, rewardColumns.creditAmount, command.Participation.String(), command.AssigneeScope.String(), command.ReservationTTL.Hours(), task.StateDraft.String(), command.ResponseSchema.String(), payloadColumns.kind, payloadColumns.source, command.Actor.ID.String(), expirationSQLColumn(command.Expiration))
 	if err != nil {
 		return task.CreateTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task failed")}
 	}
@@ -67,6 +68,19 @@ func (store TaskStore) CreateTask(ctx context.Context, seriesID core.TaskSeriesI
 	attachmentsResult := insertTaskAttachments(ctx, tx, taskID, command.Attachments)
 	if rejected, matched := attachmentsResult.(insertAttachmentsRejected); matched {
 		return task.CreateTaskStoreRejected{Reason: rejected.reason}
+	}
+
+	// Escrow every requested reward collectible inside the create transaction,
+	// applying the same per-collectible rules as the post-create funding path
+	// (FundCollectibleReward): a failure rolls the whole transaction back, so
+	// a task never exists with partial escrow.
+	for _, collectibleID := range command.FundCollectibleIDs {
+		if _, reason := requireEscrowableCollectible(ctx, tx, collectibleID, command.Actor.ID); reason != nil {
+			return task.CreateTaskStoreRejected{Reason: *reason}
+		}
+		if reason := holdCollectibleForTask(ctx, tx, taskID, collectibleID); reason != nil {
+			return task.CreateTaskStoreRejected{Reason: *reason}
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -217,6 +231,23 @@ func requireOpenableReward(ctx context.Context, tx Tx, taskID core.TaskID) opena
 // the credits, returns the collectibles to minted, and deletes the stateless
 // task_funds / task_fund_collectibles rows. An unfunded task settles to nothing.
 func settleFundedTaskOnCancel(ctx context.Context, tx Tx, taskID core.TaskID) *core.DomainError {
+	// The cancel settlement records no idempotency key: there is no
+	// client-supplied command to replay, only the one-shot state change.
+	if reason := refundTaskCreditFunding(ctx, tx, taskID, nil); reason != nil {
+		return reason
+	}
+	if reason, rejected := refundHeldCollectibleReward(ctx, tx, taskID); rejected {
+		return &reason
+	}
+	return nil
+}
+
+// refundTaskCreditFunding returns a task's escrowed credits to their funder
+// as a task_refund ledger entry and clears the task_funds row, inside the
+// caller's transaction. idempotencyKey is nil for the cancel settlement and
+// the derived "expire:<task_id>" key for the expiry sweep. An unfunded task
+// refunds nothing.
+func refundTaskCreditFunding(ctx context.Context, tx Tx, taskID core.TaskID, idempotencyKey *string) *core.DomainError {
 	var rawFunderAccountID string
 	var amount int64
 	scanErr := tx.QueryRow(ctx, "select funder_account_id::text, credit_amount from task_funds where task_id = $1 for update", taskID.String()).Scan(&rawFunderAccountID, &amount)
@@ -232,19 +263,16 @@ func settleFundedTaskOnCancel(ctx context.Context, tx Tx, taskID core.TaskID) *c
 			return &reason
 		}
 		if _, err := tx.Exec(ctx, `
-			insert into ledger_entries (id, account_id, kind, amount, task_id)
-			values ($1, $2, 'task_refund', $3, $4)
-		`, entryCreated.Value.String(), rawFunderAccountID, amount, taskID.String()); err != nil {
-			reason := core.NewDomainError(core.ErrorCodeInvalidState, "insert cancel refund ledger entry failed")
+			insert into ledger_entries (id, account_id, kind, amount, task_id, idempotency_key)
+			values ($1, $2, 'task_refund', $3, $4, $5)
+		`, entryCreated.Value.String(), rawFunderAccountID, amount, taskID.String(), idempotencyKey); err != nil {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "insert task refund ledger entry failed")
 			return &reason
 		}
 		if _, err := tx.Exec(ctx, "delete from task_funds where task_id = $1", taskID.String()); err != nil {
 			reason := core.NewDomainError(core.ErrorCodeInvalidState, "clear task fund failed")
 			return &reason
 		}
-	}
-	if reason, rejected := refundHeldCollectibleReward(ctx, tx, taskID); rejected {
-		return &reason
 	}
 	return nil
 }
@@ -406,15 +434,16 @@ func (store TaskStore) ChangeReservationState(ctx context.Context, taskID core.T
 	return task.ChangeReservationStateStoreAccepted{Value: found.value}
 }
 
-func (store TaskStore) ListReservations(ctx context.Context, taskID core.TaskID) task.ListReservationsStoreResult {
+func (store TaskStore) ListReservations(ctx context.Context, taskID core.TaskID, page core.Page) task.ListReservationsStoreResult {
 	if err := store.releaseExpiredReservations(ctx); err != nil {
 		return task.ListReservationsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
 	}
 
 	rows, err := store.db.Query(ctx, reservationSelectSQL()+`
 		where task_reservations.task_id = $1
-		order by task_reservations.created_at
-	`, taskID.String())
+		order by task_reservations.created_at desc, task_reservations.id desc
+		limit $2 offset $3
+	`, taskID.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return task.ListReservationsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list reservations failed")}
 	}
@@ -633,6 +662,17 @@ func rewardSQLColumns(reward task.RewardSpec) rewardSQL {
 	}
 }
 
+// expirationSQLColumn maps the ExpirationPolicy sum onto the nullable
+// tasks.expires_at column. NoExpiration (and an unset policy from callers
+// that predate the field) stores NULL.
+func expirationSQLColumn(policy task.ExpirationPolicy) *time.Time {
+	if typed, matched := policy.(task.ExpiresAt); matched {
+		instant := typed.Instant.UTC()
+		return &instant
+	}
+	return nil
+}
+
 func payloadSQLColumns(payload task.DataPayload) payloadSQL {
 	switch typed := payload.(type) {
 	case task.NoDataPayload:
@@ -719,7 +759,8 @@ const taskBaseColumns = `
 			)
 			from task_attachments
 			where task_attachments.task_id = tasks.id
-		), '[]'::jsonb)::text`
+		), '[]'::jsonb)::text,
+		coalesce(to_char(tasks.expires_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')`
 
 func taskSelectSQL() string {
 	return "select " + taskBaseColumns + `
@@ -944,7 +985,7 @@ func scanTaskListItemRow(rows Rows) taskListItemRowResult {
 	var rawActiveAssigneeUserID string
 	var rawActiveAssigneeOrganizationID string
 	var rawActiveAssigneeTeamID string
-	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments, &rawActiveAssigneeKind, &rawActiveAssigneeUserID, &rawActiveAssigneeOrganizationID, &rawActiveAssigneeTeamID); err != nil {
+	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments, &row.expiresAt, &rawActiveAssigneeKind, &rawActiveAssigneeUserID, &rawActiveAssigneeOrganizationID, &rawActiveAssigneeTeamID); err != nil {
 		return taskListItemRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
 	}
 	taskResult := row.parse()
@@ -1091,21 +1132,38 @@ type taskBaseRow struct {
 	payload                  string
 	createdBy                string
 	attachments              string
+	expiresAt                string
 }
 
 func (row taskBaseRow) parse() taskRowResult {
-	return parseTaskRow(row.taskID, row.ownerKind, row.ownerUserID, row.ownerTeamID, row.ownerOrganizationID, row.title, row.description, row.taskType, row.referenceURL, row.state, row.rewardKind, row.rewardCreditAmount, row.rewardCollectibleCount, row.participationPolicy, row.assigneeScope, row.reservationTTLHours, row.visibilityKind, row.visibilityUserID, row.visibilityTeamID, row.visibilityOrganizationID, row.seriesID, row.seriesPosition, row.responseSchema, row.payloadKind, row.payload, row.createdBy, row.attachments)
+	return parseTaskRow(row.taskID, row.ownerKind, row.ownerUserID, row.ownerTeamID, row.ownerOrganizationID, row.title, row.description, row.taskType, row.referenceURL, row.state, row.rewardKind, row.rewardCreditAmount, row.rewardCollectibleCount, row.participationPolicy, row.assigneeScope, row.reservationTTLHours, row.visibilityKind, row.visibilityUserID, row.visibilityTeamID, row.visibilityOrganizationID, row.seriesID, row.seriesPosition, row.responseSchema, row.payloadKind, row.payload, row.createdBy, row.attachments, row.expiresAt)
 }
 
 func scanTaskRow(rows Rows) taskRowResult {
 	var row taskBaseRow
-	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments); err != nil {
+	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments, &row.expiresAt); err != nil {
 		return taskRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
 	}
 	return row.parse()
 }
 
-func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawTaskType string, rawReferenceURL string, rawState string, rawRewardKind string, rawRewardCreditAmount int64, rawRewardCollectibleCount int, rawParticipationPolicy string, rawAssigneeScope string, rawReservationTTLHours int, rawVisibilityKind string, rawVisibilityUserID string, rawVisibilityTeamID string, rawVisibilityOrganizationID string, rawSeriesID string, rawSeriesPosition int, rawResponseSchema string, rawPayloadKind string, rawPayload string, rawCreatedBy string, rawAttachments string) taskRowResult {
+// parseStoredExpiration decodes the boundary form of tasks.expires_at: the
+// empty string means no expiration; anything else is the stored RFC3339
+// instant. Unlike the creation constructor it accepts past instants, since
+// stored tasks legitimately hold them (the expiry sweep depends on it).
+func parseStoredExpiration(raw string) (task.ExpirationPolicy, *core.DomainError) {
+	if raw == "" {
+		return task.NoExpiration{}, nil
+	}
+	instant, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "task expiration timestamp is invalid")
+		return nil, &reason
+	}
+	return task.ExpiresAt{Instant: instant.UTC()}, nil
+}
+
+func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, rawOwnerTeamID string, rawOwnerOrganizationID string, rawTitle string, rawDescription string, rawTaskType string, rawReferenceURL string, rawState string, rawRewardKind string, rawRewardCreditAmount int64, rawRewardCollectibleCount int, rawParticipationPolicy string, rawAssigneeScope string, rawReservationTTLHours int, rawVisibilityKind string, rawVisibilityUserID string, rawVisibilityTeamID string, rawVisibilityOrganizationID string, rawSeriesID string, rawSeriesPosition int, rawResponseSchema string, rawPayloadKind string, rawPayload string, rawCreatedBy string, rawAttachments string, rawExpiresAt string) taskRowResult {
 	taskIDResult := core.ParseTaskID(rawTaskID)
 	taskID, taskIDMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskIDMatched {
@@ -1205,7 +1263,11 @@ func parseTaskRow(rawTaskID string, rawOwnerKind string, rawOwnerUserID string, 
 	if !attachmentsMatched {
 		return taskRowRejected{reason: attachmentsResult.(attachmentsRejected).reason}
 	}
-	return taskRowAccepted{value: task.Task{ID: taskID.Value, Owner: owner.value, Title: title.Value, Description: description.Value, Type: taskType.Value, Reference: reference.Value, Reward: reward.value, Participation: participation.Value, AssigneeScope: assigneeScope.Value, ReservationTTL: ttl.Value, State: state.Value, Visibility: visibility.value, Placement: placement.value, ResponseSchema: schemaSource.Value, Payload: payload.value, Attachments: attachments.values, CreatedBy: createdBy.Value}}
+	expiration, expirationReason := parseStoredExpiration(rawExpiresAt)
+	if expirationReason != nil {
+		return taskRowRejected{reason: *expirationReason}
+	}
+	return taskRowAccepted{value: task.Task{ID: taskID.Value, Owner: owner.value, Title: title.Value, Description: description.Value, Type: taskType.Value, Reference: reference.Value, Reward: reward.value, Participation: participation.Value, AssigneeScope: assigneeScope.Value, ReservationTTL: ttl.Value, State: state.Value, Visibility: visibility.value, Placement: placement.value, ResponseSchema: schemaSource.Value, Payload: payload.value, Attachments: attachments.values, Expiration: expiration, CreatedBy: createdBy.Value}}
 }
 
 type rewardSpecResult interface {

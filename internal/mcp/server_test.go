@@ -18,7 +18,28 @@ import (
 	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
+	"github.com/e6qu/sharecrop/internal/webhook"
 )
+
+// The webhook fakes run the real service over the in-memory store so tool
+// tests observe genuine create/list/revoke behavior. The store is fresh per
+// call because fakeServices is a value; tests that need continuity go
+// through the HTTP layer instead.
+func (services fakeServices) CreateWebhookSubscription(ctx context.Context, owner webhook.Owner, endpoint webhook.EndpointURL, kinds webhook.KindFilter) webhook.CreateResult {
+	return webhook.NewService(webhook.NewMemoryStore()).Create(ctx, owner, endpoint, kinds)
+}
+
+func (services fakeServices) ListWebhookSubscriptions(ctx context.Context, owner webhook.Owner, page core.Page) webhook.ListResult {
+	return webhook.NewService(webhook.NewMemoryStore()).List(ctx, owner, page)
+}
+
+func (services fakeServices) RevokeWebhookSubscription(_ context.Context, _ webhook.Owner, _ core.WebhookSubscriptionID) webhook.RevokeResult {
+	return webhook.RevokeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "active webhook subscription was not found")}
+}
+
+func (services fakeServices) ListWebhookDeliveries(_ context.Context, _ webhook.Owner, _ core.WebhookSubscriptionID, _ core.Page) webhook.ListDeliveriesResult {
+	return webhook.DeliveriesListed{Values: []webhook.Delivery{}}
+}
 
 func TestInitializeReportsProtocolVersion(t *testing.T) {
 	server := NewServer(fakeServices{})
@@ -190,7 +211,7 @@ type fakeServices struct {
 	isAdmin   bool
 }
 
-func (services fakeServices) ListTasks(_ context.Context, _ auth.Subject, _ task.ListScope, _ task.ListFilters) task.ListResult {
+func (services fakeServices) ListTasks(_ context.Context, _ auth.Subject, _ task.ListScope, _ task.ListFilters, _ core.Page) task.ListResult {
 	return task.TasksListed{Values: []task.ListItem{}}
 }
 
@@ -285,7 +306,7 @@ func (services fakeServices) GetSubmissionStatus(_ context.Context, _ submission
 	return submission.ReceiptStatusRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
 }
 
-func (services fakeServices) ListTaskSubmissions(_ context.Context, _ auth.UserSubject, _ core.TaskID) submission.ListResult {
+func (services fakeServices) ListTaskSubmissions(_ context.Context, _ auth.UserSubject, _ core.TaskID, _ core.Page) submission.ListResult {
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 
@@ -297,7 +318,7 @@ func (services fakeServices) ReviewAcceptSubmission(_ context.Context, _ core.Us
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
-func (services fakeServices) RequestChanges(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, note submission.ReviewNote) ledger.RequestChangesResult {
+func (services fakeServices) RequestChanges(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, note submission.ReviewNote) ledger.RequestChangesResult {
 	return ledger.ChangesRequested{TaskID: taskID, SubmissionID: submissionID, ReviewNote: note.String()}
 }
 
@@ -357,7 +378,7 @@ func (services fakeServices) AddSeriesComment(_ context.Context, subject auth.Us
 	return task.SeriesCommentAdded{Value: task.SeriesComment{ID: commentID.Value, SeriesID: seriesID, AuthorID: subject.ID, Body: body}}
 }
 
-func (services fakeServices) ListSeriesComments(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID) task.SeriesCommentsResult {
+func (services fakeServices) ListSeriesComments(_ context.Context, _ auth.UserSubject, _ core.TaskSeriesID, _ core.Page) task.SeriesCommentsResult {
 	return task.SeriesCommentsListed{Values: nil}
 }
 
@@ -366,7 +387,7 @@ func (services fakeServices) AddTaskComment(_ context.Context, subject auth.User
 	return task.TaskCommentAdded{Value: task.TaskComment{ID: commentID.Value, TaskID: taskID, AuthorID: subject.ID, Body: body}}
 }
 
-func (services fakeServices) ListTaskComments(_ context.Context, _ auth.UserSubject, _ core.TaskID) task.TaskCommentsResult {
+func (services fakeServices) ListTaskComments(_ context.Context, _ auth.UserSubject, _ core.TaskID, _ core.Page) task.TaskCommentsResult {
 	return task.TaskCommentsListed{Values: nil}
 }
 
@@ -375,7 +396,7 @@ func (services fakeServices) AddSubmissionComment(_ context.Context, subject aut
 	return submission.SubmissionCommentAdded{Value: submission.SubmissionComment{ID: commentID.Value, SubmissionID: submissionID, AuthorID: subject.ID, Body: body}}
 }
 
-func (services fakeServices) ListSubmissionComments(_ context.Context, _ auth.UserSubject, _ core.SubmissionID) submission.SubmissionCommentsResult {
+func (services fakeServices) ListSubmissionComments(_ context.Context, _ auth.UserSubject, _ core.SubmissionID, _ core.Page) submission.SubmissionCommentsResult {
 	return submission.SubmissionCommentsListed{Values: nil}
 }
 
@@ -406,7 +427,7 @@ func (services fakeServices) ReserveTaskForOrganizationTeam(_ context.Context, s
 	}}
 }
 
-func (services fakeServices) ListReservations(_ context.Context, subject auth.Subject, taskID core.TaskID) task.ReservationsListResult {
+func (services fakeServices) ListReservations(_ context.Context, subject auth.Subject, taskID core.TaskID, _ core.Page) task.ReservationsListResult {
 	userID := fakeUserID(subject)
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationsListed{Values: []task.Reservation{{
@@ -545,8 +566,26 @@ func (services fakeServices) RefundCollectibleReward(_ context.Context, _ core.U
 	return assets.RewardRefunded{Values: []assets.Collectible{}}
 }
 
-func (services fakeServices) ListNotifications(_ context.Context, _ core.UserID, _ core.Page) notification.ListResult {
-	return notification.NotificationsListed{Values: []notification.Notification{}}
+func (services fakeServices) CountUnreadNotifications(_ context.Context, _ core.UserID) notification.CountResult {
+	return notification.UnreadCounted{Count: 1}
+}
+
+func (services fakeServices) GetCreditBalance(_ context.Context, _ core.UserID) ledger.BalanceResult {
+	return ledger.BalanceFound{Value: ledger.NewBalance(25, 5)}
+}
+
+func (services fakeServices) ListLedger(_ context.Context, _ core.UserID, _ core.Page) ledger.ListEntriesResult {
+	return ledger.EntriesListed{Values: []ledger.LedgerEntry{}}
+}
+
+func (services fakeServices) ListNotifications(_ context.Context, _ core.UserID, filter notification.StateFilter, _ core.Page) notification.ListResult {
+	// The subject kind echoes the received filter so tool tests can assert the
+	// state argument threads through to the service call.
+	echoed := "any_state"
+	if _, matched := filter.(notification.UnreadOnly); matched {
+		echoed = "unread_only"
+	}
+	return notification.NotificationsListed{Values: []notification.Notification{{Kind: notification.KindTaskFunded, State: notification.StateUnread, Subject: notification.Subject{Kind: echoed, ID: "echo"}}}}
 }
 
 func (services fakeServices) MarkNotificationRead(_ context.Context, recipient core.UserID, notificationID core.NotificationID) notification.MarkReadResult {

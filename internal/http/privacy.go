@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
-	"github.com/e6qu/sharecrop/internal/core/id"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
 
@@ -111,10 +111,10 @@ func NewMemoryPrivacyService(redactor SensitiveFieldRedactor) PrivacyService {
 }
 
 func (service *memoryPrivacyService) Create(_ context.Context, requester core.UserID, kind string) PrivacyMutationResult {
-	requestIDResult := id.New()
-	requestID, requestIDMatched := requestIDResult.(id.IDCreated)
+	requestIDResult := core.NewPrivacyRequestID()
+	requestID, requestIDMatched := requestIDResult.(core.PrivacyRequestIDCreated)
 	if !requestIDMatched {
-		return PrivacyRequestMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidID, requestIDResult.(id.IDRejected).Description)}
+		return PrivacyRequestMutationRejected{Reason: requestIDResult.(core.PrivacyRequestIDRejected).Reason}
 	}
 	record := PrivacyRequestRecord{ID: requestID.Value.String(), RequestedBy: requester, Kind: kind, State: privacyRequestQueuedStatus, CreatedAt: time.Now().UTC()}
 	service.mu.Lock()
@@ -181,6 +181,13 @@ func (service *memoryPrivacyService) RecordSensitiveFieldAccess(_ context.Contex
 	return PrivacyRequestSaved{Value: PrivacyRequestRecord{CreatedAt: time.Now().UTC()}}
 }
 
+// RecordSensitiveFieldAccessBatch mirrors RecordSensitiveFieldAccess for the
+// in-memory runtime: the memory privacy service tracks privacy requests only
+// and holds no access-event log, so the batch recording is a no-op success.
+func (service *memoryPrivacyService) RecordSensitiveFieldAccessBatch(_ context.Context, _ core.UserID, _ []submission.Submission) PrivacyMutationResult {
+	return PrivacyRequestSaved{Value: PrivacyRequestRecord{CreatedAt: time.Now().UTC()}}
+}
+
 func (service *memoryPrivacyService) RunRetention(ctx context.Context, actor core.UserID) PrivacyRetentionResult {
 	if service.redactor != nil {
 		count, err := service.redactor.RedactSensitiveFields(ctx, actor)
@@ -210,17 +217,17 @@ func (server Server) createPrivacyRequest(w http.ResponseWriter, r *http.Request
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
 	var request privacyRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	if !validPrivacyRequestKind(request.Kind) {
-		writeError(w, http.StatusBadRequest, "privacy request kind is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "privacy request kind is invalid")
 		return
 	}
 
@@ -231,9 +238,7 @@ func (server Server) createPrivacyRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !server.recordPrivacyAuditWithSubjectID(w, r, actor.subject.ID, audit.ActionPrivacyRequestCreated, saved.Value, actor.subject.ID.String()) {
-		return
-	}
+	server.recordPrivacyAuditBestEffort(r, actor.subject.ID, audit.ActionPrivacyRequestCreated, saved.Value, actor.subject.ID.String())
 
 	writeJSON(w, http.StatusCreated, privacyRequestToResponse(saved.Value))
 }
@@ -242,15 +247,15 @@ func (server Server) listPrivacyRequests(w http.ResponseWriter, r *http.Request)
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 	page, pageOK := parsePageOrReject(w, r)
 	if !pageOK {
 		return
 	}
-	result := server.privacyService.ListForRequester(r.Context(), actor.subject.ID, page)
-	server.writePrivacyListResult(w, result)
+	result := server.privacyService.ListForRequester(r.Context(), actor.subject.ID, page.Probe())
+	server.writePrivacyListResult(w, result, page)
 }
 
 func (server Server) listAdminPrivacyRequests(w http.ResponseWriter, r *http.Request) {
@@ -261,8 +266,8 @@ func (server Server) listAdminPrivacyRequests(w http.ResponseWriter, r *http.Req
 	if !pageOK {
 		return
 	}
-	result := server.privacyService.ListAll(r.Context(), page)
-	server.writePrivacyListResult(w, result)
+	result := server.privacyService.ListAll(r.Context(), page.Probe())
+	server.writePrivacyListResult(w, result, page)
 }
 
 func (server Server) resolveAdminPrivacyRequest(w http.ResponseWriter, r *http.Request) {
@@ -272,18 +277,22 @@ func (server Server) resolveAdminPrivacyRequest(w http.ResponseWriter, r *http.R
 	}
 	var request privacyResolveRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
-	result := server.privacyService.Resolve(r.Context(), r.PathValue("privacy_request_id"), request.ResolutionNote)
+	privacyRequestIDResult := core.ParsePrivacyRequestID(r.PathValue("privacy_request_id"))
+	privacyRequestID, privacyRequestIDMatched := privacyRequestIDResult.(core.PrivacyRequestIDCreated)
+	if !privacyRequestIDMatched {
+		writeDomainError(w, privacyRequestIDResult.(core.PrivacyRequestIDRejected).Reason)
+		return
+	}
+	result := server.privacyService.Resolve(r.Context(), privacyRequestID.Value.String(), request.ResolutionNote)
 	saved, savedMatched := result.(PrivacyRequestSaved)
 	if !savedMatched {
 		writeDomainError(w, result.(PrivacyRequestMutationRejected).Reason)
 		return
 	}
-	if !server.recordPrivacyAudit(w, r, actor.subject.ID, audit.ActionFromString("privacy_request_resolved"), saved.Value) {
-		return
-	}
+	server.recordPrivacyAuditBestEffort(r, actor.subject.ID, audit.ActionPrivacyRequestResolved, saved.Value, saved.Value.ID)
 	writeJSON(w, http.StatusOK, privacyRequestToResponse(saved.Value))
 }
 
@@ -304,37 +313,34 @@ func (server Server) runPrivacyRetention(w http.ResponseWriter, r *http.Request)
 		writeDomainError(w, metadataResult.(jsonMetadataRejected).reason)
 		return
 	}
-	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionFromString("privacy_retention_run"), audit.Subject{Kind: "privacy_retention", ID: actor.subject.ID.String()}, audit.Metadata{JSON: metadata.value}) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionPrivacyRetentionRun, audit.Subject{Kind: "privacy_retention", ID: actor.subject.ID.String()}, audit.Metadata{JSON: metadata.value})
 	writeJSON(w, http.StatusOK, privacyRetentionRunResponse{RedactedFieldCount: run.RedactedFieldCount})
 }
 
-func (server Server) writePrivacyListResult(w http.ResponseWriter, result PrivacyListResult) {
+func (server Server) writePrivacyListResult(w http.ResponseWriter, result PrivacyListResult, page core.Page) {
 	listed, matched := result.(PrivacyRequestsListed)
 	if !matched {
 		writeDomainError(w, result.(PrivacyRequestListRejected).Reason)
 		return
 	}
-	response := privacyRequestsResponse{Requests: make([]privacyRequestResponse, 0, len(listed.Values))}
-	for index := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := privacyRequestsResponse{Requests: make([]privacyRequestResponse, 0, visible), NextOffset: nextOffset}
+	for index := range listed.Values[:visible] {
 		response.Requests = append(response.Requests, privacyRequestToResponse(listed.Values[index]))
 	}
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (server Server) recordPrivacyAudit(w http.ResponseWriter, r *http.Request, actor core.UserID, action audit.Action, record PrivacyRequestRecord) bool {
-	return server.recordPrivacyAuditWithSubjectID(w, r, actor, action, record, record.ID)
-}
-
-func (server Server) recordPrivacyAuditWithSubjectID(w http.ResponseWriter, r *http.Request, actor core.UserID, action audit.Action, record PrivacyRequestRecord, subjectID string) bool {
+// recordPrivacyAuditBestEffort audits a privacy-request mutation that has
+// already committed; failures are logged, never surfaced (see
+// recordAuditBestEffort).
+func (server Server) recordPrivacyAuditBestEffort(r *http.Request, actor core.UserID, action audit.Action, record PrivacyRequestRecord, subjectID string) {
 	metadataBytes, err := json.Marshal(map[string]string{"kind": record.Kind, "state": record.State})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, privacyRequestMetadataEncodingFail)
-		return false
+		slog.Error(privacyRequestMetadataEncodingFail, "action", action.String(), "privacy_request_id", record.ID)
+		return
 	}
-	return server.recordAudit(
-		w,
+	server.recordAuditBestEffort(
 		r.Context(),
 		actor,
 		action,

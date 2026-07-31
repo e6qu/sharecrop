@@ -28,7 +28,7 @@ type SavedQueueView struct {
 }
 
 type SavedQueueViewService interface {
-	List(context.Context, core.UserID, string) SavedQueueViewsListResult
+	List(context.Context, core.UserID, string, core.Page) SavedQueueViewsListResult
 	Upsert(context.Context, SavedQueueView) SavedQueueViewMutationResult
 }
 
@@ -74,7 +74,7 @@ func newMemorySavedQueueViewService() *memorySavedQueueViewService {
 	return &memorySavedQueueViewService{views: []SavedQueueView{}}
 }
 
-func (service *memorySavedQueueViewService) List(_ context.Context, userID core.UserID, scope string) SavedQueueViewsListResult {
+func (service *memorySavedQueueViewService) List(_ context.Context, userID core.UserID, scope string, page core.Page) SavedQueueViewsListResult {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	views := make([]SavedQueueView, 0)
@@ -84,7 +84,19 @@ func (service *memorySavedQueueViewService) List(_ context.Context, userID core.
 			views = append(views, view)
 		}
 	}
-	return SavedQueueViewsListed{Values: views}
+	return SavedQueueViewsListed{Values: pageSavedQueueViews(views, page)}
+}
+
+func pageSavedQueueViews(values []SavedQueueView, page core.Page) []SavedQueueView {
+	start := page.Offset()
+	if start > len(values) {
+		start = len(values)
+	}
+	end := start + page.Limit()
+	if end > len(values) {
+		end = len(values)
+	}
+	return values[start:end]
 }
 
 func (service *memorySavedQueueViewService) Upsert(_ context.Context, view SavedQueueView) SavedQueueViewMutationResult {
@@ -108,22 +120,27 @@ func (server Server) listSavedQueueViews(w http.ResponseWriter, r *http.Request)
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
 	if scope != "" && !validSavedQueueScope(scope) {
-		writeError(w, http.StatusBadRequest, "saved queue view scope is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "saved queue view scope is invalid")
 		return
 	}
-	result := server.savedQueueViews.List(r.Context(), actor.subject.ID, scope)
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.savedQueueViews.List(r.Context(), actor.subject.ID, scope, page.Probe())
 	listed, listedMatched := result.(SavedQueueViewsListed)
 	if !listedMatched {
 		writeDomainError(w, result.(SavedQueueViewsListRejected).Reason)
 		return
 	}
-	response := savedQueueViewsResponse{Views: make([]savedQueueViewResponse, 0, len(listed.Values))}
-	for index := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := savedQueueViewsResponse{Views: make([]savedQueueViewResponse, 0, visible), NextOffset: nextOffset}
+	for index := range listed.Values[:visible] {
 		response.Views = append(response.Views, savedQueueViewToResponse(listed.Values[index]))
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -133,12 +150,12 @@ func (server Server) upsertSavedQueueView(w http.ResponseWriter, r *http.Request
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 	var request savedQueueViewRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	viewResult := savedQueueViewFromRequest(actor.subject.ID, request)

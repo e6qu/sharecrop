@@ -189,15 +189,18 @@ moderationReportResponseEncoder moderationReportResponse =
 
 type alias ModerationReportsResponse =
     { reports : List ModerationReportResponse
+    , nextOffset : Int
     }
 
 moderationReportsResponseDecoder : Decoder ModerationReportsResponse
 moderationReportsResponseDecoder =
-    Decode.map ModerationReportsResponse
+    Decode.map2 ModerationReportsResponse
         (Decode.field "reports" (Decode.list moderationReportResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 moderationReportsResponseEncoder : ModerationReportsResponse -> Encode.Value
 moderationReportsResponseEncoder moderationReportsResponse =
     Encode.object
         [ ( "reports", Encode.list moderationReportResponseEncoder moderationReportsResponse.reports )
+        , ( "next_offset", Encode.int moderationReportsResponse.nextOffset )
         ]

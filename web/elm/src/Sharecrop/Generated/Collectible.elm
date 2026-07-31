@@ -168,17 +168,20 @@ collectibleResponseEncoder collectibleResponse =
 
 type alias CollectiblesResponse =
     { collectibles : List CollectibleResponse
+    , nextOffset : Int
     }
 
 collectiblesResponseDecoder : Decoder CollectiblesResponse
 collectiblesResponseDecoder =
-    Decode.map CollectiblesResponse
+    Decode.map2 CollectiblesResponse
         (Decode.field "collectibles" (Decode.list collectibleResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 collectiblesResponseEncoder : CollectiblesResponse -> Encode.Value
 collectiblesResponseEncoder collectiblesResponse =
     Encode.object
         [ ( "collectibles", Encode.list collectibleResponseEncoder collectiblesResponse.collectibles )
+        , ( "next_offset", Encode.int collectiblesResponse.nextOffset )
         ]
 
 type alias CollectibleCatalogEntry =

@@ -32,6 +32,7 @@ type orgCredentialCreatedResponse struct {
 
 type orgCredentialsResponse struct {
 	Credentials []orgCredentialResponse `json:"credentials"`
+	NextOffset  int                     `json:"next_offset"`
 }
 
 func (orgCredentialResponse) writableResponse() {}
@@ -50,20 +51,20 @@ func (server Server) requireOrgCredentialManagePermission(w http.ResponseWriter,
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return core.OrganizationID{}, false
 	}
 
 	organizationIDResult := parseOrganizationPathValue(r)
 	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
 	if !organizationIDMatched {
-		writeError(w, http.StatusBadRequest, organizationIDResult.(organizationIDRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, organizationIDResult.(organizationIDRejected).reason)
 		return core.OrganizationID{}, false
 	}
 
 	permissionResult := server.organizationService.CheckOrganizationPermission(r.Context(), organizationIDAccepted.value, actor.subject.ID, org.PermissionManageMembers)
 	if _, denied := permissionResult.(org.PermissionDenied); denied {
-		writeError(w, http.StatusForbidden, "organization credential management access denied")
+		writeError(w, http.StatusForbidden, core.ErrorCodePermissionDenied, "organization credential management access denied")
 		return core.OrganizationID{}, false
 	}
 
@@ -75,10 +76,15 @@ func (server Server) createOrgCredential(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
+	// Minting is rate-limited by the owning organization so one org cannot
+	// spam credential creation regardless of which admin or credential acts.
+	if !server.allowBySubject(w, organizationID.String()) {
+		return
+	}
 
 	var request orgCredentialRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 
@@ -90,7 +96,7 @@ func (server Server) createOrgCredential(w http.ResponseWriter, r *http.Request)
 	result := server.orgCredentialService.Create(r.Context(), organizationID, fields.label, fields.scopes, fields.expiresAt)
 	created, matched := result.(orgcred.CredentialCreated)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(orgcred.CreateRejected).Reason.Description())
+		writeDomainError(w, result.(orgcred.CreateRejected).Reason)
 		return
 	}
 
@@ -110,15 +116,16 @@ func (server Server) listOrgCredentials(w http.ResponseWriter, r *http.Request) 
 	if !pageOK {
 		return
 	}
-	result := server.orgCredentialService.List(r.Context(), organizationID, page)
+	result := server.orgCredentialService.List(r.Context(), organizationID, page.Probe())
 	listed, matched := result.(orgcred.CredentialsListed)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(orgcred.ListRejected).Reason.Description())
+		writeDomainError(w, result.(orgcred.ListRejected).Reason)
 		return
 	}
 
-	response := orgCredentialsResponse{Credentials: make([]orgCredentialResponse, 0, len(listed.Values))}
-	for index := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := orgCredentialsResponse{Credentials: make([]orgCredentialResponse, 0, visible), NextOffset: nextOffset}
+	for index := range listed.Values[:visible] {
 		response.Credentials = append(response.Credentials, orgCredentialToResponse(listed.Values[index]))
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -133,14 +140,14 @@ func (server Server) revokeOrgCredential(w http.ResponseWriter, r *http.Request)
 	credentialIDResult := core.ParseOrgCredentialID(r.PathValue("credential_id"))
 	credentialID, credentialMatched := credentialIDResult.(core.OrgCredentialIDCreated)
 	if !credentialMatched {
-		writeError(w, http.StatusBadRequest, credentialIDResult.(core.OrgCredentialIDRejected).Reason.Description())
+		writeDomainError(w, credentialIDResult.(core.OrgCredentialIDRejected).Reason)
 		return
 	}
 
 	result := server.orgCredentialService.Revoke(r.Context(), organizationID, credentialID.Value)
 	revoked, matched := result.(orgcred.CredentialRevoked)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(orgcred.RevokeRejected).Reason.Description())
+		writeDomainError(w, result.(orgcred.RevokeRejected).Reason)
 		return
 	}
 

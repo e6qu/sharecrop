@@ -14,9 +14,10 @@ import (
 
 // Method names namespace each notification.Store method on the wire.
 const (
-	methodCreate   = "notification.Create"
-	methodList     = "notification.List"
-	methodMarkRead = "notification.MarkRead"
+	methodCreate      = "notification.Create"
+	methodList        = "notification.List"
+	methodCountUnread = "notification.CountUnread"
+	methodMarkRead    = "notification.MarkRead"
 )
 
 type createArgs struct {
@@ -25,7 +26,12 @@ type createArgs struct {
 
 type listArgs struct {
 	UserID string            `json:"userid"`
+	Filter string            `json:"filter"`
 	Page   corewire.PageWire `json:"page"`
+}
+
+type countUnreadArgs struct {
+	UserID string `json:"userid"`
 }
 
 type markReadArgs struct {
@@ -57,11 +63,25 @@ func Dispatch(ctx context.Context, store notification.Store, method string, args
 		if err != nil {
 			return nil, err
 		}
+		argFilter, err := decodeStateFilter(decoded.Filter)
+		if err != nil {
+			return nil, err
+		}
 		argPage, err := corewire.DecodePage(decoded.Page)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeListResult(store.List(ctx, argUserID, argPage)))
+		return json.Marshal(encodeListResult(store.List(ctx, argUserID, argFilter, argPage)))
+	case methodCountUnread:
+		var decoded countUnreadArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("notification bridge: decode CountUnread args: %w", err)
+		}
+		argUserID, err := corewire.DecodeUserID(decoded.UserID)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeCountResult(store.CountUnread(ctx, argUserID)))
 	case methodMarkRead:
 		var decoded markReadArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -117,8 +137,8 @@ func (g GuestStore) Create(ctx context.Context, argNotification notification.Not
 	return result
 }
 
-func (g GuestStore) List(ctx context.Context, argUserID core.UserID, argPage core.Page) notification.ListStoreResult {
-	args, err := json.Marshal(listArgs{UserID: corewire.EncodeUserID(argUserID), Page: corewire.EncodePage(argPage)})
+func (g GuestStore) List(ctx context.Context, argUserID core.UserID, argFilter notification.StateFilter, argPage core.Page) notification.ListStoreResult {
+	args, err := json.Marshal(listArgs{UserID: corewire.EncodeUserID(argUserID), Filter: encodeStateFilter(argFilter), Page: corewire.EncodePage(argPage)})
 	if err != nil {
 		return notification.ListStoreRejected{Reason: guestError(err)}
 	}
@@ -133,6 +153,26 @@ func (g GuestStore) List(ctx context.Context, argUserID core.UserID, argPage cor
 	result, err := decodeListResult(wire)
 	if err != nil {
 		return notification.ListStoreRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) CountUnread(ctx context.Context, argUserID core.UserID) notification.CountStoreResult {
+	args, err := json.Marshal(countUnreadArgs{UserID: corewire.EncodeUserID(argUserID)})
+	if err != nil {
+		return notification.CountStoreRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodCountUnread, args)
+	if err != nil {
+		return notification.CountStoreRejected{Reason: guestError(err)}
+	}
+	var wire countResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return notification.CountStoreRejected{Reason: guestError(err)}
+	}
+	result, err := decodeCountResult(wire)
+	if err != nil {
+		return notification.CountStoreRejected{Reason: guestError(err)}
 	}
 	return result
 }

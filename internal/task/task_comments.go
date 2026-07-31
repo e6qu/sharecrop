@@ -6,6 +6,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 )
 
 // TaskComment is one message on a task discussion thread, so requester and
@@ -98,15 +99,20 @@ func (service Service) AddTaskComment(ctx context.Context, actor auth.UserSubjec
 	if !accepted_ {
 		return TaskCommentRejected{Reason: storeResult.(CreateTaskCommentStoreRejected).Reason}
 	}
+	// The active assignee (if one holds the task) is read via the existing
+	// reservation listing so both discussion parties hear about the comment.
+	recipients := append([]core.UserID{value.CreatedBy, actor.ID}, service.activeReservationHolders(ctx, value.ID)...)
+	service.emitTaskEvent(ctx, event.KindTaskCommented, event.ActorUser{ID: actor.ID}, value.ID,
+		event.TaskMetadata(value.ID), event.NewRecipients(recipients...))
 	return TaskCommentAdded{Value: accepted.Value}
 }
 
-func (service Service) ListTaskComments(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) TaskCommentsResult {
+func (service Service) ListTaskComments(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, page core.Page) TaskCommentsResult {
 	_, problem := service.loadViewableTask(ctx, actor, taskID)
 	if problem != nil {
 		return TaskCommentsListRejected{Reason: *problem}
 	}
-	storeResult := service.store.ListTaskComments(ctx, taskID)
+	storeResult := service.store.ListTaskComments(ctx, taskID, page)
 	listed, matched := storeResult.(ListTaskCommentsStoreAccepted)
 	if !matched {
 		return TaskCommentsListRejected{Reason: storeResult.(ListTaskCommentsStoreRejected).Reason}

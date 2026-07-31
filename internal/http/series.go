@@ -28,7 +28,8 @@ type seriesCommentResponse struct {
 }
 
 type taskSeriesListResponse struct {
-	Series []taskSeriesResponse `json:"series"`
+	Series     []taskSeriesResponse `json:"series"`
+	NextOffset int                  `json:"next_offset"`
 }
 
 type taskSeriesDetailResponse struct {
@@ -38,7 +39,8 @@ type taskSeriesDetailResponse struct {
 }
 
 type seriesCommentsResponse struct {
-	Comments []seriesCommentResponse `json:"comments"`
+	Comments   []seriesCommentResponse `json:"comments"`
+	NextOffset int                     `json:"next_offset"`
 }
 
 type createSeriesRequest struct {
@@ -76,15 +78,16 @@ func (server Server) listTaskSeries(w http.ResponseWriter, r *http.Request) {
 	if !pageOK {
 		return
 	}
-	result := server.taskService.ListSeries(r.Context(), actor, page)
+	result := server.taskService.ListSeries(r.Context(), actor, page.Probe())
 	listed, matched := result.(task.SeriesListed)
 	if !matched {
 		writeDomainError(w, result.(task.ListSeriesRejected).Reason)
 		return
 	}
 
-	response := taskSeriesListResponse{Series: make([]taskSeriesResponse, 0, len(listed.Values))}
-	for index := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := taskSeriesListResponse{Series: make([]taskSeriesResponse, 0, visible), NextOffset: nextOffset}
+	for index := range listed.Values[:visible] {
 		response.Series = append(response.Series, seriesToResponse(listed.Values[index]))
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -116,7 +119,7 @@ func (server Server) createTaskSeries(w http.ResponseWriter, r *http.Request) {
 	}
 	var request createSeriesRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	title, description, ok := server.seriesTitleAndDescription(w, request.Title, request.Description)
@@ -138,7 +141,7 @@ func (server Server) updateTaskSeries(w http.ResponseWriter, r *http.Request) {
 	}
 	var request createSeriesRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	title, description, ok := server.seriesTitleAndDescription(w, request.Title, request.Description)
@@ -189,7 +192,7 @@ func (server Server) addTaskToSeriesHandler(w http.ResponseWriter, r *http.Reque
 	}
 	var request addTaskToSeriesRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	taskID, ok := server.parseSeriesTaskID(w, request.TaskID)
@@ -228,7 +231,7 @@ func (server Server) reorderTaskSeries(w http.ResponseWriter, r *http.Request) {
 	}
 	var request reorderSeriesRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	order := make([]core.TaskID, 0, len(request.TaskIDs))
@@ -252,18 +255,26 @@ func (server Server) listTaskSeriesComments(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	result := server.taskService.ListSeriesComments(r.Context(), actor, seriesID)
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.taskService.ListSeriesComments(r.Context(), actor, seriesID, page.Probe())
 	listed, matched := result.(task.SeriesCommentsListed)
 	if !matched {
 		writeDomainError(w, result.(task.SeriesCommentsListRejected).Reason)
 		return
 	}
-	writeJSON(w, http.StatusOK, seriesCommentsResponse{Comments: commentsToResponse(listed.Values)})
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	writeJSON(w, http.StatusOK, seriesCommentsResponse{Comments: commentsToResponse(listed.Values[:visible]), NextOffset: nextOffset})
 }
 
 func (server Server) addTaskSeriesComment(w http.ResponseWriter, r *http.Request) {
 	actor, ok := server.seriesActor(w, r)
 	if !ok {
+		return
+	}
+	if !server.allowBySubject(w, actor.ID.String()) {
 		return
 	}
 	seriesID, ok := server.seriesPathID(w, r)
@@ -272,7 +283,7 @@ func (server Server) addTaskSeriesComment(w http.ResponseWriter, r *http.Request
 	}
 	var request seriesCommentRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	bodyResult := task.NewCommentBody(request.Body)
@@ -296,7 +307,7 @@ func (server Server) seriesActor(w http.ResponseWriter, r *http.Request) (auth.U
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return auth.UserSubject{}, false
 	}
 	return actor.subject, true
@@ -347,16 +358,35 @@ func (server Server) writeSeriesMutation(w http.ResponseWriter, r *http.Request,
 	server.writeSeriesDetailStatus(w, r, actor, mutated.Value, status)
 }
 
+// The series detail response embeds a bounded slice of the series' data: the
+// first tasks (series order) and the newest comments, capped so one detail
+// request can never render an unbounded series. The standalone paginated
+// list endpoints serve everything beyond these caps.
+const (
+	seriesDetailEmbeddedTasksLimit    = 100
+	seriesDetailEmbeddedCommentsLimit = 20
+)
+
 func (server Server) writeSeriesDetailStatus(w http.ResponseWriter, r *http.Request, actor auth.UserSubject, detail task.SeriesDetail, status int) {
+	embeddedTasks := detail.Tasks
+	if len(embeddedTasks) > seriesDetailEmbeddedTasksLimit {
+		embeddedTasks = embeddedTasks[:seriesDetailEmbeddedTasksLimit]
+	}
 	response := taskSeriesDetailResponse{
 		Series:   seriesToResponse(detail.Series),
-		Tasks:    make([]taskResponse, 0, len(detail.Tasks)),
+		Tasks:    make([]taskResponse, 0, len(embeddedTasks)),
 		Comments: []seriesCommentResponse{},
 	}
-	for index := range detail.Tasks {
-		response.Tasks = append(response.Tasks, taskToResponse(detail.Tasks[index]))
+	for index := range embeddedTasks {
+		response.Tasks = append(response.Tasks, taskToResponse(embeddedTasks[index]))
 	}
-	commentsResult := server.taskService.ListSeriesComments(r.Context(), actor, detail.Series.ID)
+	commentsPageResult := core.NewPage(seriesDetailEmbeddedCommentsLimit, 0)
+	commentsPage, commentsPageMatched := commentsPageResult.(core.PageAccepted)
+	if !commentsPageMatched {
+		writeDomainError(w, commentsPageResult.(core.PageRejected).Reason)
+		return
+	}
+	commentsResult := server.taskService.ListSeriesComments(r.Context(), actor, detail.Series.ID, commentsPage.Value)
 	if rejected, matches := commentsResult.(task.SeriesCommentsListRejected); matches {
 		writeDomainError(w, rejected.Reason)
 		return

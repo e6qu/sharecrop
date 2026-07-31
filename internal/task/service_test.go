@@ -6,6 +6,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event/eventtest"
 	"github.com/e6qu/sharecrop/internal/org"
 )
 
@@ -24,7 +25,7 @@ func TestOpenStateOnlyAcceptsDraft(t *testing.T) {
 func TestServiceRequiresPublicPublisherForOrganizationPublicTask(t *testing.T) {
 	store := newTaskMemoryStore()
 	permissions := newTaskPermissionStore()
-	service := NewService(store, permissions, nil)
+	service := NewService(store, permissions, nil, eventtest.NewRecorder())
 	actor := testUserSubject(t)
 	organizationID := testOrganizationID(t)
 	command := testCreateCommand(t, actor, OrganizationOwner{OrganizationID: organizationID}, PublicVisibility{})
@@ -56,7 +57,7 @@ func TestServiceUsesOrganizationDefaultHiddenVisibility(t *testing.T) {
 
 func TestServiceReserveCreatesUserReservation(t *testing.T) {
 	store := newTaskMemoryStore()
-	service := NewService(store, newTaskPermissionStore(), nil)
+	service := NewService(store, newTaskPermissionStore(), nil, eventtest.NewRecorder())
 	requester := testUserSubject(t)
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
@@ -80,7 +81,7 @@ func TestServiceReserveCreatesUserReservation(t *testing.T) {
 func TestServiceReserveIssuesTaskScopedWorkerCredentialWhenImmediatelyActive(t *testing.T) {
 	store := newTaskMemoryStore()
 	issuer := &stubCredentialIssuer{}
-	service := NewService(store, newTaskPermissionStore(), issuer)
+	service := NewService(store, newTaskPermissionStore(), issuer, eventtest.NewRecorder())
 	requester := testUserSubject(t)
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
@@ -106,7 +107,7 @@ func TestServiceReserveIssuesTaskScopedWorkerCredentialWhenImmediatelyActive(t *
 func TestServiceApproveReservationIssuesTaskScopedWorkerCredential(t *testing.T) {
 	store := newTaskMemoryStore()
 	issuer := &stubCredentialIssuer{}
-	service := NewService(store, newTaskPermissionStore(), issuer)
+	service := NewService(store, newTaskPermissionStore(), issuer, eventtest.NewRecorder())
 	requester := testUserSubject(t)
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
@@ -136,7 +137,7 @@ func TestServiceApproveReservationIssuesTaskScopedWorkerCredential(t *testing.T)
 
 func TestServiceReserveRejectsRequester(t *testing.T) {
 	store := newTaskMemoryStore()
-	service := NewService(store, newTaskPermissionStore(), nil)
+	service := NewService(store, newTaskPermissionStore(), nil, eventtest.NewRecorder())
 	requester := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 	created := service.Create(context.Background(), command).(TaskCreated)
@@ -151,7 +152,7 @@ func TestServiceReserveRejectsRequester(t *testing.T) {
 func TestServiceReserveCreatesOrganizationTeamReservation(t *testing.T) {
 	store := newTaskMemoryStore()
 	permissions := newTaskPermissionStore()
-	service := NewService(store, permissions, nil)
+	service := NewService(store, permissions, nil, eventtest.NewRecorder())
 	requester := testUserSubject(t)
 	worker := testUserSubject(t)
 	organizationID := testOrganizationID(t)
@@ -178,7 +179,7 @@ func TestServiceReserveCreatesOrganizationTeamReservation(t *testing.T) {
 
 func TestServiceReserveRejectsUserReservationForOrganizationTeamAssigneeScope(t *testing.T) {
 	store := newTaskMemoryStore()
-	service := NewService(store, newTaskPermissionStore(), nil)
+	service := NewService(store, newTaskPermissionStore(), nil, eventtest.NewRecorder())
 	requester := testUserSubject(t)
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
@@ -194,7 +195,7 @@ func TestServiceReserveRejectsUserReservationForOrganizationTeamAssigneeScope(t 
 
 func TestServiceReserveRejectsOrganizationTeamNonMember(t *testing.T) {
 	store := newTaskMemoryStore()
-	service := NewService(store, newTaskPermissionStore(), nil)
+	service := NewService(store, newTaskPermissionStore(), nil, eventtest.NewRecorder())
 	requester := testUserSubject(t)
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
@@ -211,7 +212,7 @@ func TestServiceReserveRejectsOrganizationTeamNonMember(t *testing.T) {
 func TestServiceListRejectsTeamScopeForNonMember(t *testing.T) {
 	store := newTaskMemoryStore()
 	permissions := newTaskPermissionStore()
-	service := NewService(store, permissions, nil)
+	service := NewService(store, permissions, nil, eventtest.NewRecorder())
 	outsider := testUserSubject(t)
 	teamID := testTeamID(t)
 
@@ -232,7 +233,7 @@ func TestServiceListRejectsTeamScopeForNonMember(t *testing.T) {
 func TestServiceListTeamScopeForOrgCredentialRequiresOwningOrg(t *testing.T) {
 	store := newTaskMemoryStore()
 	permissions := newTaskPermissionStore()
-	service := NewService(store, permissions, nil)
+	service := NewService(store, permissions, nil, eventtest.NewRecorder())
 	owningOrg := testOrganizationID(t)
 	otherOrg := testOrganizationID(t)
 	teamID := testTeamID(t)
@@ -329,7 +330,7 @@ func (store *taskMemoryStore) ChangeReservationState(_ context.Context, taskID c
 	return ChangeReservationStateStoreAccepted{Value: value}
 }
 
-func (store *taskMemoryStore) ListReservations(_ context.Context, taskID core.TaskID) ListReservationsStoreResult {
+func (store *taskMemoryStore) ListReservations(_ context.Context, taskID core.TaskID, _ core.Page) ListReservationsStoreResult {
 	values := make([]Reservation, 0)
 	for reservationKey := range store.reservations {
 		value := store.reservations[reservationKey]
@@ -440,7 +441,7 @@ func (store *taskMemoryStore) CreateSeriesComment(_ context.Context, comment Ser
 	return CreateSeriesCommentStoreAccepted{Value: comment}
 }
 
-func (store *taskMemoryStore) ListSeriesComments(_ context.Context, _ core.TaskSeriesID) ListSeriesCommentsStoreResult {
+func (store *taskMemoryStore) ListSeriesComments(_ context.Context, _ core.TaskSeriesID, _ core.Page) ListSeriesCommentsStoreResult {
 	return ListSeriesCommentsStoreAccepted{Values: nil}
 }
 
@@ -448,7 +449,7 @@ func (store *taskMemoryStore) CreateTaskComment(_ context.Context, comment TaskC
 	return CreateTaskCommentStoreAccepted{Value: comment}
 }
 
-func (store *taskMemoryStore) ListTaskComments(_ context.Context, _ core.TaskID) ListTaskCommentsStoreResult {
+func (store *taskMemoryStore) ListTaskComments(_ context.Context, _ core.TaskID, _ core.Page) ListTaskCommentsStoreResult {
 	return ListTaskCommentsStoreAccepted{Values: nil}
 }
 
@@ -592,7 +593,7 @@ func TestGetSeriesAllowsOwner(t *testing.T) {
 	actor := testUserSubject(t)
 	seriesID := testTaskSeriesID(t)
 	store.series = []Series{{ID: seriesID, Owner: UserOwner{UserID: actor.ID}, Title: acceptedSeriesTitle(t, "My series"), CreatedBy: actor.ID}}
-	service := NewService(store, newTaskPermissionStore(), nil)
+	service := NewService(store, newTaskPermissionStore(), nil, eventtest.NewRecorder())
 
 	result := service.GetSeries(context.Background(), actor, seriesID)
 	if _, matched := result.(SeriesGot); !matched {
@@ -606,7 +607,7 @@ func TestGetSeriesDeniesNonOwner(t *testing.T) {
 	other := testUserSubject(t)
 	seriesID := testTaskSeriesID(t)
 	store.series = []Series{{ID: seriesID, Owner: UserOwner{UserID: owner.ID}, Title: acceptedSeriesTitle(t, "Private series"), CreatedBy: owner.ID}}
-	service := NewService(store, newTaskPermissionStore(), nil)
+	service := NewService(store, newTaskPermissionStore(), nil, eventtest.NewRecorder())
 
 	result := service.GetSeries(context.Background(), other, seriesID)
 	if _, matched := result.(GetSeriesRejected); !matched {

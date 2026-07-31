@@ -2,7 +2,6 @@ package wasmseed
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 
 	"github.com/e6qu/sharecrop/internal/agent"
@@ -10,6 +9,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/org"
@@ -29,13 +29,16 @@ func Seed(ctx context.Context, secret auth.AccessTokenSecret, stores appmux.Stor
 	}
 	organizationService := org.NewService(stores.Organization)
 	agentService := agent.NewService(stores.Agent)
-	taskService := task.NewService(stores.Task, organizationService, agentService)
-	submissionService := submission.NewService(stores.Submission, stores.Task, organizationService)
-	ledgerService := ledger.NewService(stores.Ledger)
-	assetService := assets.NewService(stores.Assets)
-	notificationService := notification.NewService(stores.Notification)
+	// The seed goes through the same recorder-wired services production uses,
+	// so seeded actions produce the same events and inbox notifications a live
+	// user would see.
+	recorder := event.NewRecorder(stores.Event, notification.NewService(stores.Notification))
+	taskService := task.NewService(stores.Task, organizationService, agentService, recorder)
+	submissionService := submission.NewService(stores.Submission, stores.Task, organizationService, recorder)
+	ledgerService := ledger.NewService(stores.Ledger, recorder)
+	assetService := assets.NewService(stores.Assets, recorder)
 
-	return SeedDemoScenario(ctx, authService.Value, organizationService, taskService, ledgerService, submissionService, assetService, notificationService)
+	return SeedDemoScenario(ctx, authService.Value, organizationService, taskService, ledgerService, submissionService, assetService)
 }
 
 // demoUserSeed is one of the fixed browser-demo accounts. The email addresses
@@ -81,7 +84,7 @@ func seedErr(reason string) SeedResult { return SeedResult{Err: reason} }
 // mara in either way so the caller always gets a fresh refresh-token cookie
 // - browser storage persists seeded data across page reloads, but the
 // in-memory admin/session state built fresh each reload does not.
-func SeedDemoScenario(ctx context.Context, authService auth.Service, organizationService org.Service, taskService task.Service, ledgerService ledger.Service, submissionService submission.Service, assetService assets.Service, notificationService notification.Service) SeedResult {
+func SeedDemoScenario(ctx context.Context, authService auth.Service, organizationService org.Service, taskService task.Service, ledgerService ledger.Service, submissionService submission.Service, assetService assets.Service) SeedResult {
 	maraEmailResult := auth.NewEmailAddress(demoUsers[0].email)
 	maraEmail, matched := maraEmailResult.(auth.EmailAddressAccepted)
 	if !matched {
@@ -95,7 +98,7 @@ func SeedDemoScenario(ctx context.Context, authService auth.Service, organizatio
 
 	registerResult := authService.Register(ctx, maraEmail.Value, password.Value)
 	if accepted, matched := registerResult.(auth.RegisterAccepted); matched {
-		if err := seedDemoScenarioData(ctx, authService, organizationService, taskService, ledgerService, submissionService, assetService, notificationService, accepted.Subject.ID, password.Value); err != "" {
+		if err := seedDemoScenarioData(ctx, authService, organizationService, taskService, ledgerService, submissionService, assetService, accepted.Subject.ID, password.Value); err != "" {
 			return seedErr(err)
 		}
 		return SeedResult{AdminUserID: accepted.Subject.ID, AdminRefreshToken: refreshCookie(accepted.RefreshToken)}
@@ -119,7 +122,7 @@ func refreshCookie(token auth.RefreshTokenPlain) *http.Cookie {
 	return &http.Cookie{Name: "sharecrop_refresh_token", Value: token.String(), Path: "/"}
 }
 
-func seedDemoScenarioData(ctx context.Context, authService auth.Service, organizationService org.Service, taskService task.Service, ledgerService ledger.Service, submissionService submission.Service, assetService assets.Service, notificationService notification.Service, maraID core.UserID, password auth.PasswordSecret) string {
+func seedDemoScenarioData(ctx context.Context, authService auth.Service, organizationService org.Service, taskService task.Service, ledgerService ledger.Service, submissionService submission.Service, assetService assets.Service, maraID core.UserID, password auth.PasswordSecret) string {
 	mara := auth.UserSubject{ID: maraID}
 	memberIDs := make(map[string]core.UserID, len(demoUsers))
 	memberIDs[demoUsers[0].label] = maraID
@@ -281,12 +284,10 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 		ResponseSource: responseAccepted.Value,
 		Attachments:    []attachment.Attachment{},
 	})
-	submitted, matched := submitResult.(submission.SubmissionCreated)
-	if !matched {
+	// The recorder-wired submission service also fans out mara's
+	// submission_created inbox notification; no manual seed row is needed.
+	if _, matched := submitResult.(submission.SubmissionCreated); !matched {
 		return submitResult.(submission.SubmitRejected).Reason.Description()
-	}
-	if err := seedSubmissionNotification(ctx, notificationService, maraID, renSubject.ID, submitted.Value.ID, reviewCreated.Value.ID); err != "" {
-		return err
 	}
 
 	// task-approvals: an approval-required task owned by mara with a pending
@@ -332,26 +333,6 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 		return "seed collectible award failed"
 	}
 
-	return ""
-}
-
-// seedSubmissionNotification writes the same notification the HTTP layer
-// records for a live submission (internal/http notify + KindSubmissionCreated
-// + task metadata), since notifications are an HTTP-layer side effect that
-// service-level seeding does not produce.
-func seedSubmissionNotification(ctx context.Context, notificationService notification.Service, recipient core.UserID, actor core.UserID, submissionID core.SubmissionID, taskID core.TaskID) string {
-	metadata, err := json.Marshal(struct {
-		TaskID string `json:"task_id"`
-	}{TaskID: taskID.String()})
-	if err != nil {
-		return "encode seed notification metadata failed"
-	}
-	result := notificationService.Notify(ctx, recipient, actor, notification.KindSubmissionCreated,
-		notification.Subject{Kind: "submission", ID: submissionID.String()},
-		notification.Metadata{JSON: string(metadata)})
-	if _, matched := result.(notification.NotificationCreated); !matched {
-		return "seed submission notification failed"
-	}
 	return ""
 }
 

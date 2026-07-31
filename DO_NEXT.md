@@ -3,13 +3,25 @@
 Prioritized queue. Reread [AGENTS.md](./AGENTS.md) before starting and update the
 continuity files if task scope changes.
 
-1. **MCP/SSE for concurrent streaming.** Move MCP/SSE toward HTTP/2 by default
-   (HTTP/3-ready) to support ~100 concurrent streaming sessions, keeping HTTP/1.1
-   as an explicit option for regular UI/API traffic. Note the current backend
-   delivers SSE across replicas by DB polling and returns a bounded response over
-   the WASI bridge (which cannot stream); a streaming transport would let it push.
+1. **Edge architecture for true streaming.** The server now supports HTTP/2
+   cleartext behind `SHARECROP_HTTP_PROTOCOL=h2c`, but the Amazon API Gateway
+   HTTP API edge speaks HTTP/1.1 to the integration, buffers responses, and
+   caps every request at 30 seconds, so MCP/browser SSE remain
+   replay-and-reconnect in production. Real end-to-end streaming for ~100
+   concurrent sessions is an edge decision (an ALB with an h2c target protocol
+   or an API Gateway replacement) that also conflicts with the current
+   Terraform no-load-balancer policy gate; decide deliberately before
+   implementing. The WASI bridge still cannot stream; native mode already
+   pushes.
 
-2. **Maintain the AWS deployment.** The Terraform in `deploy/terraform/`
+2. **Event-stream follow-ups.** Emission is post-commit best-effort; a strict
+   in-transaction outbox would close the small loss window. List responses
+   report `next_offset` but no totals (COUNT queries). Webhook secrets are
+   stored as written because HMAC needs the plaintext; at-rest encryption is
+   open. The guest-side rate-limit bridge still fails open on transport
+   errors while the host store now fails closed.
+
+3. **Maintain the AWS deployment.** The Terraform in `deploy/terraform/`
    provisions private Amazon ECS Fargate tasks and an Amazon API Gateway HTTP
    API private integration through AWS Cloud Map in an existing VPC. Keep the
    API route throttles, access logs, container health checks, private task
@@ -39,19 +51,19 @@ continuity files if task scope changes.
    while preserving at most 20 complete release triplets.
    See [docs/deployment.md](./docs/deployment.md).
 
-3. Keep expanding shared scenario parity as new user-visible API surfaces are
+4. Keep expanding shared scenario parity as new user-visible API surfaces are
    added, and keep running it against both SQL engines and the real backend as
    behavior changes.
 
-4. Keep expanding generated/fixture-level HTTP contract coverage as the API
+5. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
 
-5. Audit remaining raw-ID browser flows and replace high-traffic fields with
+6. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 
-6. Do not add anonymous worker identity or provider email delivery unless the
+7. Do not add anonymous worker identity or provider email delivery unless the
    product direction changes. Registered-user submissions remain the model;
    account and organization setup stays admin/org-admin driven.
 
@@ -62,6 +74,15 @@ UI minors queue:
 
 Recently finished (details in [WHAT_WE_DID.md](./WHAT_WE_DID.md)):
 
+- The review-driven platform upgrade: domain event stream with service-layer
+  emission (MCP and REST now produce identical notifications/events), sealed
+  notification kinds with unread filter/count, outbound webhooks (signed,
+  retried, SSRF-guarded), the per-user event feed + SSE, the lifecycle runner
+  (reservation/task expiry, retention, rate-limit and MCP-session sweeps,
+  webhook pump), real task expiration with refunds, per-account ledger
+  idempotency, the REST org-credential scope gate, machine-readable error
+  codes, `next_offset` pagination, MCP create/accept/list parity plus credits
+  tools, opt-in h2c, and the farm/pixel retheme of the shipped app.
 - The Shauth relying-party recovery boundary: an accessible branded
   light/dark app-local signed-out page, explicit same-origin recovery, and a
   real PostgreSQL/Ory Hydra/browser matrix for catalog and direct SSO,

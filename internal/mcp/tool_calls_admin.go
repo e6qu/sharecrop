@@ -138,7 +138,7 @@ func (server Server) callListPlatformAdmins(ctx context.Context, subject auth.Us
 	result := server.services.ListPlatformAdmins(ctx, core.DefaultPage())
 	listed, matched := result.(PlatformAdminsListed)
 	if !matched {
-		return toolFailed{message: result.(PlatformAdminListRejected).Reason.Description()}
+		return toolFailed{code: result.(PlatformAdminListRejected).Reason.Code(), message: result.(PlatformAdminListRejected).Reason.Description()}
 	}
 	summaries := make([]platformAdminSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -155,7 +155,7 @@ func (server Server) callGrantPlatformAdmin(ctx context.Context, subject auth.Us
 	result := server.services.GrantPlatformAdmin(ctx, userID, subject.ID)
 	saved, matched := result.(PlatformAdminSaved)
 	if !matched {
-		return toolFailed{message: result.(PlatformAdminMutationRejected).Reason.Description()}
+		return toolFailed{code: result.(PlatformAdminMutationRejected).Reason.Code(), message: result.(PlatformAdminMutationRejected).Reason.Description()}
 	}
 	return marshalPayload(platformAdminToSummary(saved.Value))
 }
@@ -168,7 +168,7 @@ func (server Server) callRevokePlatformAdmin(ctx context.Context, subject auth.U
 	result := server.services.RevokePlatformAdmin(ctx, userID)
 	saved, matched := result.(PlatformAdminSaved)
 	if !matched {
-		return toolFailed{message: result.(PlatformAdminMutationRejected).Reason.Description()}
+		return toolFailed{code: result.(PlatformAdminMutationRejected).Reason.Code(), message: result.(PlatformAdminMutationRejected).Reason.Description()}
 	}
 	return marshalPayload(platformAdminToSummary(saved.Value))
 }
@@ -186,7 +186,7 @@ func (server Server) callCreateModerationReport(ctx context.Context, subject aut
 	result := server.services.CreateModerationReport(ctx, subject.ID, strings.TrimSpace(args.SubjectKind), strings.TrimSpace(args.SubjectID), strings.TrimSpace(args.Reason), strings.TrimSpace(args.Details))
 	saved, matched := result.(ModerationReportSaved)
 	if !matched {
-		return toolFailed{message: result.(ModerationReportRejected).Reason.Description()}
+		return toolFailed{code: result.(ModerationReportRejected).Reason.Code(), message: result.(ModerationReportRejected).Reason.Description()}
 	}
 	return marshalPayload(moderationReportToSummary(saved.Value))
 }
@@ -201,7 +201,7 @@ func (server Server) callListAdminModerationReports(ctx context.Context, subject
 	result := server.services.ListAdminModerationReports(ctx, strings.TrimSpace(args.State), core.DefaultPage())
 	listed, matched := result.(ModerationReportsListed)
 	if !matched {
-		return toolFailed{message: result.(ModerationReportsListRejected).Reason.Description()}
+		return toolFailed{code: result.(ModerationReportsListRejected).Reason.Code(), message: result.(ModerationReportsListRejected).Reason.Description()}
 	}
 	summaries := make([]moderationReportSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -227,7 +227,7 @@ func (server Server) callTriageModerationReport(ctx context.Context, subject aut
 	result := server.services.TriageModerationReport(ctx, subject.ID, reportID.Value, strings.TrimSpace(args.State), args.ResolutionNote)
 	saved, matched := result.(ModerationReportSaved)
 	if !matched {
-		return toolFailed{message: result.(ModerationReportRejected).Reason.Description()}
+		return toolFailed{code: result.(ModerationReportRejected).Reason.Code(), message: result.(ModerationReportRejected).Reason.Description()}
 	}
 	return marshalPayload(moderationReportToSummary(saved.Value))
 }
@@ -242,7 +242,7 @@ func (server Server) callCreatePrivacyRequest(ctx context.Context, subject auth.
 	result := server.services.CreatePrivacyRequest(ctx, subject.ID, strings.TrimSpace(args.Kind))
 	saved, matched := result.(PrivacyRequestSaved)
 	if !matched {
-		return toolFailed{message: result.(PrivacyRequestRejected).Reason.Description()}
+		return toolFailed{code: result.(PrivacyRequestRejected).Reason.Code(), message: result.(PrivacyRequestRejected).Reason.Description()}
 	}
 	return marshalPayload(privacyRequestToSummary(saved.Value))
 }
@@ -260,7 +260,7 @@ func (server Server) callListAdminPrivacyRequests(ctx context.Context, subject a
 func privacyRequestsListResult(result PrivacyRequestsListResult) toolResult {
 	listed, matched := result.(PrivacyRequestsListed)
 	if !matched {
-		return toolFailed{message: result.(PrivacyRequestsListRejected).Reason.Description()}
+		return toolFailed{code: result.(PrivacyRequestsListRejected).Reason.Code(), message: result.(PrivacyRequestsListRejected).Reason.Description()}
 	}
 	summaries := make([]privacyRequestSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -280,7 +280,7 @@ func (server Server) callResolveAdminPrivacyRequest(ctx context.Context, subject
 	result := server.services.ResolveAdminPrivacyRequest(ctx, strings.TrimSpace(args.PrivacyRequestID), args.ResolutionNote)
 	saved, matched := result.(PrivacyRequestSaved)
 	if !matched {
-		return toolFailed{message: result.(PrivacyRequestRejected).Reason.Description()}
+		return toolFailed{code: result.(PrivacyRequestRejected).Reason.Code(), message: result.(PrivacyRequestRejected).Reason.Description()}
 	}
 	return marshalPayload(privacyRequestToSummary(saved.Value))
 }
@@ -289,7 +289,7 @@ func (server Server) callRunPrivacyRetention(ctx context.Context, subject auth.U
 	result := server.services.RunPrivacyRetention(ctx, subject.ID)
 	run, matched := result.(PrivacyRetentionRun)
 	if !matched {
-		return toolFailed{message: result.(PrivacyRetentionRejected).Reason.Description()}
+		return toolFailed{code: result.(PrivacyRetentionRejected).Reason.Code(), message: result.(PrivacyRetentionRejected).Reason.Description()}
 	}
 	return marshalPayload(privacyRetentionPayload{RedactedFieldCount: run.RedactedFieldCount})
 }
@@ -301,7 +301,7 @@ func (server Server) callListOrganizationAuditEvents(ctx context.Context, subjec
 	}
 	permissionCheck := server.services.CheckOrganizationPermission(ctx, organizationID, subject.ID, org.PermissionManageMembers)
 	if _, denied := permissionCheck.(org.PermissionDenied); denied {
-		return toolFailed{message: "organization audit access denied"}
+		return toolFailed{code: core.ErrorCodePermissionDenied, message: "organization audit access denied"}
 	}
 	filters := audit.NoListFilters()
 	filters.SubjectID = audit.SubjectIDEquals{Value: organizationID.String()}
@@ -335,7 +335,7 @@ func (server Server) callListAdminAuditEvents(ctx context.Context, subject auth.
 func auditEventsListResult(result audit.ListResult) toolResult {
 	listed, matched := result.(audit.EventsListed)
 	if !matched {
-		return toolFailed{message: result.(audit.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(audit.ListRejected).Reason.Code(), message: result.(audit.ListRejected).Reason.Description()}
 	}
 	summaries := make([]auditEventSummary, 0, len(listed.Values))
 	for index := range listed.Values {

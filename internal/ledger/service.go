@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
 
@@ -35,6 +36,7 @@ type RequestChangesStoreCommand struct {
 	RequesterUserID core.UserID
 	TaskID          core.TaskID
 	SubmissionID    core.SubmissionID
+	IdempotencyKey  IdempotencyKey
 	ReviewNote      submission.ReviewNote
 }
 
@@ -85,11 +87,57 @@ type Store interface {
 }
 
 type Service struct {
-	store Store
+	store    Store
+	recorder event.Recorder
 }
 
-func NewService(store Store) Service {
-	return Service{store: store}
+func NewService(store Store, recorder event.Recorder) Service {
+	return Service{store: store, recorder: recorder}
+}
+
+// emitLedgerEvent emits one event after a committed ledger mutation. Emission
+// is post-commit best-effort: a rejected emission never fails the operation
+// that already committed.
+func (service Service) emitLedgerEvent(ctx context.Context, kind event.Kind, actor event.Actor, subject event.Subject, metadata event.Metadata, recipients event.Recipients) {
+	_ = service.recorder.Emit(ctx, event.EmitCommand{Kind: kind, Actor: actor, Subject: subject, Metadata: metadata, Recipients: recipients})
+}
+
+func reviewSubject(taskID core.TaskID, submissionID core.SubmissionID) event.Subject {
+	subject := event.NoSubjectRefs()
+	subject.Task = event.TaskSubject{ID: taskID}
+	subject.Submission = event.SubmissionSubject{ID: submissionID}
+	return subject
+}
+
+func taskSubject(taskID core.TaskID) event.Subject {
+	subject := event.NoSubjectRefs()
+	subject.Task = event.TaskSubject{ID: taskID}
+	return subject
+}
+
+// emitPayoutEvents emits the payout_received / tip_received events a review
+// produced. The worker is both variants' only meaningful audience; the
+// reviewing requester is the actor, so their inbox stays clean (the
+// notification fan-out skips the actor) while their feed still shows the
+// movement.
+func (service Service) emitPayoutEvents(ctx context.Context, requester core.UserID, subject event.Subject, taskID core.TaskID, payout PayoutOutcome, tip TipOutcome) {
+	actor := event.ActorUser{ID: requester}
+	switch typed := payout.(type) {
+	case CreditPayout:
+		service.emitLedgerEvent(ctx, event.KindPayoutReceived, actor, subject, event.TaskAmountMetadata(taskID, typed.Amount.Int64()), event.NewRecipients(typed.WorkerUserID, requester))
+	case CollectiblePayout:
+		service.emitLedgerEvent(ctx, event.KindPayoutReceived, actor, subject, event.TaskMetadata(taskID), event.NewRecipients(typed.WorkerUserID, requester))
+	case BundlePayout:
+		service.emitLedgerEvent(ctx, event.KindPayoutReceived, actor, subject, event.TaskAmountMetadata(taskID, typed.Amount.Int64()), event.NewRecipients(typed.WorkerUserID, requester))
+	}
+	switch typed := tip.(type) {
+	case CreditTip:
+		service.emitLedgerEvent(ctx, event.KindTipReceived, actor, subject, event.TaskAmountMetadata(taskID, typed.Amount.Int64()), event.NewRecipients(typed.WorkerUserID, requester))
+	case CollectibleTip:
+		service.emitLedgerEvent(ctx, event.KindTipReceived, actor, subject, event.TaskCollectibleMetadata(taskID, typed.CollectibleID), event.NewRecipients(typed.WorkerUserID, requester))
+	case BundleTip:
+		service.emitLedgerEvent(ctx, event.KindTipReceived, actor, subject, event.TaskAmountMetadata(taskID, typed.Amount.Int64()), event.NewRecipients(typed.WorkerUserID, requester))
+	}
 }
 
 func (service Service) FundTask(ctx context.Context, funder core.UserID, taskID core.TaskID, amount CreditAmount, key IdempotencyKey) FundResult {
@@ -100,13 +148,24 @@ func (service Service) FundTask(ctx context.Context, funder core.UserID, taskID 
 		return FundRejected{Reason: rejected.Reason}
 	}
 
-	return service.store.FundTask(ctx, FundStoreCommand{
+	result := service.store.FundTask(ctx, FundStoreCommand{
 		EntryID:        entryCreated.Value,
 		FunderUserID:   funder,
 		TaskID:         taskID,
 		Amount:         amount,
 		IdempotencyKey: key,
 	})
+	if _, funded := result.(TaskFunded); funded {
+		// The fund result cannot distinguish a fresh fund from an idempotent
+		// replay, so a replayed request re-emits task_funded; the recipient
+		// set makes the duplicate harmless (see below). The store result does
+		// not carry the task owner either, so the funder (the actor, and in
+		// the common self-funding flow also the owner) is the only recipient;
+		// a cross-service owner lookup is deliberately avoided here.
+		service.emitLedgerEvent(ctx, event.KindTaskFunded, event.ActorUser{ID: funder}, taskSubject(taskID),
+			event.TaskAmountMetadata(taskID, amount.Int64()), event.NewRecipients(funder))
+	}
+	return result
 }
 
 func (service Service) AcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey) AcceptResult {
@@ -131,7 +190,7 @@ func (service Service) ReviewAcceptSubmission(ctx context.Context, requester cor
 		return AcceptRejected{Reason: rejected.reason}
 	}
 
-	return service.store.AcceptSubmission(ctx, AcceptStoreCommand{
+	result := service.store.AcceptSubmission(ctx, AcceptStoreCommand{
 		PayoutEntryID:    payoutEntryID,
 		RefundEntryID:    refundEntryID,
 		TipDebitEntryID:  tipDebitEntryID,
@@ -144,15 +203,33 @@ func (service Service) ReviewAcceptSubmission(ctx context.Context, requester cor
 		TipSelection:     tipSelection,
 		CollectibleTip:   collectibleTip,
 	})
+	if accepted, matched := result.(SubmissionAccepted); matched {
+		// The accept result cannot distinguish a fresh accept from an
+		// idempotent replay, so a replay re-emits; correct retries reuse the
+		// same idempotency key and simply refresh the same inbox rows.
+		subject := reviewSubject(taskID, submissionID)
+		service.emitLedgerEvent(ctx, event.KindSubmissionAccepted, event.ActorUser{ID: requester}, subject,
+			event.TaskMetadata(taskID), event.NewRecipients(accepted.WorkerUserID, requester))
+		service.emitPayoutEvents(ctx, requester, subject, taskID, accepted.Payout, accepted.Tip)
+	}
+	return result
 }
 
-func (service Service) RequestChanges(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, note submission.ReviewNote) RequestChangesResult {
-	return service.store.RequestChanges(ctx, RequestChangesStoreCommand{
+func (service Service) RequestChanges(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, note submission.ReviewNote) RequestChangesResult {
+	result := service.store.RequestChanges(ctx, RequestChangesStoreCommand{
 		RequesterUserID: requester,
 		TaskID:          taskID,
 		SubmissionID:    submissionID,
+		IdempotencyKey:  key,
 		ReviewNote:      note,
 	})
+	if changed, matched := result.(ChangesRequested); matched {
+		// Fresh request and idempotent replay share the same result shape, so
+		// a replay re-emits (same trade-off as ReviewAcceptSubmission).
+		service.emitLedgerEvent(ctx, event.KindSubmissionChangesRequested, event.ActorUser{ID: requester},
+			reviewSubject(taskID, submissionID), event.TaskMetadata(taskID), event.NewRecipients(changed.WorkerUserID, requester))
+	}
+	return result
 }
 
 func (service Service) RejectSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, note submission.ReviewNote, creditSelection CreditReviewSelection, tipSelection TipSelection, banSelection BanSelection) RejectResult {
@@ -168,7 +245,7 @@ func (service Service) RejectSubmission(ctx context.Context, requester core.User
 	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
 		return RejectRejected{Reason: rejected.reason}
 	}
-	return service.store.RejectSubmission(ctx, RejectStoreCommand{
+	result := service.store.RejectSubmission(ctx, RejectStoreCommand{
 		PayoutEntryID:    payoutEntryID,
 		TipDebitEntryID:  tipDebitEntryID,
 		TipCreditEntryID: tipCreditEntryID,
@@ -181,6 +258,15 @@ func (service Service) RejectSubmission(ctx context.Context, requester core.User
 		TipSelection:     tipSelection,
 		BanSelection:     banSelection,
 	})
+	if rejected, matched := result.(SubmissionRejected); matched {
+		// Fresh reject and idempotent replay share the same result shape, so
+		// a replay re-emits (same trade-off as ReviewAcceptSubmission).
+		subject := reviewSubject(taskID, submissionID)
+		service.emitLedgerEvent(ctx, event.KindSubmissionRejected, event.ActorUser{ID: requester}, subject,
+			event.TaskMetadata(taskID), event.NewRecipients(rejected.WorkerUserID, requester))
+		service.emitPayoutEvents(ctx, requester, subject, taskID, rejected.Payout, rejected.Tip)
+	}
+	return result
 }
 
 type ledgerEntryIDResult interface {
@@ -217,12 +303,21 @@ func (service Service) RefundTask(ctx context.Context, requester core.UserID, ta
 		return RefundRejected{Reason: rejected.Reason}
 	}
 
-	return service.store.RefundTask(ctx, RefundStoreCommand{
+	result := service.store.RefundTask(ctx, RefundStoreCommand{
 		EntryID:         entryCreated.Value,
 		RequesterUserID: requester,
 		TaskID:          taskID,
 		IdempotencyKey:  key,
 	})
+	if _, refunded := result.(TaskRefunded); refunded {
+		// A refund cancels the task. The refund result does not expose the
+		// released reservation holder, so the requesting user (owner or
+		// active implementor - the store only permits those two) is the only
+		// recipient; the metadata marks the cancellation's refund cause.
+		service.emitLedgerEvent(ctx, event.KindTaskCancelled, event.ActorUser{ID: requester}, taskSubject(taskID),
+			event.TaskRefundMetadata(taskID), event.NewRecipients(requester))
+	}
+	return result
 }
 
 func (service Service) FundTaskFromOrganization(ctx context.Context, organizationID core.OrganizationID, taskID core.TaskID, amount CreditAmount, key IdempotencyKey) FundResult {
@@ -232,13 +327,23 @@ func (service Service) FundTaskFromOrganization(ctx context.Context, organizatio
 		return FundRejected{Reason: entryResult.(core.LedgerEntryIDRejected).Reason}
 	}
 
-	return service.store.FundTaskFromOrganization(ctx, OrganizationFundStoreCommand{
+	result := service.store.FundTaskFromOrganization(ctx, OrganizationFundStoreCommand{
 		EntryID:        entryCreated.Value,
 		OrganizationID: organizationID,
 		TaskID:         taskID,
 		Amount:         amount,
 		IdempotencyKey: key,
 	})
+	if _, funded := result.(TaskFunded); funded {
+		// Organization funding carries no acting user identity into this
+		// service and the fund result names no task owner, so the event is
+		// recorded with the system actor and an empty recipient set: it lands
+		// in the durable stream (for feeds/webhooks reading by subject) but
+		// fans out no inbox rows.
+		service.emitLedgerEvent(ctx, event.KindTaskFunded, event.ActorSystem{}, taskSubject(taskID),
+			event.TaskAmountMetadata(taskID, amount.Int64()), event.NewRecipients())
+	}
+	return result
 }
 
 func (service Service) Balance(ctx context.Context, owner core.UserID) BalanceResult {

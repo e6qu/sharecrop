@@ -21,6 +21,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
+	"github.com/e6qu/sharecrop/internal/webhook"
 )
 
 // mcpServices adapts the HTTP server's domain services to the MCP tool surface.
@@ -37,10 +38,27 @@ type mcpServices struct {
 	moderationTriage     ModerationTriageService
 	privacyService       PrivacyService
 	auditService         AuditService
+	webhookService       webhook.Service
 }
 
-func (services mcpServices) ListTasks(ctx context.Context, subject auth.Subject, scope task.ListScope, filters task.ListFilters) task.ListResult {
-	return services.taskService.List(ctx, subject, scope, filters, core.DefaultPage())
+func (services mcpServices) CreateWebhookSubscription(ctx context.Context, owner webhook.Owner, endpoint webhook.EndpointURL, kinds webhook.KindFilter) webhook.CreateResult {
+	return services.webhookService.Create(ctx, owner, endpoint, kinds)
+}
+
+func (services mcpServices) ListWebhookSubscriptions(ctx context.Context, owner webhook.Owner, page core.Page) webhook.ListResult {
+	return services.webhookService.List(ctx, owner, page)
+}
+
+func (services mcpServices) RevokeWebhookSubscription(ctx context.Context, owner webhook.Owner, id core.WebhookSubscriptionID) webhook.RevokeResult {
+	return services.webhookService.Revoke(ctx, owner, id)
+}
+
+func (services mcpServices) ListWebhookDeliveries(ctx context.Context, owner webhook.Owner, id core.WebhookSubscriptionID, page core.Page) webhook.ListDeliveriesResult {
+	return services.webhookService.ListDeliveries(ctx, owner, id, page)
+}
+
+func (services mcpServices) ListTasks(ctx context.Context, subject auth.Subject, scope task.ListScope, filters task.ListFilters, page core.Page) task.ListResult {
+	return services.taskService.List(ctx, subject, scope, filters, page)
 }
 
 func (services mcpServices) GetTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.GetResult {
@@ -75,8 +93,8 @@ func (services mcpServices) GetSubmissionStatus(ctx context.Context, token submi
 	return services.submissionService.FindByReceipt(ctx, token)
 }
 
-func (services mcpServices) ListTaskSubmissions(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) submission.ListResult {
-	return services.submissionService.ListForTask(ctx, subject, taskID, core.DefaultPage())
+func (services mcpServices) ListTaskSubmissions(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, page core.Page) submission.ListResult {
+	return services.submissionService.ListForTask(ctx, subject, taskID, page)
 }
 
 func (services mcpServices) AcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey) ledger.AcceptResult {
@@ -87,8 +105,8 @@ func (services mcpServices) ReviewAcceptSubmission(ctx context.Context, requeste
 	return services.ledgerService.ReviewAcceptSubmission(ctx, requester, taskID, submissionID, key, creditSelection, tipSelection, collectibleTip)
 }
 
-func (services mcpServices) RequestChanges(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, note submission.ReviewNote) ledger.RequestChangesResult {
-	return services.ledgerService.RequestChanges(ctx, requester, taskID, submissionID, note)
+func (services mcpServices) RequestChanges(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, note submission.ReviewNote) ledger.RequestChangesResult {
+	return services.ledgerService.RequestChanges(ctx, requester, taskID, submissionID, key, note)
 }
 
 func (services mcpServices) RejectSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, note submission.ReviewNote, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, banSelection ledger.BanSelection) ledger.RejectResult {
@@ -131,8 +149,8 @@ func (services mcpServices) AddSeriesComment(ctx context.Context, subject auth.U
 	return services.taskService.AddSeriesComment(ctx, subject, seriesID, body)
 }
 
-func (services mcpServices) ListSeriesComments(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID) task.SeriesCommentsResult {
-	return services.taskService.ListSeriesComments(ctx, subject, seriesID)
+func (services mcpServices) ListSeriesComments(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID, page core.Page) task.SeriesCommentsResult {
+	return services.taskService.ListSeriesComments(ctx, subject, seriesID, page)
 }
 
 func (services mcpServices) UnpublishTask(ctx context.Context, subject auth.Subject, taskID core.TaskID) task.ChangeStateResult {
@@ -143,16 +161,16 @@ func (services mcpServices) AddTaskComment(ctx context.Context, subject auth.Use
 	return services.taskService.AddTaskComment(ctx, subject, taskID, body)
 }
 
-func (services mcpServices) ListTaskComments(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.TaskCommentsResult {
-	return services.taskService.ListTaskComments(ctx, subject, taskID)
+func (services mcpServices) ListTaskComments(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, page core.Page) task.TaskCommentsResult {
+	return services.taskService.ListTaskComments(ctx, subject, taskID, page)
 }
 
 func (services mcpServices) AddSubmissionComment(ctx context.Context, subject auth.UserSubject, submissionID core.SubmissionID, body task.CommentBody) submission.SubmissionCommentResult {
 	return services.submissionService.AddSubmissionComment(ctx, subject, submissionID, body)
 }
 
-func (services mcpServices) ListSubmissionComments(ctx context.Context, subject auth.UserSubject, submissionID core.SubmissionID) submission.SubmissionCommentsResult {
-	return services.submissionService.ListSubmissionComments(ctx, subject, submissionID)
+func (services mcpServices) ListSubmissionComments(ctx context.Context, subject auth.UserSubject, submissionID core.SubmissionID, page core.Page) submission.SubmissionCommentsResult {
+	return services.submissionService.ListSubmissionComments(ctx, subject, submissionID, page)
 }
 
 func (services mcpServices) ReserveTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationResult {
@@ -163,8 +181,8 @@ func (services mcpServices) ReserveTaskForOrganizationTeam(ctx context.Context, 
 	return services.taskService.ReserveForOrganizationTeam(ctx, subject, taskID, organizationID, teamID)
 }
 
-func (services mcpServices) ListReservations(ctx context.Context, subject auth.Subject, taskID core.TaskID) task.ReservationsListResult {
-	return services.taskService.ListReservations(ctx, subject, taskID)
+func (services mcpServices) ListReservations(ctx context.Context, subject auth.Subject, taskID core.TaskID, page core.Page) task.ReservationsListResult {
+	return services.taskService.ListReservations(ctx, subject, taskID, page)
 }
 
 func (services mcpServices) ApproveReservation(ctx context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
@@ -275,12 +293,24 @@ func (services mcpServices) RefundCollectibleReward(ctx context.Context, request
 	return services.assetService.RefundReward(ctx, requester, taskID)
 }
 
-func (services mcpServices) ListNotifications(ctx context.Context, recipient core.UserID, page core.Page) notification.ListResult {
-	return services.notificationService.List(ctx, recipient, page)
+func (services mcpServices) ListNotifications(ctx context.Context, recipient core.UserID, filter notification.StateFilter, page core.Page) notification.ListResult {
+	return services.notificationService.List(ctx, recipient, filter, page)
+}
+
+func (services mcpServices) CountUnreadNotifications(ctx context.Context, recipient core.UserID) notification.CountResult {
+	return services.notificationService.CountUnread(ctx, recipient)
 }
 
 func (services mcpServices) MarkNotificationRead(ctx context.Context, recipient core.UserID, notificationID core.NotificationID) notification.MarkReadResult {
 	return services.notificationService.MarkRead(ctx, recipient, notificationID)
+}
+
+func (services mcpServices) GetCreditBalance(ctx context.Context, owner core.UserID) ledger.BalanceResult {
+	return services.ledgerService.Balance(ctx, owner)
+}
+
+func (services mcpServices) ListLedger(ctx context.Context, owner core.UserID, page core.Page) ledger.ListEntriesResult {
+	return services.ledgerService.ListEntries(ctx, owner, page)
 }
 
 func (services mcpServices) ListUsers(ctx context.Context, query string, page core.Page) auth.UserDirectoryResult {
@@ -321,6 +351,7 @@ type agentCredentialCreatedResponse struct {
 
 type agentCredentialsResponse struct {
 	Credentials []agentCredentialResponse `json:"credentials"`
+	NextOffset  int                       `json:"next_offset"`
 }
 
 func (agentCredentialResponse) writableResponse() {}
@@ -333,14 +364,14 @@ func (server Server) getTask(w http.ResponseWriter, r *http.Request) {
 	taskIDResult := parseTaskPathValue(r)
 	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
 	if !taskIDMatched {
-		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, taskIDResult.(taskIDRejected).reason)
 		return
 	}
 
 	actorResult := server.requireWorkerSubject(r, agent.ScopeTasksRead, taskIDAccepted.value)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
@@ -374,21 +405,21 @@ func parseCredentialFields(w http.ResponseWriter, rawLabel string, rawScopes []s
 	labelResult := agent.NewLabel(rawLabel)
 	label, labelMatched := labelResult.(agent.LabelAccepted)
 	if !labelMatched {
-		writeError(w, http.StatusBadRequest, labelResult.(agent.LabelRejected).Reason.Description())
+		writeDomainError(w, labelResult.(agent.LabelRejected).Reason)
 		return credentialFields{}, false
 	}
 
 	scopesResult := parseAgentScopes(rawScopes)
 	scopes, scopesMatched := scopesResult.(agentScopesAccepted)
 	if !scopesMatched {
-		writeError(w, http.StatusBadRequest, scopesResult.(agentScopesRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, scopesResult.(agentScopesRejected).reason)
 		return credentialFields{}, false
 	}
 
 	expiresAtResult := parseOptionalExpiresAt(rawExpiresAt)
 	expiresAt, expiresAtMatched := expiresAtResult.(expiresAtAccepted)
 	if !expiresAtMatched {
-		writeError(w, http.StatusBadRequest, expiresAtResult.(expiresAtRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, expiresAtResult.(expiresAtRejected).reason)
 		return credentialFields{}, false
 	}
 
@@ -399,13 +430,17 @@ func (server Server) createAgentCredential(w http.ResponseWriter, r *http.Reques
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
+		return
+	}
+
+	if !server.allowBySubject(w, actor.subject.ID.String()) {
 		return
 	}
 
 	var request agentCredentialRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 
@@ -417,7 +452,7 @@ func (server Server) createAgentCredential(w http.ResponseWriter, r *http.Reques
 	result := server.agentService.Create(r.Context(), actor.subject.ID, fields.label, fields.scopes, fields.expiresAt, nil)
 	created, matched := result.(agent.CredentialCreated)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(agent.CreateRejected).Reason.Description())
+		writeDomainError(w, result.(agent.CreateRejected).Reason)
 		return
 	}
 
@@ -431,7 +466,7 @@ func (server Server) listAgentCredentials(w http.ResponseWriter, r *http.Request
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
@@ -439,15 +474,16 @@ func (server Server) listAgentCredentials(w http.ResponseWriter, r *http.Request
 	if !pageOK {
 		return
 	}
-	result := server.agentService.List(r.Context(), actor.subject.ID, page)
+	result := server.agentService.List(r.Context(), actor.subject.ID, page.Probe())
 	listed, matched := result.(agent.CredentialsListed)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(agent.ListRejected).Reason.Description())
+		writeDomainError(w, result.(agent.ListRejected).Reason)
 		return
 	}
 
-	response := agentCredentialsResponse{Credentials: make([]agentCredentialResponse, 0, len(listed.Values))}
-	for index := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := agentCredentialsResponse{Credentials: make([]agentCredentialResponse, 0, visible), NextOffset: nextOffset}
+	for index := range listed.Values[:visible] {
 		response.Credentials = append(response.Credentials, credentialToResponse(listed.Values[index]))
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -457,21 +493,21 @@ func (server Server) revokeAgentCredential(w http.ResponseWriter, r *http.Reques
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
 	credentialIDResult := core.ParseAgentCredentialID(r.PathValue("credential_id"))
 	credentialID, credentialMatched := credentialIDResult.(core.AgentCredentialIDCreated)
 	if !credentialMatched {
-		writeError(w, http.StatusBadRequest, credentialIDResult.(core.AgentCredentialIDRejected).Reason.Description())
+		writeDomainError(w, credentialIDResult.(core.AgentCredentialIDRejected).Reason)
 		return
 	}
 
 	result := server.agentService.Revoke(r.Context(), actor.subject.ID, credentialID.Value)
 	revoked, matched := result.(agent.CredentialRevoked)
 	if !matched {
-		writeError(w, http.StatusBadRequest, result.(agent.RevokeRejected).Reason.Description())
+		writeDomainError(w, result.(agent.RevokeRejected).Reason)
 		return
 	}
 
@@ -480,71 +516,71 @@ func (server Server) revokeAgentCredential(w http.ResponseWriter, r *http.Reques
 
 func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
 	if !originAllowed(r) {
-		writeError(w, http.StatusForbidden, "origin is not allowed")
+		writeError(w, http.StatusForbidden, core.ErrorCodePermissionDenied, "origin is not allowed")
 		return
 	}
 	if !mcpAcceptAllowed(r.Header.Get("Accept")) {
-		writeError(w, http.StatusNotAcceptable, "MCP endpoint requires an Accept header allowing application/json")
+		writeError(w, http.StatusNotAcceptable, core.ErrorCodeInvalidArgument, "MCP endpoint requires an Accept header allowing application/json")
 		return
 	}
 	if !mcpProtocolVersionAllowed(r.Header.Get("MCP-Protocol-Version")) {
-		writeError(w, http.StatusBadRequest, "MCP protocol version is unsupported")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "MCP protocol version is unsupported")
 		return
 	}
 
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxMCPBodyBytes))
 	if err != nil {
-		writeError(w, http.StatusRequestEntityTooLarge, "request body exceeds the MCP size limit")
+		writeError(w, http.StatusRequestEntityTooLarge, core.ErrorCodeInvalidArgument, "request body exceeds the MCP size limit")
 		return
 	}
 	requestInfo := classifyMCPBody(body)
 	if requestInfo.invalid {
-		writeError(w, http.StatusBadRequest, "request body is not valid JSON-RPC")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is not valid JSON-RPC")
 		return
 	}
 
 	verifyResult := server.verifyMCPCaller(r)
 	verified, verifiedMatched := verifyResult.(mcpCallerVerified)
 	if !verifiedMatched {
-		writeError(w, http.StatusUnauthorized, verifyResult.(mcpCallerRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, verifyResult.(mcpCallerRejected).reason)
 		return
 	}
 	subjectIdentity := mcpSubjectIdentity(verified.subject)
 
 	if !server.subjectRateLimiter.Allow(subjectIdentity) {
-		writeError(w, http.StatusTooManyRequests, "too many MCP requests; slow down and retry")
+		writeError(w, http.StatusTooManyRequests, core.ErrorCodeRateLimited, "too many MCP requests; slow down and retry")
 		return
 	}
 
 	sessionID := r.Header.Get(mcpSessionHeader)
 	if requestInfo.initializes {
 		if sessionID != "" {
-			writeError(w, http.StatusBadRequest, "initialize requests must not include an MCP session id")
+			writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "initialize requests must not include an MCP session id")
 			return
 		}
 	} else if sessionID == "" {
-		writeError(w, http.StatusBadRequest, "MCP session id is required")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "MCP session id is required")
 		return
 	} else if !server.mcpSessions.existsForSubject(sessionID, subjectIdentity) {
-		writeError(w, http.StatusNotFound, "MCP session was not found")
+		writeError(w, http.StatusNotFound, core.ErrorCodeNotFound, "MCP session was not found")
 		return
 	}
 
 	result := server.mcpServer.HandleRaw(r.Context(), verified.subject, verified.credential, body)
 	if result.SessionID != "" {
 		if !server.mcpSessions.create(result.SessionID, subjectIdentity) {
-			writeError(w, http.StatusTooManyRequests, "too many active MCP sessions for this agent")
+			writeError(w, http.StatusTooManyRequests, core.ErrorCodeRateLimited, "too many active MCP sessions for this agent")
 			return
 		}
 		w.Header().Set(mcpSessionHeader, result.SessionID)
 	} else if requestInfo.initializes {
 		generatedSessionID := newMCPHTTPSessionID()
 		if generatedSessionID == "" {
-			writeError(w, http.StatusInternalServerError, "MCP session could not be created")
+			writeError(w, http.StatusInternalServerError, core.ErrorCodeUnavailable, "MCP session could not be created")
 			return
 		}
 		if !server.mcpSessions.create(generatedSessionID, subjectIdentity) {
-			writeError(w, http.StatusTooManyRequests, "too many active MCP sessions for this agent")
+			writeError(w, http.StatusTooManyRequests, core.ErrorCodeRateLimited, "too many active MCP sessions for this agent")
 			return
 		}
 		w.Header().Set(mcpSessionHeader, generatedSessionID)
@@ -580,35 +616,35 @@ func mcpProtocolVersionAllowed(raw string) bool {
 
 func (server Server) mcpStream(w http.ResponseWriter, r *http.Request) {
 	if !originAllowed(r) {
-		writeError(w, http.StatusForbidden, "origin is not allowed")
+		writeError(w, http.StatusForbidden, core.ErrorCodePermissionDenied, "origin is not allowed")
 		return
 	}
 	if !mcpStreamAcceptAllowed(r.Header.Get("Accept")) {
-		writeError(w, http.StatusNotAcceptable, "MCP stream requires an Accept header allowing text/event-stream")
+		writeError(w, http.StatusNotAcceptable, core.ErrorCodeInvalidArgument, "MCP stream requires an Accept header allowing text/event-stream")
 		return
 	}
 	if !mcpProtocolVersionAllowed(r.Header.Get("MCP-Protocol-Version")) {
-		writeError(w, http.StatusBadRequest, "MCP protocol version is unsupported")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "MCP protocol version is unsupported")
 		return
 	}
 	verifyResult := server.verifyMCPCaller(r)
 	verified, verifiedMatched := verifyResult.(mcpCallerVerified)
 	if !verifiedMatched {
-		writeError(w, http.StatusUnauthorized, verifyResult.(mcpCallerRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, verifyResult.(mcpCallerRejected).reason)
 		return
 	}
 	sessionID := r.Header.Get(mcpSessionHeader)
 	if sessionID == "" {
-		writeError(w, http.StatusBadRequest, "MCP session id is required")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "MCP session id is required")
 		return
 	}
 	if !server.mcpSessions.existsForSubject(sessionID, mcpSubjectIdentity(verified.subject)) {
-		writeError(w, http.StatusNotFound, "MCP session was not found")
+		writeError(w, http.StatusNotFound, core.ErrorCodeNotFound, "MCP session was not found")
 		return
 	}
 	events, liveEvents, cancel, ok := server.mcpSessions.replayAndSubscribe(sessionID, r.Header.Get(mcpLastEventIDHeader))
 	if !ok {
-		writeError(w, http.StatusNotFound, "MCP session was not found")
+		writeError(w, http.StatusNotFound, core.ErrorCodeNotFound, "MCP session was not found")
 		return
 	}
 	defer cancel()
@@ -650,26 +686,26 @@ func (server Server) mcpStream(w http.ResponseWriter, r *http.Request) {
 
 func (server Server) mcpDeleteSession(w http.ResponseWriter, r *http.Request) {
 	if !originAllowed(r) {
-		writeError(w, http.StatusForbidden, "origin is not allowed")
+		writeError(w, http.StatusForbidden, core.ErrorCodePermissionDenied, "origin is not allowed")
 		return
 	}
 	verifyResult := server.verifyMCPCaller(r)
 	verified, verifiedMatched := verifyResult.(mcpCallerVerified)
 	if !verifiedMatched {
-		writeError(w, http.StatusUnauthorized, verifyResult.(mcpCallerRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, verifyResult.(mcpCallerRejected).reason)
 		return
 	}
 	sessionID := r.Header.Get(mcpSessionHeader)
 	if sessionID == "" {
-		writeError(w, http.StatusBadRequest, "MCP session id is required")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "MCP session id is required")
 		return
 	}
 	if !server.mcpSessions.existsForSubject(sessionID, mcpSubjectIdentity(verified.subject)) {
-		writeError(w, http.StatusNotFound, "MCP session was not found")
+		writeError(w, http.StatusNotFound, core.ErrorCodeNotFound, "MCP session was not found")
 		return
 	}
 	if !server.mcpSessions.terminate(sessionID) {
-		writeError(w, http.StatusNotFound, "MCP session was not found")
+		writeError(w, http.StatusNotFound, core.ErrorCodeNotFound, "MCP session was not found")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -41,7 +41,11 @@ func TestModerationTriageBridgeDualRun(t *testing.T) {
 	})
 
 	actor := createUser(t, pool, "moderation-actor")
-	event := recordAuditEvent(t, ctx, auditStore, actor, audit.ActionFromString("wasi-moderation-dualrun"),
+	// The seed event uses the real moderation_report_created action so the
+	// pushed-down triage listing (which joins on that action) can see it; the
+	// assertions target this event's id, so rows left by other suites sharing
+	// the db-checks database do not interfere.
+	event := recordAuditEvent(t, ctx, auditStore, actor, audit.ActionModerationReportCreated,
 		audit.Subject{Kind: "task", ID: "task-" + newAuditEventID(t).String()})
 
 	t.Run("record open then list matches a direct call", func(t *testing.T) {
@@ -53,28 +57,39 @@ func TestModerationTriageBridgeDualRun(t *testing.T) {
 			t.Errorf("recorded triage = %+v", saved.Value)
 		}
 
-		viaBridge := requireTriageListed(t, bridgeStore.List(ctx, []core.AuditEventID{event.ID}))
-		direct := requireTriageListed(t, dbStore.List(ctx, []core.AuditEventID{event.ID}))
-		if len(viaBridge) != len(direct) || len(viaBridge) != 1 {
-			t.Fatalf("triage counts: bridge %d, direct %d, want 1", len(viaBridge), len(direct))
+		filter := httpserver.TriageStateEquals{State: httpserver.ModerationTriageStateOpen}
+		viaBridge, bridgeFound := findListedTriage(t, bridgeStore.List(ctx, filter, core.DefaultPage()), event.ID)
+		direct, directFound := findListedTriage(t, dbStore.List(ctx, filter, core.DefaultPage()), event.ID)
+		if !bridgeFound || !directFound {
+			t.Fatalf("open-filtered listing missing the report: bridge %t, direct %t", bridgeFound, directFound)
 		}
-		if viaBridge[0].ReportID != direct[0].ReportID || viaBridge[0].ReportID != event.ID {
-			t.Errorf("listed report = %s, want %s", viaBridge[0].ReportID, event.ID)
-		}
-		if viaBridge[0].State != direct[0].State {
-			t.Errorf("triage state: bridge %q, direct %q", viaBridge[0].State, direct[0].State)
+		if viaBridge.State != direct.State || viaBridge.ReportID != direct.ReportID {
+			t.Errorf("triage records differ: bridge %+v, direct %+v", viaBridge, direct)
 		}
 	})
 
 	t.Run("update through the bridge resolves the report", func(t *testing.T) {
-		updated, matched := bridgeStore.Update(ctx, actor, event.ID, "resolved", "handled it").(httpserver.ModerationTriageSaved)
+		updated, matched := bridgeStore.Update(ctx, actor, event.ID, httpserver.ModerationTriageStateResolved, "handled it").(httpserver.ModerationTriageSaved)
 		if !matched {
 			t.Fatalf("bridge Update did not save")
 		}
 		if updated.Value.State != "resolved" || updated.Value.ResolutionNote != "handled it" {
 			t.Errorf("updated triage = %+v", updated.Value)
 		}
+		if _, stillOpen := findListedTriage(t, bridgeStore.List(ctx, httpserver.TriageStateEquals{State: httpserver.ModerationTriageStateOpen}, core.DefaultPage()), event.ID); stillOpen {
+			t.Errorf("resolved report still appears in the open-filtered listing")
+		}
 	})
+}
+
+func findListedTriage(t *testing.T, result httpserver.ModerationTriageListResult, reportID core.AuditEventID) (httpserver.ModerationTriageRecord, bool) {
+	t.Helper()
+	for _, record := range requireTriageListed(t, result) {
+		if record.ReportID == reportID {
+			return record, true
+		}
+	}
+	return httpserver.ModerationTriageRecord{}, false
 }
 
 func requireTriageListed(t *testing.T, result httpserver.ModerationTriageListResult) []httpserver.ModerationTriageRecord {

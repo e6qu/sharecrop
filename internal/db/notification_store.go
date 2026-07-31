@@ -32,19 +32,36 @@ func (store NotificationStore) Create(ctx context.Context, value notification.No
 	return notification.CreateStoreAccepted{}
 }
 
-func (store NotificationStore) List(ctx context.Context, recipient core.UserID, page core.Page) notification.ListStoreResult {
-	rows, err := store.db.Query(ctx, `
+func (store NotificationStore) List(ctx context.Context, recipient core.UserID, filter notification.StateFilter, page core.Page) notification.ListStoreResult {
+	// The unread branch is served by notifications_recipient_state_idx.
+	stateClause := ""
+	if _, unreadOnly := filter.(notification.UnreadOnly); unreadOnly {
+		stateClause = " and state = 'unread'"
+	}
+	query := `
 		select id::text, recipient_user_id::text, actor_user_id::text, kind, subject_kind, subject_id, state, metadata_json::text, created_at
 		from notifications
-		where recipient_user_id = $1
+		where recipient_user_id = $1` + stateClause + `
 		order by created_at desc, id desc
 		limit $2 offset $3
-	`, recipient.String(), page.Limit(), page.Offset())
+	`
+	rows, err := store.db.Query(ctx, query, recipient.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return notification.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list notifications failed")}
 	}
 	defer rows.Close()
 	return scanNotificationRows(rows)
+}
+
+func (store NotificationStore) CountUnread(ctx context.Context, recipient core.UserID) notification.CountStoreResult {
+	var count int64
+	err := store.db.QueryRow(ctx,
+		"select count(*) from notifications where recipient_user_id = $1 and state = 'unread'",
+		recipient.String()).Scan(&count)
+	if err != nil {
+		return notification.CountStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "count unread notifications failed")}
+	}
+	return notification.CountUnreadCounted{Count: count}
 }
 
 func (store NotificationStore) MarkRead(ctx context.Context, recipient core.UserID, id core.NotificationID) notification.MarkReadStoreResult {
@@ -129,13 +146,25 @@ func scanNotificationRow(rows Rows) notificationRowResult {
 	if !actorMatched {
 		return notificationRowRejected{reason: actorResult.(core.UserIDRejected).Reason}
 	}
+	// A row whose kind or state falls outside the sealed enums is corrupt;
+	// reject the read like other stores do for corrupt rows.
+	kindResult := notification.ParseKind(kind)
+	kindParsed, kindMatched := kindResult.(notification.KindParsed)
+	if !kindMatched {
+		return notificationRowRejected{reason: kindResult.(notification.KindRejected).Reason}
+	}
+	stateResult := notification.ParseState(state)
+	stateParsed, stateMatched := stateResult.(notification.StateParsed)
+	if !stateMatched {
+		return notificationRowRejected{reason: stateResult.(notification.StateRejected).Reason}
+	}
 	return notificationRowAccepted{value: notification.Notification{
 		ID:          id.Value,
 		RecipientID: recipient.Value,
 		ActorID:     actor.Value,
-		Kind:        notification.KindFromString(kind),
+		Kind:        kindParsed.Value,
 		Subject:     notification.Subject{Kind: subjectKind, ID: subjectID},
-		State:       notification.StateFromString(state),
+		State:       stateParsed.Value,
 		Metadata:    notification.Metadata{JSON: metadataJSON},
 		CreatedAt:   createdAt,
 	}}

@@ -25,7 +25,7 @@ func (server Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	if _, actorMatched := actorResult.(userSubjectAccepted); !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -35,18 +35,19 @@ func (server Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	query := r.URL.Query().Get("query")
 	if len(query) > maxUserDirectoryQueryLength {
-		writeError(w, http.StatusBadRequest, "query is too long")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "query is too long")
 		return
 	}
-	result := server.authService.ListUsers(r.Context(), query, page)
+	result := server.authService.ListUsers(r.Context(), query, page.Probe())
 	listed, matched := result.(auth.UsersListed)
 	if !matched {
 		writeDomainError(w, result.(auth.UserDirectoryRejected).Reason)
 		return
 	}
 
-	response := usersResponse{Users: make([]userDirectoryEntryResponse, 0, len(listed.Values))}
-	for _, value := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := usersResponse{Users: make([]userDirectoryEntryResponse, 0, visible), NextOffset: nextOffset}
+	for _, value := range listed.Values[:visible] {
 		response.Users = append(response.Users, userDirectoryEntryResponse{ID: value.ID.String(), Email: value.Email.String(), Status: value.Status})
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -59,14 +60,14 @@ func (server Server) userPathRequest(w http.ResponseWriter, r *http.Request) (au
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return auth.UserSubject{}, core.UserID{}, core.Page{}, false
 	}
 
 	userIDResult := core.ParseUserID(r.PathValue("user_id"))
 	userIDCreated, userIDMatched := userIDResult.(core.UserIDCreated)
 	if !userIDMatched {
-		writeError(w, http.StatusBadRequest, userIDResult.(core.UserIDRejected).Reason.Description())
+		writeDomainError(w, userIDResult.(core.UserIDRejected).Reason)
 		return auth.UserSubject{}, core.UserID{}, core.Page{}, false
 	}
 
@@ -101,13 +102,16 @@ func (server Server) getUserWork(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	result := server.taskService.List(r.Context(), actor, task.AssigneeListScope{AssigneeID: userID}, task.NoListFilters(), page)
+	result := server.taskService.List(r.Context(), actor, task.AssigneeListScope{AssigneeID: userID}, task.NoListFilters(), page.Probe())
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		writeDomainError(w, result.(task.ListRejected).Reason)
 		return
 	}
-	writeTasksResponse(w, http.StatusOK, tasksToResponse(listed.Values))
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := tasksToResponse(listed.Values[:visible])
+	response.NextOffset = nextOffset
+	writeTasksResponse(w, http.StatusOK, response)
 }
 
 func (server Server) getUserSubmissions(w http.ResponseWriter, r *http.Request) {
@@ -115,18 +119,17 @@ func (server Server) getUserSubmissions(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	result := server.submissionService.ListForSubmitter(r.Context(), actor, userID, page)
+	result := server.submissionService.ListForSubmitter(r.Context(), actor, userID, page.Probe())
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		writeDomainError(w, result.(submission.ListRejected).Reason)
 		return
 	}
 
-	response := submissionsResponse{Submissions: make([]submissionResponse, 0, len(listed.Values))}
-	for _, value := range listed.Values {
-		if !server.recordSensitiveFieldAccess(w, r, actor.ID, value) {
-			return
-		}
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	server.recordSensitiveFieldAccessForList(r.Context(), actor.ID, listed.Values[:visible])
+	response := submissionsResponse{Submissions: make([]submissionResponse, 0, visible), NextOffset: nextOffset}
+	for _, value := range listed.Values[:visible] {
 		response.Submissions = append(response.Submissions, submissionToResponse(value))
 	}
 	writeSubmissionsResponse(w, http.StatusOK, response)

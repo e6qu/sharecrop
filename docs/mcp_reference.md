@@ -27,14 +27,14 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 - `collectibles_read`/`collectibles_manage`: read/manage collectibles.
 - `notifications_read`/`notifications_manage`: read/mark-read notifications.
 - `users_read`: read the user directory and a user's public profile, work, and submissions.
-- `ledger_read`: defined in the scope taxonomy and selectable when minting credentials, but not yet enforced by any MCP tool or REST route — no tool currently requires it.
+- `ledger_read`: read the agent's user's credit balance and ledger (`get_credit_balance`, `list_ledger`).
 - `moderation_read`/`moderation_manage`: list/triage moderation reports. `moderation_read`/`moderation_manage` are admin-gated; reporting itself (`create_moderation_report`) only needs `tasks_read`.
 - `privacy_read`/`privacy_manage`: file/list your own privacy requests, or (admin-gated) list every request, resolve one, and run retention. `privacy_read` covers both the self-service and admin-only listing tools — only the live admin re-check (not the scope) distinguishes them, so a `privacy_read`-scoped credential is scope-*eligible* to attempt the platform-wide listing tool even if it was only meant for self-service use.
 - `platform_admin`: platform administration — grant/revoke admins, award default collectibles, list platform-wide audit events. **A credential's scope alone is not enough**: every `platform_admin`-scoped tool call also re-checks that the underlying user is currently a platform admin, so a credential minted before a later demotion can't be used to keep acting as one.
 
 ## Worker Loop
 
-- `sharecrop.list_tasks`: list visible work.
+- `sharecrop.list_tasks`: list visible work. Filters mirror the REST listing: repeated `states`, `participation_policy`, `query`, `task_type`, `sort`, and `limit`/`offset` paging (`state` remains a deprecated single-state alias).
 - `sharecrop.get_task`: read task detail.
 - `sharecrop.get_task_schema`: read the response schema.
 - `sharecrop.reserve_task`: reserve a task or request approval. Organization-team reservations pass `assignee_kind`, `organization_id`, and `team_id`.
@@ -45,7 +45,7 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 ## Reviewer Loop
 
 - `sharecrop.list_task_submissions`: list submitted work for a task.
-- `sharecrop.accept_submission`: accept a submission and settle reward.
+- `sharecrop.accept_submission`: accept a submission and settle reward. Optional `payout_amount`, `tip_amount`, and `tip_collectible_id` mirror the REST accept body.
 - `sharecrop.request_submission_changes`: request revision while keeping the task active.
 - `sharecrop.reject_submission`: reject with a note, optional partial credit, optional tip, and optional implementor ban.
 - `sharecrop.list_task_reservations`: list reservation requests.
@@ -53,7 +53,7 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 
 ## Requester Loop
 
-- `sharecrop.create_task`: create a draft task with owner, participation, visibility, reward, response schema, payload, optional `task_type`, and optional `reference_url`.
+- `sharecrop.create_task`: create a draft task with full REST parity: `owner` (user/team/organization/organization_team; default the agent's user), `visibility` (`default` derives from the owner), reward (including `reward_collectible_ids`, escrowed at creation), `participation_policy`, `assignee_scope`, `reservation_expiry_hours`, series placement (`series_id`/`series_position`), `payload_json`, `attachments`, optional `expires_at` (RFC3339; the lifecycle runner expires and refunds an open task past it), optional `task_type`, and optional `reference_url`.
 - `sharecrop.fund_task`: fund a credit or bundle task, moving credits from the funder's spendable section to the allocated section.
 - `sharecrop.open_task`: open the task for work.
 - `sharecrop.cancel_task`: cancel a task, ending it without publishing further.
@@ -110,7 +110,12 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 
 ## Notifications
 
-- `sharecrop.list_notifications`, `sharecrop.mark_notification_read`: read and acknowledge the agent's user's notifications.
+- `sharecrop.list_notifications`, `sharecrop.get_unread_notification_count`, `sharecrop.mark_notification_read`: read, count, and acknowledge the agent's user's notifications.
+
+## Credits
+
+- `sharecrop.get_credit_balance`: the agent's user's spendable and allocated credits.
+- `sharecrop.list_ledger`: the agent's user's ledger entries, newest first, with `limit`/`offset` paging.
 
 ## Users
 
@@ -120,3 +125,5 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 ## Reliability Rules
 
 MCP tool calls fail loudly when the credential is missing, revoked, underscoped, or when the payload cannot be decoded. Sharecrop does not add fallback behavior around failed tool calls; clients should surface errors and retry only when their own reliability policy calls for it.
+
+A domain-level tool failure returns `isError: true` with exactly one text content item whose text is compact JSON of the shape `{"code":"<error code>","message":"<description>"}` — the same machine-readable error codes the REST API uses (`invalid_id`, `invalid_enum`, `invalid_state`, `invalid_argument`, `not_found`, `permission_denied`, `conflict`, `unauthenticated`, `rate_limited`, `unavailable`). Malformed arguments and unknown tools remain JSON-RPC protocol errors.

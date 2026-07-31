@@ -12,6 +12,8 @@ import (
 func StoresFromHandle(handle db.Beginner) appmux.Stores {
 	return appmux.Stores{
 		Auth:               db.NewAuthStoreFromHandle(handle),
+		Event:              db.NewEventStoreFromHandle(handle),
+		Webhook:            db.NewWebhookStoreFromHandle(handle),
 		Notification:       db.NewNotificationStoreFromHandle(handle),
 		Organization:       db.NewOrgStoreFromHandle(handle),
 		Task:               db.NewTaskStoreFromHandle(handle),

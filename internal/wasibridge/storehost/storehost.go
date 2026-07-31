@@ -19,6 +19,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/assetsbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/auditbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/authbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/eventbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/ledgerbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/mcpsessionbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/moderationtriagebridge"
@@ -32,6 +33,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/savedqueueviewbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/taskbridge"
+	"github.com/e6qu/sharecrop/internal/wasibridge/webhookbridge"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -58,6 +60,8 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 	agentStore := db.NewAgentStore(pool)
 	assetsStore := db.NewCollectibleStore(pool)
 	auditStore := db.NewAuditStore(pool)
+	eventStore := db.NewEventStore(pool)
+	webhookStore := db.NewWebhookStore(pool)
 	authStore := db.NewAuthStore(pool)
 	ledgerStore := db.NewLedgerStore(pool)
 	notificationStore := db.NewNotificationStore(pool)
@@ -82,6 +86,10 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 			return assetsbridge.Dispatch(ctx, assetsStore, method, args)
 		case "audit":
 			return auditbridge.Dispatch(ctx, auditStore, method, args)
+		case "event":
+			return eventbridge.Dispatch(ctx, eventStore, method, args)
+		case "webhook":
+			return webhookbridge.Dispatch(ctx, webhookStore, method, args)
 		case "auth":
 			return authbridge.Dispatch(ctx, authStore, method, args)
 		case "ledger":

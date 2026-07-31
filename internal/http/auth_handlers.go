@@ -8,6 +8,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
+	"github.com/e6qu/sharecrop/internal/core"
 )
 
 func (server Server) register(w http.ResponseWriter, r *http.Request) {
@@ -18,7 +19,15 @@ func (server Server) register(w http.ResponseWriter, r *http.Request) {
 	requestAccepted, requestMatched := requestResult.(authRequestAccepted)
 	if !requestMatched {
 		rejected := requestResult.(authRequestRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
+		return
+	}
+
+	// The system actor row (migration 000039) is a reserved identity for
+	// background sweeps: it never holds credentials and must never become
+	// registerable.
+	if requestAccepted.email.String() == core.SystemUserEmail {
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "this email address is reserved")
 		return
 	}
 
@@ -26,7 +35,7 @@ func (server Server) register(w http.ResponseWriter, r *http.Request) {
 	accepted, matched := result.(auth.RegisterAccepted)
 	if !matched {
 		rejected := result.(auth.RegisterRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -46,7 +55,7 @@ func (server Server) login(w http.ResponseWriter, r *http.Request) {
 	requestAccepted, requestMatched := requestResult.(authRequestAccepted)
 	if !requestMatched {
 		rejected := requestResult.(authRequestRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
@@ -54,7 +63,7 @@ func (server Server) login(w http.ResponseWriter, r *http.Request) {
 	accepted, matched := result.(auth.LoginAccepted)
 	if !matched {
 		rejected := result.(auth.LoginRejected)
-		writeError(w, http.StatusUnauthorized, rejected.Reason.Description())
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.Reason.Description())
 		return
 	}
 
@@ -72,7 +81,7 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	cookie, err := r.Cookie("sharecrop_refresh_token")
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "refresh token is required")
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, "refresh token is required")
 		return
 	}
 
@@ -80,7 +89,7 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 	tokenAccepted, tokenMatched := tokenResult.(auth.RefreshTokenPlainAccepted)
 	if !tokenMatched {
 		rejected := tokenResult.(auth.RefreshTokenPlainRejected)
-		writeError(w, http.StatusUnauthorized, rejected.Reason.Description())
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.Reason.Description())
 		return
 	}
 
@@ -88,7 +97,7 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 	accepted, matched := result.(auth.RefreshAccepted)
 	if !matched {
 		rejected := result.(auth.RefreshRejected)
-		writeError(w, http.StatusUnauthorized, rejected.Reason.Description())
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.Reason.Description())
 		return
 	}
 
@@ -97,7 +106,7 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 	responseAccepted, responseMatched := responseResult.(authResponseAccepted)
 	if !responseMatched {
 		rejected := responseResult.(authResponseRejected)
-		writeError(w, http.StatusInternalServerError, rejected.reason)
+		writeError(w, http.StatusInternalServerError, core.ErrorCodeUnavailable, rejected.reason)
 		return
 	}
 	// Refreshing replaces the browser's refresh token, so the provider session
@@ -111,7 +120,7 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 		// A session that never came from the provider (a guest) has no
 		// provider username, and correctly reports none.
 	default:
-		writeError(w, http.StatusServiceUnavailable, "Sharecrop OpenID Connect session could not be carried across the refresh")
+		writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "Sharecrop OpenID Connect session could not be carried across the refresh")
 		return
 	}
 
@@ -131,7 +140,7 @@ func (server Server) completeBrowserLogout(w http.ResponseWriter, r *http.Reques
 	logoutURL := ""
 	if server.shauth.enabled() {
 		if r.Header.Get("Origin") != server.shauth.publicURL || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-			writeError(w, http.StatusForbidden, "cross-origin logout denied")
+			writeError(w, http.StatusForbidden, core.ErrorCodePermissionDenied, "cross-origin logout denied")
 			return "", false
 		}
 	}
@@ -140,7 +149,7 @@ func (server Server) completeBrowserLogout(w http.ResponseWriter, r *http.Reques
 	if cookie, err := r.Cookie("sharecrop_refresh_token"); err == nil && cookie.Value != "" {
 		parsed, matched := auth.ParseRefreshTokenPlain(cookie.Value).(auth.RefreshTokenPlainAccepted)
 		if !matched {
-			writeError(w, http.StatusUnauthorized, "refresh token is invalid")
+			writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, "refresh token is invalid")
 			return "", false
 		}
 		refreshToken = parsed.Value
@@ -168,20 +177,20 @@ func (server Server) completeBrowserLogout(w http.ResponseWriter, r *http.Reques
 	}
 	if hasRefreshToken {
 		if _, ok := server.authService.Logout(r.Context(), refreshToken).(auth.LogoutDone); !ok {
-			writeError(w, http.StatusServiceUnavailable, "Sharecrop session could not be revoked")
+			writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "Sharecrop session could not be revoked")
 			return "", false
 		}
 	}
 	server.clearRefreshCookie(w)
 	if coordinateError != "" {
-		writeError(w, http.StatusServiceUnavailable, coordinateError)
+		writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, coordinateError)
 		return "", false
 	}
 	if server.shauth.enabled() {
 		if endpoint == "" {
 			_, _, discoveredEndpoint, discoveryErr := server.shauth.discoveredProvider(r.Context())
 			if discoveryErr != nil {
-				writeError(w, http.StatusBadGateway, "Shauth discovery failed")
+				writeError(w, http.StatusBadGateway, core.ErrorCodeUnavailable, "Shauth discovery failed")
 				return "", false
 			}
 			endpoint = discoveredEndpoint
@@ -189,7 +198,7 @@ func (server Server) completeBrowserLogout(w http.ResponseWriter, r *http.Reques
 		var err error
 		logoutURL, err = server.shauth.logoutURL(endpoint, idTokenHint)
 		if err != nil {
-			writeError(w, http.StatusBadGateway, "Shauth logout endpoint is unavailable")
+			writeError(w, http.StatusBadGateway, core.ErrorCodeUnavailable, "Shauth logout endpoint is unavailable")
 			return "", false
 		}
 	}
@@ -216,7 +225,7 @@ func (server Server) requireActiveBrowserSession(w http.ResponseWriter, r *http.
 		http.Redirect(w, r, "/api/auth/shauth", http.StatusFound)
 		return false
 	default:
-		writeError(w, http.StatusServiceUnavailable, "Sharecrop session could not be validated")
+		writeError(w, http.StatusServiceUnavailable, core.ErrorCodeUnavailable, "Sharecrop session could not be validated")
 		return false
 	}
 }
@@ -250,7 +259,7 @@ func (server Server) guest(w http.ResponseWriter, r *http.Request) {
 	accepted, matched := result.(auth.GuestAccepted)
 	if !matched {
 		rejected := result.(auth.GuestRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -269,7 +278,7 @@ func (server Server) requestEmailVerification(w http.ResponseWriter, r *http.Req
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 	result := server.authService.RequestEmailVerification(r.Context(), actor.subject.ID)
@@ -287,7 +296,7 @@ func (server Server) confirmEmailVerification(w http.ResponseWriter, r *http.Req
 	}
 	var request accountTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	tokenResult := auth.ParseAccountTokenPlain(request.Token)
@@ -310,7 +319,7 @@ func (server Server) requestPasswordReset(w http.ResponseWriter, r *http.Request
 	}
 	var request passwordResetRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	emailResult := auth.NewEmailAddress(request.Email)
@@ -338,7 +347,7 @@ func (server Server) confirmPasswordReset(w http.ResponseWriter, r *http.Request
 	}
 	var request passwordResetConfirmRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	tokenResult := auth.ParseAccountTokenPlain(request.Token)
@@ -365,12 +374,12 @@ func (server Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 	var request passwordChangeRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	current := auth.NewPasswordSecret(request.CurrentPassword)
@@ -397,12 +406,12 @@ func (server Server) updateAccountProfile(w http.ResponseWriter, r *http.Request
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 	var request accountProfileRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	emailResult := auth.NewEmailAddress(request.Email)
@@ -423,7 +432,7 @@ func (server Server) deactivateAccount(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 	result := server.authService.DeactivateAccount(r.Context(), actor.subject.ID)
@@ -431,9 +440,7 @@ func (server Server) deactivateAccount(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, result.(auth.AccountActionRejected).Reason)
 		return
 	}
-	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionAccountDeactivated, audit.Subject{Kind: "user", ID: actor.subject.ID.String()}, audit.EmptyMetadata()) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionAccountDeactivated, audit.Subject{Kind: "user", ID: actor.subject.ID.String()}, audit.EmptyMetadata())
 	server.clearRefreshCookie(w)
 	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "deactivated"})
 }
