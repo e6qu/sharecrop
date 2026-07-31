@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,7 +95,7 @@ func TestCreateTaskFullParityArguments(t *testing.T) {
 		"description": "Full parity create.",
 		"response_schema_json": "{\"kind\":\"freeform\"}",
 		"owner": {"kind": "organization_team", "organization_id": "` + organizationID.String() + `", "team_id": "` + teamID.String() + `"},
-		"visibility": "organization_team",
+		"visibility_kind": "organization_team",
 		"visibility_organization_id": "` + organizationID.String() + `",
 		"visibility_team_id": "` + teamID.String() + `",
 		"reward_kind": "bundle",
@@ -161,11 +162,36 @@ func TestCreateTaskFullParityArguments(t *testing.T) {
 	}
 }
 
-func TestCreateTaskDefaultsMirrorRESTOwnerAndVisibility(t *testing.T) {
+// TestCreateTaskRequiresExplicitVisibilityKind pins the invisible-task trap
+// closed: creating without visibility_kind fails with a message naming every
+// valid value, instead of silently defaulting to a private task.
+func TestCreateTaskRequiresExplicitVisibilityKind(t *testing.T) {
 	services := newCapturingServices()
 	server := NewServer(services)
 	subject := testSubject(t)
 	response := server.Handle(context.Background(), subject, CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.create_task","arguments":{"title":"T","description":"D","response_schema_json":"{\"kind\":\"freeform\"}","reward_kind":"none"}}`))
+	if response.Error == nil || response.Error.Code != codeInvalidParams {
+		t.Fatalf("expected invalid-params without visibility_kind, got %+v", response.Error)
+	}
+	for _, expected := range []string{"visibility_kind is required", "public", "user", "team", "organization", "organization_team"} {
+		if !strings.Contains(response.Error.Message, expected) {
+			t.Fatalf("error message %q missing %q", response.Error.Message, expected)
+		}
+	}
+
+	// The old implicit-default spelling is also rejected with the same
+	// guidance rather than silently producing a private task.
+	legacy := server.Handle(context.Background(), subject, CallerCredential{Scopes: allScopes()}, request(`2`, "tools/call", `{"name":"sharecrop.create_task","arguments":{"title":"T","description":"D","response_schema_json":"{\"kind\":\"freeform\"}","reward_kind":"none","visibility_kind":"default"}}`))
+	if legacy.Error == nil || legacy.Error.Code != codeInvalidParams {
+		t.Fatalf("expected invalid-params for visibility_kind \"default\", got %+v", legacy.Error)
+	}
+}
+
+func TestCreateTaskDefaultsMirrorRESTOwnerAndUserVisibility(t *testing.T) {
+	services := newCapturingServices()
+	server := NewServer(services)
+	subject := testSubject(t)
+	response := server.Handle(context.Background(), subject, CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.create_task","arguments":{"title":"T","description":"D","response_schema_json":"{\"kind\":\"freeform\"}","reward_kind":"none","visibility_kind":"user"}}`))
 	if response.Error != nil {
 		t.Fatalf("create_task error: %s", response.Error.Message)
 	}
@@ -174,8 +200,7 @@ func TestCreateTaskDefaultsMirrorRESTOwnerAndVisibility(t *testing.T) {
 	if !ownerMatched || owner.UserID != subject.ID {
 		t.Fatalf("owner = %#v", command.Owner)
 	}
-	// visibility "default" derives from the owner, matching REST's
-	// defaultVisibilityForOwner for a user owner.
+	// visibility_kind "user" with no explicit id means the caller's own user.
 	visibility, visibilityMatched := command.Visibility.(task.UserVisibility)
 	if !visibilityMatched || visibility.UserID != subject.ID {
 		t.Fatalf("visibility = %#v", command.Visibility)
@@ -193,7 +218,7 @@ func TestCreateTaskCollectibleRewardCountIsHonest(t *testing.T) {
 	server := NewServer(services)
 	collectibleA := core.NewCollectibleID().(core.CollectibleIDCreated).Value
 	collectibleB := core.NewCollectibleID().(core.CollectibleIDCreated).Value
-	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.create_task","arguments":{"title":"T","description":"D","response_schema_json":"{\"kind\":\"freeform\"}","reward_kind":"collectible","reward_collectible_ids":["`+collectibleA.String()+`","`+collectibleB.String()+`"]}}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.create_task","arguments":{"title":"T","description":"D","response_schema_json":"{\"kind\":\"freeform\"}","visibility_kind":"user","reward_kind":"collectible","reward_collectible_ids":["`+collectibleA.String()+`","`+collectibleB.String()+`"]}}`))
 	if response.Error != nil {
 		t.Fatalf("create_task error: %s", response.Error.Message)
 	}
@@ -206,7 +231,7 @@ func TestCreateTaskCollectibleRewardCountIsHonest(t *testing.T) {
 	}
 
 	// A collectible reward with no ids is rejected, exactly like REST.
-	missing := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`2`, "tools/call", `{"name":"sharecrop.create_task","arguments":{"title":"T","description":"D","response_schema_json":"{\"kind\":\"freeform\"}","reward_kind":"collectible"}}`))
+	missing := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`2`, "tools/call", `{"name":"sharecrop.create_task","arguments":{"title":"T","description":"D","response_schema_json":"{\"kind\":\"freeform\"}","visibility_kind":"user","reward_kind":"collectible"}}`))
 	if missing.Error == nil || missing.Error.Code != codeInvalidParams {
 		t.Fatalf("expected invalid-params for a collectible reward without ids, got %+v", missing.Error)
 	}
@@ -216,7 +241,7 @@ func TestCreateTaskRejectsPastExpiration(t *testing.T) {
 	services := newCapturingServices()
 	server := NewServer(services)
 	past := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
-	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.create_task","arguments":{"title":"T","description":"D","response_schema_json":"{\"kind\":\"freeform\"}","reward_kind":"none","expires_at":"`+past+`"}}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/call", `{"name":"sharecrop.create_task","arguments":{"title":"T","description":"D","response_schema_json":"{\"kind\":\"freeform\"}","visibility_kind":"user","reward_kind":"none","expires_at":"`+past+`"}}`))
 	if response.Error == nil || response.Error.Code != codeInvalidParams {
 		t.Fatalf("expected invalid-params for a past expiration, got %+v", response.Error)
 	}
@@ -262,7 +287,9 @@ func TestListTasksFiltersAndPaging(t *testing.T) {
 	if filters.Sort != task.SortOldest {
 		t.Fatalf("sort = %s", filters.Sort.String())
 	}
-	if services.listPage.Limit() != 5 || services.listPage.Offset() != 10 {
+	// The service receives the probe page (limit+1) so the tool can report
+	// next_offset without a second query; the caller-visible window is 5.
+	if services.listPage.Limit() != 6 || services.listPage.Offset() != 10 {
 		t.Fatalf("page = %d/%d", services.listPage.Limit(), services.listPage.Offset())
 	}
 

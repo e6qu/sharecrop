@@ -225,3 +225,19 @@ func newTestTaskID(t *testing.T) core.TaskID {
 	}
 	return created.Value
 }
+
+// TestAllScopesRoundTripThroughParseScope pins the exported scope enumeration
+// (which the credential-scope CHECK-constraint drift test iterates) to the
+// parser: every listed scope parses back to itself.
+func TestAllScopesRoundTripThroughParseScope(t *testing.T) {
+	scopes := AllScopes()
+	if len(scopes) != 21 {
+		t.Fatalf("AllScopes() has %d scopes, want 21", len(scopes))
+	}
+	for _, scope := range scopes {
+		parsed, matched := ParseScope(scope.String()).(ScopeAccepted)
+		if !matched || parsed.Value != scope {
+			t.Fatalf("scope %q did not round-trip through ParseScope", scope.String())
+		}
+	}
+}

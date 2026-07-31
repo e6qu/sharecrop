@@ -23,13 +23,14 @@ func TestRateLimitBridgeDualRun(t *testing.T) {
 	pool := newPool(t)
 	ipLimiter := db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec)
 	subjectLimiter := db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec)
+	registrationLimiter := db.NewRateLimiter(pool, "register", httpserver.RegistrationRateCapacity, httpserver.RegistrationRateRefillPerSec)
 
 	guestWASM, err := compileWASIGuest(t, "github.com/e6qu/sharecrop/cmd/sharecrop-wasi-store-guest")
 	if err != nil {
 		t.Fatalf("compile store guest: %v", err)
 	}
 	host, err := rpc.NewHost(ctx, guestWASM, func(ctx context.Context, method string, args []byte) ([]byte, error) {
-		return ratelimitbridge.Dispatch(ctx, ipLimiter, subjectLimiter, method, args)
+		return ratelimitbridge.Dispatch(ctx, ipLimiter, subjectLimiter, registrationLimiter, method, args)
 	})
 	if err != nil {
 		t.Fatalf("new host: %v", err)

@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -39,13 +40,19 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 		return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert submission failed")}
 	}
 
-	_, err = tx.Exec(ctx, `
-		update task_reservations
-		set state = 'submitted', state_recorded_at = now()
-		where task_id = $1 and assignee_kind = 'user' and user_id = $2 and state = 'active'
-	`, command.TaskID.String(), command.SubmitterID.String())
-	if err != nil {
-		return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "mark task reservation submitted failed")}
+	// Only a schema-valid submission consumes the worker's active reservation.
+	// An invalid submission is recorded (with its validation errors) but the
+	// reservation stays active, so the worker can correct and resubmit
+	// immediately instead of being locked out until they re-reserve.
+	if state != submission.StateInvalid {
+		_, err = tx.Exec(ctx, `
+			update task_reservations
+			set state = 'submitted', state_recorded_at = now()
+			where task_id = $1 and assignee_kind = 'user' and user_id = $2 and state = 'active'
+		`, command.TaskID.String(), command.SubmitterID.String())
+		if err != nil {
+			return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "mark task reservation submitted failed")}
+		}
 	}
 
 	_, err = tx.Exec(ctx, `
@@ -71,20 +78,38 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 		return submission.CreateSubmissionStoreRejected{Reason: rejected.reason}
 	}
 
+	submitterName, nameReason := fetchUserDisplayName(ctx, tx, command.SubmitterID)
+	if nameReason != nil {
+		return submission.CreateSubmissionStoreRejected{Reason: *nameReason}
+	}
+
+	// Read the row's created_at back so the returned read model carries the
+	// stored fact rather than a fabricated Go-side timestamp.
+	var rawCreatedAt string
+	if err := tx.QueryRow(ctx, "select "+submissionCreatedAtSQL+" from submissions where submissions.id = $1", submissionID.String()).Scan(&rawCreatedAt); err != nil {
+		return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read submission created_at failed")}
+	}
+	createdAt, createdAtErr := time.Parse(time.RFC3339, rawCreatedAt)
+	if createdAtErr != nil {
+		return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "submission created_at is invalid")}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit create submission transaction failed")}
 	}
 
 	return submission.CreateSubmissionStoreAccepted{Value: submission.Submission{
-		ID:              submissionID,
-		TaskID:          command.TaskID,
-		SubmitterID:     command.SubmitterID,
-		State:           state,
-		ResponseSource:  command.ResponseSource,
-		Attachments:     command.Attachments,
-		Validation:      outcome,
-		SensitiveFields: sensitiveFields,
-		ReviewNote:      submission.EmptyReviewNote(),
+		ID:                   submissionID,
+		TaskID:               command.TaskID,
+		SubmitterID:          command.SubmitterID,
+		SubmitterDisplayName: submitterName,
+		State:                state,
+		ResponseSource:       command.ResponseSource,
+		Attachments:          command.Attachments,
+		Validation:           outcome,
+		SensitiveFields:      sensitiveFields,
+		ReviewNote:           submission.EmptyReviewNote(),
+		CreatedAt:            createdAt.UTC(),
 	}}
 }
 
@@ -231,7 +256,9 @@ func insertSubmissionAttachments(ctx context.Context, tx Tx, submissionID core.S
 
 func submissionSelectSQL() string {
 	return `
-		select submissions.id::text, submissions.task_id::text, submissions.user_id::text, submissions.state, submissions.response_json::text,
+		select submissions.id::text, submissions.task_id::text, submissions.user_id::text,
+			` + displayNameSQL("users") + `,
+			submissions.state, submissions.response_json::text,
 			submissions.review_note,
 			coalesce((
 				select jsonb_agg(
@@ -267,10 +294,16 @@ func submissionSelectSQL() string {
 				)
 				from submission_attachments
 				where submission_attachments.submission_id = submissions.id
-			), '[]'::jsonb)::text
+			), '[]'::jsonb)::text,
+			` + submissionCreatedAtSQL + `
 		from submissions
+		join users on users.id = submissions.user_id
 	`
 }
+
+// submissionCreatedAtSQL renders the submission's created_at as RFC3339 text,
+// in the one to_char form the SQLite dialect knows how to rewrite.
+const submissionCreatedAtSQL = `to_char(submissions.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
 
 type submissionRowsResult interface {
 	submissionRowsResult()
@@ -325,14 +358,16 @@ func scanSubmissionRow(rows Rows) submissionRowResult {
 	var rawSubmissionID string
 	var rawTaskID string
 	var rawUserID string
+	var rawSubmitterName string
 	var rawState string
 	var rawResponse string
 	var rawReviewNote string
 	var rawValidationErrors string
 	var rawSensitiveFields string
 	var rawAttachments string
-	if err := rows.Scan(&rawSubmissionID, &rawTaskID, &rawUserID, &rawState, &rawResponse, &rawReviewNote, &rawValidationErrors, &rawSensitiveFields, &rawAttachments); err != nil {
+	var rawCreatedAt string
+	if err := rows.Scan(&rawSubmissionID, &rawTaskID, &rawUserID, &rawSubmitterName, &rawState, &rawResponse, &rawReviewNote, &rawValidationErrors, &rawSensitiveFields, &rawAttachments, &rawCreatedAt); err != nil {
 		return submissionRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan submission failed")}
 	}
-	return parseSubmissionRow(rawSubmissionID, rawTaskID, rawUserID, rawState, rawResponse, rawReviewNote, rawValidationErrors, rawSensitiveFields, rawAttachments)
+	return parseSubmissionRow(rawSubmissionID, rawTaskID, rawUserID, rawSubmitterName, rawState, rawResponse, rawReviewNote, rawValidationErrors, rawSensitiveFields, rawAttachments, rawCreatedAt)
 }

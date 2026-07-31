@@ -39,6 +39,22 @@ type Schema struct {
 	Properties map[string]Schema `json:"properties,omitempty"`
 	Required   []string          `json:"required,omitempty"`
 	Items      *Schema           `json:"items,omitempty"`
+	// Enum and Default are used only by parameter schemas, which are built
+	// from the declarations in internal/contracts/query_params.go; body
+	// schemas derived from Go DTO structs never set them.
+	Enum    []string `json:"enum,omitempty"`
+	Default string   `json:"default,omitempty"`
+}
+
+// Parameter is one operation parameter: a path template variable (derived
+// from the route pattern, always required, string-typed) or a declared query
+// parameter (see internal/contracts/query_params.go).
+type Parameter struct {
+	Name        string `json:"name"`
+	In          string `json:"in"`
+	Required    bool   `json:"required,omitempty"`
+	Description string `json:"description,omitempty"`
+	Schema      Schema `json:"schema"`
 }
 
 type MediaType struct {
@@ -62,6 +78,7 @@ type Response struct {
 type Operation struct {
 	OperationID string                 `json:"operationId"`
 	Security    *[]map[string][]string `json:"security,omitempty"`
+	Parameters  []Parameter            `json:"parameters,omitempty"`
 	RequestBody *RequestBody           `json:"requestBody,omitempty"`
 	Responses   map[string]Response    `json:"responses"`
 }
@@ -75,15 +92,18 @@ type Document struct {
 	Components Components                      `json:"components"`
 }
 
-// Generate builds an OpenAPI document from extracted routes and the DTO
-// struct registry extracted alongside them. It cannot fail: every route
+// Generate builds an OpenAPI document from extracted routes, the DTO struct
+// registry extracted alongside them, and the declared query parameters keyed
+// by operationId (see internal/contracts/query_params.go). Path parameters
+// are derived from each route's path template. It cannot fail: every route
 // already carries a valid method/path/operationId by the time it reaches
 // this function.
-func Generate(routes []Route, structs map[string]StructShape) Document {
+func Generate(routes []Route, structs map[string]StructShape, queryParameters map[string][]Parameter) Document {
 	paths := map[string]map[string]Operation{}
 	for _, route := range routes {
 		operation := Operation{
 			OperationID: route.OperationID,
+			Parameters:  append(pathParameters(route.Path), queryParameters[route.OperationID]...),
 			Responses: map[string]Response{
 				"default": responseFor(route.ResponseMediaType, route.ResponseType, structs),
 			},
@@ -136,6 +156,28 @@ func Generate(routes []Route, structs map[string]StructShape) Document {
 
 func requestBodyMethod(method string) bool {
 	return method == "POST" || method == "PUT" || method == "PATCH"
+}
+
+// pathParameters derives the required string-typed path parameters from a
+// route pattern's {name} template segments, in path order.
+func pathParameters(path string) []Parameter {
+	var parameters []Parameter
+	for _, segment := range strings.Split(path, "/") {
+		if !strings.HasPrefix(segment, "{") || !strings.HasSuffix(segment, "}") {
+			continue
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(segment, "{"), "}")
+		if name == "" {
+			continue
+		}
+		parameters = append(parameters, Parameter{
+			Name:     name,
+			In:       "path",
+			Required: true,
+			Schema:   Schema{Type: "string"},
+		})
+	}
+	return parameters
 }
 
 func responseFor(mediaType, typeName string, structs map[string]StructShape) Response {

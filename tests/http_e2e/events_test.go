@@ -10,12 +10,14 @@ import (
 
 type eventFeedHTTPResponse struct {
 	Events []struct {
-		Kind          string `json:"kind"`
-		ActorKind     string `json:"actor_kind"`
-		ActorUserID   string `json:"actor_user_id"`
-		Cursor        string `json:"cursor"`
-		TaskID        string `json:"task_id"`
-		ReservationID string `json:"reservation_id"`
+		Kind             string `json:"kind"`
+		ActorKind        string `json:"actor_kind"`
+		ActorUserID      string `json:"actor_user_id"`
+		ActorDisplayName string `json:"actor_display_name"`
+		Cursor           string `json:"cursor"`
+		TaskID           string `json:"task_id"`
+		TaskTitle        string `json:"task_title"`
+		ReservationID    string `json:"reservation_id"`
 	} `json:"events"`
 	NextCursor string `json:"next_cursor"`
 }

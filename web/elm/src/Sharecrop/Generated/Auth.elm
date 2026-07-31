@@ -41,16 +41,18 @@ type alias AuthResponse =
     , accessToken : String
     , role : String
     , username : String
+    , displayName : String
     }
 
 authResponseDecoder : Decoder AuthResponse
 authResponseDecoder =
-    Decode.map5 AuthResponse
+    Decode.map6 AuthResponse
         (Decode.field "subject_kind" subjectKindDecoder)
         (Decode.field "subject_id" Decode.string)
         (Decode.field "access_token" Decode.string)
         (Decode.field "role" Decode.string)
         (Decode.field "username" Decode.string)
+        (Decode.field "display_name" Decode.string)
 
 authResponseEncoder : AuthResponse -> Encode.Value
 authResponseEncoder authResponse =
@@ -60,4 +62,26 @@ authResponseEncoder authResponse =
         , ( "access_token", Encode.string authResponse.accessToken )
         , ( "role", Encode.string authResponse.role )
         , ( "username", Encode.string authResponse.username )
+        , ( "display_name", Encode.string authResponse.displayName )
+        ]
+
+type alias AccountProfileResponse =
+    { id : String
+    , email : String
+    , displayName : String
+    }
+
+accountProfileResponseDecoder : Decoder AccountProfileResponse
+accountProfileResponseDecoder =
+    Decode.map3 AccountProfileResponse
+        (Decode.field "id" Decode.string)
+        (Decode.field "email" Decode.string)
+        (Decode.field "display_name" Decode.string)
+
+accountProfileResponseEncoder : AccountProfileResponse -> Encode.Value
+accountProfileResponseEncoder accountProfileResponse =
+    Encode.object
+        [ ( "id", Encode.string accountProfileResponse.id )
+        , ( "email", Encode.string accountProfileResponse.email )
+        , ( "display_name", Encode.string accountProfileResponse.displayName )
         ]

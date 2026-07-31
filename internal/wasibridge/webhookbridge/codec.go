@@ -12,6 +12,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
+	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
 	"github.com/e6qu/sharecrop/internal/webhook"
@@ -73,12 +74,65 @@ func decodeSecret(raw string) (webhook.Secret, error) {
 // ---- webhook.Subscription ----
 
 type subscriptionWire struct {
-	ID        string    `json:"id"`
-	Owner     ownerWire `json:"owner"`
-	URL       string    `json:"url"`
-	Kinds     []string  `json:"kinds"`
-	State     string    `json:"state"`
-	CreatedAt string    `json:"created_at"`
+	ID        string       `json:"id"`
+	Owner     ownerWire    `json:"owner"`
+	URL       string       `json:"url"`
+	Kinds     []string     `json:"kinds"`
+	Audience  audienceWire `json:"audience"`
+	State     string       `json:"state"`
+	CreatedAt string       `json:"created_at"`
+}
+
+// audienceWire flattens the audience union: kind is "recipient" or
+// "marketplace"; the filters apply only to marketplace (empty string / zero
+// mean absent).
+type audienceWire struct {
+	Kind            string `json:"kind"`
+	TaskType        string `json:"task_type,omitempty"`
+	MinCreditReward int64  `json:"min_credit_reward,omitempty"`
+}
+
+func encodeAudience(audience webhook.Audience) audienceWire {
+	marketplace, matched := audience.(webhook.MarketplaceAudience)
+	if !matched {
+		return audienceWire{Kind: "recipient"}
+	}
+	wire := audienceWire{Kind: "marketplace"}
+	if typed, typedMatched := marketplace.TaskType.(webhook.MarketplaceTaskTypeIs); typedMatched {
+		wire.TaskType = typed.Value.String()
+	}
+	if reward, rewardMatched := marketplace.MinReward.(webhook.MinimumCreditReward); rewardMatched {
+		wire.MinCreditReward = reward.Amount()
+	}
+	return wire
+}
+
+func decodeAudience(wire audienceWire) (webhook.Audience, error) {
+	switch wire.Kind {
+	// The zero wire (no audience field) decodes as recipient so recipient
+	// subscriptions round-trip unchanged.
+	case "recipient", "":
+		return webhook.RecipientAudience{}, nil
+	case "marketplace":
+		audience := webhook.NewMarketplaceAudience()
+		if wire.TaskType != "" {
+			parsed, matched := task.ParseTaskType(wire.TaskType).(task.TaskTypeAccepted)
+			if !matched {
+				return nil, fmt.Errorf("invalid marketplace task type %q", wire.TaskType)
+			}
+			audience.TaskType = webhook.MarketplaceTaskTypeIs{Value: parsed.Value}
+		}
+		if wire.MinCreditReward != 0 {
+			reward, matched := webhook.NewMinimumCreditReward(wire.MinCreditReward).(webhook.MinimumCreditRewardAccepted)
+			if !matched {
+				return nil, fmt.Errorf("invalid marketplace minimum credit reward %d", wire.MinCreditReward)
+			}
+			audience.MinReward = reward.Value
+		}
+		return audience, nil
+	default:
+		return nil, fmt.Errorf("invalid webhook audience kind %q", wire.Kind)
+	}
 }
 
 func encodeSubscription(value webhook.Subscription) subscriptionWire {
@@ -92,6 +146,7 @@ func encodeSubscription(value webhook.Subscription) subscriptionWire {
 		Owner:     encodeOwner(value.Owner),
 		URL:       value.URL.String(),
 		Kinds:     rawKinds,
+		Audience:  encodeAudience(value.Audience),
 		State:     value.State.String(),
 		CreatedAt: corewire.EncodeTime(value.CreatedAt),
 	}
@@ -130,11 +185,16 @@ func decodeSubscription(wire subscriptionWire) (webhook.Subscription, error) {
 	if err != nil {
 		return webhook.Subscription{}, err
 	}
+	audience, err := decodeAudience(wire.Audience)
+	if err != nil {
+		return webhook.Subscription{}, err
+	}
 	return webhook.Subscription{
 		ID:        id,
 		Owner:     owner,
 		URL:       endpoint.Value,
 		Kinds:     filter.Value,
+		Audience:  audience,
 		State:     state.Value,
 		CreatedAt: createdAt,
 	}, nil

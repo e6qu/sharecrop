@@ -153,6 +153,7 @@ type ledgerEntryHTTPResponse struct {
 	Kind   string `json:"kind"`
 	Amount int64  `json:"amount"`
 	TaskID string `json:"task_id"`
+	Note   string `json:"note"`
 }
 
 type errorHTTPResponse struct {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
+	"github.com/e6qu/sharecrop/internal/task"
 )
 
 // secretPrefix distinguishes a webhook signing secret from the other opaque
@@ -241,3 +242,120 @@ type OwnerOrganization struct {
 func (OwnerUser) webhookOwner() {}
 
 func (OwnerOrganization) webhookOwner() {}
+
+// Audience says which events a subscription's deliveries expand for.
+// RecipientAudience (the default) delivers events whose recipient set
+// contains the subscription owner. MarketplaceAudience is the "agents ask
+// for work" channel: it delivers every task_opened event whose task is
+// public and open, regardless of recipients, optionally narrowed by task
+// type and minimum credit reward.
+type Audience interface {
+	audience()
+}
+
+type RecipientAudience struct{}
+
+type MarketplaceAudience struct {
+	TaskType  MarketplaceTaskTypeFilter
+	MinReward MarketplaceRewardFilter
+}
+
+func (RecipientAudience) audience() {}
+
+func (MarketplaceAudience) audience() {}
+
+// NewMarketplaceAudience builds a marketplace audience with no filters;
+// callers narrow it by setting the filter fields from their own validated
+// values.
+func NewMarketplaceAudience() MarketplaceAudience {
+	return MarketplaceAudience{TaskType: AnyMarketplaceTaskType{}, MinReward: NoMinimumCreditReward{}}
+}
+
+// MarketplaceTaskTypeFilter optionally narrows a marketplace subscription to
+// one task type.
+type MarketplaceTaskTypeFilter interface {
+	marketplaceTaskTypeFilter()
+}
+
+type AnyMarketplaceTaskType struct{}
+
+type MarketplaceTaskTypeIs struct {
+	Value task.TaskType
+}
+
+func (AnyMarketplaceTaskType) marketplaceTaskTypeFilter() {}
+
+func (MarketplaceTaskTypeIs) marketplaceTaskTypeFilter() {}
+
+// MarketplaceRewardFilter optionally narrows a marketplace subscription to
+// tasks declaring at least a minimum credit reward.
+type MarketplaceRewardFilter interface {
+	marketplaceRewardFilter()
+}
+
+type NoMinimumCreditReward struct{}
+
+// MinimumCreditReward is a validated positive credit floor.
+type MinimumCreditReward struct {
+	amount int64
+}
+
+type MinimumCreditRewardResult interface {
+	minimumCreditRewardResult()
+}
+
+type MinimumCreditRewardAccepted struct {
+	Value MinimumCreditReward
+}
+
+type MinimumCreditRewardRejected struct {
+	Reason core.DomainError
+}
+
+func (MinimumCreditRewardAccepted) minimumCreditRewardResult() {}
+
+func (MinimumCreditRewardRejected) minimumCreditRewardResult() {}
+
+func NewMinimumCreditReward(amount int64) MinimumCreditRewardResult {
+	if amount <= 0 {
+		return MinimumCreditRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "minimum credit reward must be positive")}
+	}
+	return MinimumCreditRewardAccepted{Value: MinimumCreditReward{amount: amount}}
+}
+
+func (reward MinimumCreditReward) Amount() int64 {
+	return reward.amount
+}
+
+func (NoMinimumCreditReward) marketplaceRewardFilter() {}
+
+func (MinimumCreditReward) marketplaceRewardFilter() {}
+
+// ValidateAudienceKinds enforces the audience/kind compatibility rule: a
+// marketplace subscription may listen only for task_opened (the one kind
+// whose subject can be matched against public open marketplace tasks).
+type AudienceKindsResult interface {
+	audienceKindsResult()
+}
+
+type AudienceKindsAccepted struct{}
+
+type AudienceKindsRejected struct {
+	Reason core.DomainError
+}
+
+func (AudienceKindsAccepted) audienceKindsResult() {}
+
+func (AudienceKindsRejected) audienceKindsResult() {}
+
+func ValidateAudienceKinds(audience Audience, kinds KindFilter) AudienceKindsResult {
+	if _, marketplace := audience.(MarketplaceAudience); !marketplace {
+		return AudienceKindsAccepted{}
+	}
+	for _, kind := range kinds.Values() {
+		if kind != event.KindTaskOpened {
+			return AudienceKindsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "marketplace subscriptions may listen only for task_opened")}
+		}
+	}
+	return AudienceKindsAccepted{}
+}

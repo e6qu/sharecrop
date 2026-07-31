@@ -26,7 +26,7 @@ func TestAuthRouteEndToEndThroughGuest(t *testing.T) {
 
 	userID := newUserID(t)
 	email := mustAuthEmail(t, "authroute-"+userID.String()+"@example.com")
-	if _, matched := authStore.CreateUserCredential(ctx, userID, email, mustAuthPasswordHash(t)).(auth.StoreUserAccepted); !matched {
+	if _, matched := authStore.CreateUserCredential(ctx, userID, email, auth.DeriveDisplayNameFromEmail(email), mustAuthPasswordHash(t)).(auth.StoreUserAccepted); !matched {
 		t.Fatalf("seed credential rejected")
 	}
 	token := mintAccessToken(t, appRouteSecret, userID)

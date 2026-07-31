@@ -22,6 +22,10 @@ var (
 	// now() + make_interval(hours => $N) — Postgres interval arithmetic becomes
 	// a strftime "now" modifier ('+N hours'). Must run before the now() rewrite.
 	sqliteMakeIntervalHours = regexp.MustCompile(`(?i)now\(\)\s*\+\s*make_interval\(\s*hours\s*=>\s*(\$\d+)\s*\)`)
+	// split_part(X, '@', 1) extracts an email's local part. SQLite has no
+	// split_part; substr up to the first '@' is equivalent for validated
+	// emails (which always contain one '@').
+	sqliteSplitPartLocal = regexp.MustCompile(`(?i)split_part\(\s*([a-zA-Z_.]+)\s*,\s*'@'\s*,\s*1\s*\)`)
 	// Postgres $N placeholders bind by number. SQLite treats $1 as a named
 	// parameter numbered by appearance, so "$3 ... $1" would bind wrong;
 	// rewriting to ?N restores explicit by-number binding.
@@ -141,6 +145,7 @@ func translateSQLiteStatement(query string) string {
 	query = sqliteILike.ReplaceAllString(query, "like")
 	query = sqliteCastPattern.ReplaceAllString(query, "")
 	query = sqliteMakeIntervalHours.ReplaceAllString(query, "strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+' || ${1} || ' hours')")
+	query = sqliteSplitPartLocal.ReplaceAllString(query, "substr($1, 1, instr($1, '@') - 1)")
 	query = sqliteNowPattern.ReplaceAllString(query, sqliteNowExpr)
 	query = sqlitePlaceholder.ReplaceAllString(query, "?$1")
 	return query
@@ -151,6 +156,7 @@ func translateSQLiteStatement(query string) string {
 // become text (except timestamptz, kept for time decoding).
 func translateSQLiteDDL(ddl string) string {
 	ddl = sqliteLineComment.ReplaceAllString(ddl, "")
+	ddl = sqliteSplitPartLocal.ReplaceAllString(ddl, "substr($1, 1, instr($1, '@') - 1)")
 	ddl = sqliteDefaultNowPattern.ReplaceAllString(ddl, "default ("+sqliteNowExpr+")")
 	ddl = sqliteAddColumnGuard.ReplaceAllString(ddl, "add column")
 	ddl = sqliteDropColumnGuard.ReplaceAllString(ddl, "drop column")

@@ -8,14 +8,15 @@ import (
 )
 
 // Subscription is one outbound webhook registration: an owner, a receiver
-// URL, the event kinds it listens for, and its lifecycle state. The signing
-// secret is not part of the model; it is passed alongside at creation and
-// only ever surfaces again inside the host-side dispatcher.
+// URL, the event kinds it listens for, its audience, and its lifecycle
+// state. The signing secret is not part of the model; it is passed alongside
+// at creation and only ever surfaces again inside the host-side dispatcher.
 type Subscription struct {
 	ID        core.WebhookSubscriptionID
 	Owner     Owner
 	URL       EndpointURL
 	Kinds     KindFilter
+	Audience  Audience
 	State     State
 	CreatedAt time.Time
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -21,15 +22,22 @@ func (store SubmissionStore) CreateSubmissionComment(ctx context.Context, commen
 		return submission.CreateSubmissionCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "create submission comment failed")}
 	}
 	comment.CreatedAt = createdAt
+	authorName, nameReason := fetchUserDisplayName(ctx, store.db, comment.AuthorID)
+	if nameReason != nil {
+		return submission.CreateSubmissionCommentStoreRejected{Reason: *nameReason}
+	}
+	comment.AuthorDisplayName = authorName
 	return submission.CreateSubmissionCommentStoreAccepted{Value: comment}
 }
 
 func (store SubmissionStore) ListSubmissionComments(ctx context.Context, submissionID core.SubmissionID, page core.Page) submission.ListSubmissionCommentsStoreResult {
 	rows, err := store.db.Query(ctx, `
-		select id::text, submission_id::text, author_user_id::text, body, created_at
+		select submission_comments.id::text, submission_comments.submission_id::text, submission_comments.author_user_id::text,
+			`+displayNameSQL("users")+`, submission_comments.body, submission_comments.created_at
 		from submission_comments
-		where submission_id = $1
-		order by created_at desc, id desc
+		join users on users.id = submission_comments.author_user_id
+		where submission_comments.submission_id = $1
+		order by submission_comments.created_at desc, submission_comments.id desc
 		limit $2 offset $3
 	`, submissionID.String(), page.Limit(), page.Offset())
 	if err != nil {
@@ -39,12 +47,12 @@ func (store SubmissionStore) ListSubmissionComments(ctx context.Context, submiss
 
 	values := make([]submission.SubmissionComment, 0)
 	for rows.Next() {
-		var rawID, rawSubmissionID, rawAuthor, rawBody string
+		var rawID, rawSubmissionID, rawAuthor, rawAuthorName, rawBody string
 		var createdAt time.Time
-		if scanErr := rows.Scan(&rawID, &rawSubmissionID, &rawAuthor, &rawBody, &createdAt); scanErr != nil {
+		if scanErr := rows.Scan(&rawID, &rawSubmissionID, &rawAuthor, &rawAuthorName, &rawBody, &createdAt); scanErr != nil {
 			return submission.ListSubmissionCommentsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan submission comment failed")}
 		}
-		parsed := parseSubmissionComment(rawID, rawSubmissionID, rawAuthor, rawBody, createdAt)
+		parsed := parseSubmissionComment(rawID, rawSubmissionID, rawAuthor, rawAuthorName, rawBody, createdAt)
 		accepted, matched := parsed.(submission.CreateSubmissionCommentStoreAccepted)
 		if !matched {
 			return submission.ListSubmissionCommentsStoreRejected{Reason: parsed.(submission.CreateSubmissionCommentStoreRejected).Reason}
@@ -60,7 +68,7 @@ func (store SubmissionStore) ListSubmissionComments(ctx context.Context, submiss
 	return submission.ListSubmissionCommentsStoreAccepted{Values: values}
 }
 
-func parseSubmissionComment(rawID string, rawSubmissionID string, rawAuthor string, rawBody string, createdAt time.Time) submission.CreateSubmissionCommentStoreResult {
+func parseSubmissionComment(rawID string, rawSubmissionID string, rawAuthor string, rawAuthorName string, rawBody string, createdAt time.Time) submission.CreateSubmissionCommentStoreResult {
 	idResult := core.ParseSubmissionCommentID(rawID)
 	commentID, idMatched := idResult.(core.SubmissionCommentIDCreated)
 	if !idMatched {
@@ -81,11 +89,17 @@ func parseSubmissionComment(rawID string, rawSubmissionID string, rawAuthor stri
 	if !bodyMatched {
 		return submission.CreateSubmissionCommentStoreRejected{Reason: bodyResult.(task.CommentBodyRejected).Reason}
 	}
+	authorNameResult := auth.NewDisplayName(rawAuthorName)
+	authorName, authorNameMatched := authorNameResult.(auth.DisplayNameAccepted)
+	if !authorNameMatched {
+		return submission.CreateSubmissionCommentStoreRejected{Reason: authorNameResult.(auth.DisplayNameRejected).Reason}
+	}
 	return submission.CreateSubmissionCommentStoreAccepted{Value: submission.SubmissionComment{
-		ID:           commentID.Value,
-		SubmissionID: submissionID.Value,
-		AuthorID:     author.Value,
-		Body:         body.Value,
-		CreatedAt:    createdAt,
+		ID:                commentID.Value,
+		SubmissionID:      submissionID.Value,
+		AuthorID:          author.Value,
+		AuthorDisplayName: authorName.Value,
+		Body:              body.Value,
+		CreatedAt:         createdAt,
 	}}
 }

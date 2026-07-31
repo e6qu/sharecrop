@@ -120,13 +120,14 @@ func TestInvalidSubmissionIsRecorded(t *testing.T) {
 }
 
 type submissionHTTPResponse struct {
-	ID               string                                 `json:"id"`
-	TaskID           string                                 `json:"task_id"`
-	SubmitterID      string                                 `json:"submitter_id"`
-	State            string                                 `json:"state"`
-	ResponseJSON     string                                 `json:"response_json"`
-	ValidationErrors []submissionValidationHTTPResponse     `json:"validation_errors"`
-	SensitiveFields  []submissionSensitiveFieldHTTPResponse `json:"sensitive_fields"`
+	ID                   string                                 `json:"id"`
+	TaskID               string                                 `json:"task_id"`
+	SubmitterID          string                                 `json:"submitter_id"`
+	SubmitterDisplayName string                                 `json:"submitter_display_name"`
+	State                string                                 `json:"state"`
+	ResponseJSON         string                                 `json:"response_json"`
+	ValidationErrors     []submissionValidationHTTPResponse     `json:"validation_errors"`
+	SensitiveFields      []submissionSensitiveFieldHTTPResponse `json:"sensitive_fields"`
 }
 
 type submissionValidationHTTPResponse struct {

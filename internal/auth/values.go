@@ -76,3 +76,85 @@ func NewPasswordSecret(raw string) PasswordSecretResult {
 func (secret PasswordSecret) String() string {
 	return secret.value
 }
+
+// DisplayName is a user's required human-readable name, shown wherever the
+// product names an actor or counterparty (task creators, submitters,
+// reservation holders, comment authors, notification actors).
+type DisplayName struct {
+	value string
+}
+
+// displayNameMaxLength bounds a display name in bytes; the derivation
+// truncates to it and the constructor rejects beyond it.
+const displayNameMaxLength = 120
+
+// fallbackDisplayName names a user whose email local part is empty after
+// trimming (derivation never produces an empty name).
+const fallbackDisplayName = "member"
+
+type DisplayNameResult interface {
+	displayNameResult()
+}
+
+type DisplayNameAccepted struct {
+	Value DisplayName
+}
+
+type DisplayNameRejected struct {
+	Reason core.DomainError
+}
+
+func (DisplayNameAccepted) displayNameResult() {}
+
+func (DisplayNameRejected) displayNameResult() {}
+
+func NewDisplayName(raw string) DisplayNameResult {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return DisplayNameRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "display name is required")}
+	}
+	if len(trimmed) > displayNameMaxLength {
+		return DisplayNameRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "display name is too long")}
+	}
+	return DisplayNameAccepted{Value: DisplayName{value: trimmed}}
+}
+
+// DeriveDisplayNameFromEmail builds the default display name from an email
+// address: the local part before '@', trimmed, truncated to the length bound,
+// with a fixed fallback when nothing remains. It is total - a validated email
+// always yields a valid display name.
+func DeriveDisplayNameFromEmail(email EmailAddress) DisplayName {
+	local := email.String()
+	if at := strings.Index(local, "@"); at >= 0 {
+		local = local[:at]
+	}
+	local = strings.TrimSpace(local)
+	if len(local) > displayNameMaxLength {
+		local = local[:displayNameMaxLength]
+	}
+	local = strings.TrimSpace(local)
+	if local == "" {
+		return DisplayName{value: fallbackDisplayName}
+	}
+	return DisplayName{value: local}
+}
+
+func (name DisplayName) String() string {
+	return name.value
+}
+
+// DisplayNameChoice says how a new account's display name is set: provided
+// explicitly by the caller, or derived from the email address.
+type DisplayNameChoice interface {
+	displayNameChoice()
+}
+
+type DeriveDisplayName struct{}
+
+type ProvidedDisplayName struct {
+	Value DisplayName
+}
+
+func (DeriveDisplayName) displayNameChoice() {}
+
+func (ProvidedDisplayName) displayNameChoice() {}

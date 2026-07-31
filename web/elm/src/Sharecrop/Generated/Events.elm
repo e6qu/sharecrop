@@ -23,6 +23,7 @@ type DomainEventKind
     | DomainEventKindSubmissionRejected
     | DomainEventKindSubmissionCommented
     | DomainEventKindPayoutReceived
+    | DomainEventKindCreditGranted
     | DomainEventKindTipReceived
     | DomainEventKindCollectibleAwarded
 
@@ -82,6 +83,9 @@ domainEventKindDecoder =
 
                     "payout_received" ->
                         Decode.succeed DomainEventKindPayoutReceived
+
+                    "credit_granted" ->
+                        Decode.succeed DomainEventKindCreditGranted
 
                     "tip_received" ->
                         Decode.succeed DomainEventKindTipReceived
@@ -147,6 +151,9 @@ domainEventKindEncoder domainEventKind =
         DomainEventKindPayoutReceived ->
             Encode.string "payout_received"
 
+        DomainEventKindCreditGranted ->
+            Encode.string "credit_granted"
+
         DomainEventKindTipReceived ->
             Encode.string "tip_received"
 
@@ -189,9 +196,11 @@ type alias EventResponse =
     , kind : DomainEventKind
     , actorKind : EventActorKind
     , actorUserID : String
+    , actorDisplayName : String
     , occurredAt : String
     , cursor : String
     , taskID : String
+    , taskTitle : String
     , submissionID : String
     , reservationID : String
     , seriesID : String
@@ -207,13 +216,15 @@ eventResponseDecoder =
         (Decode.field "kind" domainEventKindDecoder)
         (Decode.field "actor_kind" eventActorKindDecoder)
         (Decode.field "actor_user_id" Decode.string)
+        (Decode.field "actor_display_name" Decode.string)
         (Decode.field "occurred_at" Decode.string)
         (Decode.field "cursor" Decode.string)
         (Decode.field "task_id" Decode.string)
-        (Decode.field "submission_id" Decode.string)
         |> Decode.andThen
             (\finish ->
-                Decode.map5 finish
+                Decode.map7 finish
+                    (Decode.field "task_title" Decode.string)
+                    (Decode.field "submission_id" Decode.string)
                     (Decode.field "reservation_id" Decode.string)
                     (Decode.field "series_id" Decode.string)
                     (Decode.field "organization_id" Decode.string)
@@ -228,9 +239,11 @@ eventResponseEncoder eventResponse =
         , ( "kind", domainEventKindEncoder eventResponse.kind )
         , ( "actor_kind", eventActorKindEncoder eventResponse.actorKind )
         , ( "actor_user_id", Encode.string eventResponse.actorUserID )
+        , ( "actor_display_name", Encode.string eventResponse.actorDisplayName )
         , ( "occurred_at", Encode.string eventResponse.occurredAt )
         , ( "cursor", Encode.string eventResponse.cursor )
         , ( "task_id", Encode.string eventResponse.taskID )
+        , ( "task_title", Encode.string eventResponse.taskTitle )
         , ( "submission_id", Encode.string eventResponse.submissionID )
         , ( "reservation_id", Encode.string eventResponse.reservationID )
         , ( "series_id", Encode.string eventResponse.seriesID )
@@ -354,6 +367,36 @@ webhookOwnerKindEncoder webhookOwnerKind =
             Encode.string "organization"
 
 
+type WebhookAudience
+    = WebhookAudienceRecipient
+    | WebhookAudienceMarketplace
+
+webhookAudienceDecoder : Decoder WebhookAudience
+webhookAudienceDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "recipient" ->
+                        Decode.succeed WebhookAudienceRecipient
+
+                    "marketplace" ->
+                        Decode.succeed WebhookAudienceMarketplace
+
+                    _ ->
+                        Decode.fail "invalid WebhookAudience"
+            )
+
+webhookAudienceEncoder : WebhookAudience -> Encode.Value
+webhookAudienceEncoder webhookAudience =
+    case webhookAudience of
+        WebhookAudienceRecipient ->
+            Encode.string "recipient"
+
+        WebhookAudienceMarketplace ->
+            Encode.string "marketplace"
+
+
 type alias WebhookSubscriptionResponse =
     { id : String
     , ownerKind : WebhookOwnerKind
@@ -363,6 +406,9 @@ type alias WebhookSubscriptionResponse =
     , kinds : List DomainEventKind
     , state : WebhookSubscriptionState
     , createdAt : String
+    , audience : WebhookAudience
+    , filterTaskType : String
+    , filterMinCreditReward : Int
     }
 
 webhookSubscriptionResponseDecoder : Decoder WebhookSubscriptionResponse
@@ -376,6 +422,13 @@ webhookSubscriptionResponseDecoder =
         (Decode.field "kinds" (Decode.list domainEventKindDecoder))
         (Decode.field "state" webhookSubscriptionStateDecoder)
         (Decode.field "created_at" Decode.string)
+        |> Decode.andThen
+            (\finish ->
+                Decode.map3 finish
+                    (Decode.field "audience" webhookAudienceDecoder)
+                    (Decode.field "filter_task_type" Decode.string)
+                    (Decode.field "filter_min_credit_reward" Decode.int)
+            )
 
 webhookSubscriptionResponseEncoder : WebhookSubscriptionResponse -> Encode.Value
 webhookSubscriptionResponseEncoder webhookSubscriptionResponse =
@@ -388,6 +441,9 @@ webhookSubscriptionResponseEncoder webhookSubscriptionResponse =
         , ( "kinds", Encode.list domainEventKindEncoder webhookSubscriptionResponse.kinds )
         , ( "state", webhookSubscriptionStateEncoder webhookSubscriptionResponse.state )
         , ( "created_at", Encode.string webhookSubscriptionResponse.createdAt )
+        , ( "audience", webhookAudienceEncoder webhookSubscriptionResponse.audience )
+        , ( "filter_task_type", Encode.string webhookSubscriptionResponse.filterTaskType )
+        , ( "filter_min_credit_reward", Encode.int webhookSubscriptionResponse.filterMinCreditReward )
         ]
 
 type alias WebhookSubscriptionCreatedResponse =

@@ -21,7 +21,17 @@ continuity files if task scope changes.
    open. The guest-side rate-limit bridge still fails open on transport
    errors while the host store now fails closed.
 
-3. **Maintain the AWS deployment.** The Terraform in `deploy/terraform/`
+3. **Agent-loop polish.** Join submissions→tasks in the notification read
+   model so submission-subject inbox sentences carry the task title; enrich
+   MCP `list_tasks` summaries with creator name and pending-review count;
+   add the reservation-holder display name to task list DTOs; enrich webhook
+   delivery bodies (dispatcher currently reads the unenriched stream); add a
+   funded-state discovery filter so pollers can skip unfunded credit-reward
+   tasks; isolate `webhookdispatch_test.go` against reused dev databases.
+   Decide the long-term sybil stance for signup grants (per-IP throttle is
+   the only guard).
+
+4. **Maintain the AWS deployment.** The Terraform in `deploy/terraform/`
    provisions private Amazon ECS Fargate tasks and an Amazon API Gateway HTTP
    API private integration through AWS Cloud Map in an existing VPC. Keep the
    API route throttles, access logs, container health checks, private task
@@ -51,19 +61,19 @@ continuity files if task scope changes.
    while preserving at most 20 complete release triplets.
    See [docs/deployment.md](./docs/deployment.md).
 
-4. Keep expanding shared scenario parity as new user-visible API surfaces are
+5. Keep expanding shared scenario parity as new user-visible API surfaces are
    added, and keep running it against both SQL engines and the real backend as
    behavior changes.
 
-5. Keep expanding generated/fixture-level HTTP contract coverage as the API
+6. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
 
-6. Audit remaining raw-ID browser flows and replace high-traffic fields with
+7. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 
-7. Do not add anonymous worker identity or provider email delivery unless the
+8. Do not add anonymous worker identity or provider email delivery unless the
    product direction changes. Registered-user submissions remain the model;
    account and organization setup stays admin/org-admin driven.
 
@@ -74,6 +84,14 @@ UI minors queue:
 
 Recently finished (details in [WHAT_WE_DID.md](./WHAT_WE_DID.md)):
 
+- Agent loop completion: marketplace webhook audience with filters (push
+  discovery of new public tasks), mintable webhook scopes, reviewer
+  submission reads over MCP, validation errors + kept reservations on
+  invalid submissions, required explicit task visibility, admin credit
+  grants, agent-credential public task listing over REST with optional
+  `scope` and `created_after`, OpenAPI parameter declarations, display
+  names end to end, needs-review signals, humane inbox/feed, and the
+  first-run explainer.
 - The review-driven platform upgrade: domain event stream with service-layer
   emission (MCP and REST now produce identical notifications/events), sealed
   notification kinds with unread filter/count, outbound webhooks (signed,

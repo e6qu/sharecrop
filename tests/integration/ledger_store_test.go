@@ -335,6 +335,12 @@ func newPool(t *testing.T) *pgxpool.Pool {
 	if err := db.MigrateUp(ctx, pool, requireEnv(t, "SHARECROP_MIGRATIONS_DIR")); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
+	// The registration throttle's Postgres buckets outlive test runs (its
+	// refill is deliberately slow), so each test starts with a fresh
+	// registration budget; the throttle itself is covered by its own tests.
+	if _, err := pool.Exec(ctx, "delete from rate_limit_buckets where key like 'register:%'"); err != nil {
+		t.Fatalf("reset registration rate buckets: %v", err)
+	}
 	return pool
 }
 
@@ -353,7 +359,7 @@ func createUser(t *testing.T, pool *pgxpool.Pool, prefix string) core.UserID {
 	if !hashMatched {
 		t.Fatalf("password hash rejected")
 	}
-	result := db.NewAuthStore(pool).CreateUserCredential(context.Background(), userID, email.Value, hash.Value)
+	result := db.NewAuthStore(pool).CreateUserCredential(context.Background(), userID, email.Value, auth.DeriveDisplayNameFromEmail(email.Value), hash.Value)
 	if _, accepted := result.(auth.StoreUserAccepted); !accepted {
 		t.Fatalf("create user credential rejected")
 	}

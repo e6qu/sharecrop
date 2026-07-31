@@ -6,11 +6,22 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 
 [docs/openapi.json](./openapi.json) is generated from the route registrations in `internal/http/server.go` (`make openapi`, checked in CI by `make check-openapi`) and is an accurate machine-readable method/path/operationId/bearer-auth inventory. Request/response body schemas are derived from the actual Go DTO struct each handler decodes/writes, resolved through `internal/openapi`'s `go/ast`-based analysis of `internal/http`; a route whose handler does not match one of the standard decode/write patterns (raw MCP JSON-RPC passthrough or `healthz`) gets a generic `{"type": "object"}` (or empty) placeholder rather than a guess. This document remains the source for prose per-route request/response descriptions where the generated schema is generic. The same document is browsable at `/docs/openapi.html` on the deployed GitHub Pages site, and served raw at `/docs/openapi.json`.
 
+## Credential Coverage
+
+Three bearer credential kinds reach the API. Their coverage differs:
+
+| Credential | Prefix | Covers |
+| --- | --- | --- |
+| User access token | JWT | Every route in this document. User sessions carry no scope model. |
+| Organization credential | `scrop_org_` | Routes widened to org parity: task listing/state changes/detail-adjacent flows that accept an org actor, reservation review, submission listing/review, webhook management, MCP. Each call is checked against the scopes the credential was minted with. `scope=organization` task listings only; the org credential acts as the organization, not as a member. |
+| Personal agent credential | `scrop_agent_` | `GET /api/tasks` (public scope only, `tasks_read`), `GET /api/tasks/{task_id}` (`tasks_read`), `POST /api/tasks/{task_id}/submissions` (`submissions_write`), `POST /api/tasks/{task_id}/reservations` (`submissions_write`), and the MCP endpoint (all tools, per scope). Other REST routes reject it. A task-scoped credential (auto-issued on reservation) is additionally bound to its task. |
+
 ## Authentication
 
-- `POST /api/auth/register`: create an account with `email` and `password`.
+- `POST /api/auth/register`: create an account with `email`, `password`, and an optional `display_name` (absent or empty derives the display name from the email's local part).
 - `POST /api/auth/login`: exchange email/password for an access token.
 - `POST /api/auth/refresh`: rotate a refresh-token cookie and issue a new access token.
+- Register, login, and refresh responses include `display_name` for user sessions; guest sessions report an empty `display_name`.
 - `GET /api/auth/shauth`: start Authorization Code Flow with PKCE against the configured Shauth issuer.
 - `GET /api/auth/shauth/callback`: verify the Shauth response, retain the provider-signed session coordinates server-side, and establish the rotating Sharecrop refresh-token session.
 - `POST /api/auth/logout`: revoke the current Sharecrop refresh-token family and return a provider-discovered RP-Initiated Logout URL. The browser navigates to that URL to end the shared Shauth session.
@@ -29,7 +40,9 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `POST /api/auth/password-reset/request`: issue a password-reset token through the configured delivery mode.
 - `POST /api/auth/password-reset/confirm`: reset a password with an issued reset token.
 - `PATCH /api/account/password`: change the authenticated user's password.
+- `GET /api/account/profile`: read the authenticated user's own profile: `id`, `email`, and `display_name`.
 - `PATCH /api/account/profile`: change the authenticated user's profile email.
+- `PATCH /api/account/display-name`: replace the authenticated user's `display_name` (required, length-limited).
 - `DELETE /api/account`: deactivate the authenticated account.
 - `POST /api/privacy-requests`: create an audited privacy request. Accepted `kind` values are `data_export` and `sensitive_field_deletion`; the response includes `kind`, `status`, `requested_by`, timestamps, `export_json`, `resolution_note`, and `redacted_field_count`.
 - `GET /api/privacy-requests`: list the authenticated user's privacy requests.
@@ -52,8 +65,8 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
   content types are PNG, JPEG, GIF, WebP, plain text, JSON, and PDF. Each decoded
   file must be under 500 KiB, and each request may include up to five
   attachments.
-- `GET /api/tasks`: list tasks visible to the requester. Supports pagination and task-state filters.
-- `GET /api/tasks/{task_id}`: read task detail.
+- `GET /api/tasks`: list tasks visible to the requester. `scope` is optional and defaults to `public`; the other values are `user`, `organization` (requires `organization_id`), and `team` (requires `team_id`). Filters: `state` (repeatable), `participation_policy`, `task_type`, `query`, `sort`, `created_after` (RFC3339; only tasks created strictly after it), `include_reserved`, `limit`, `offset`. List items carry `creator_display_name` on every row and `pending_review_count` (submissions in state `submitted`), which is populated only on tasks the caller created and 0 on every other row. Personal agent credentials holding `tasks_read` may call this endpoint for the public scope only; any other scope answers 403 `permission_denied`.
+- `GET /api/tasks/{task_id}`: read task detail, including `creator_display_name`.
 - `POST /api/tasks/{task_id}/open`: open a draft task.
 - `POST /api/tasks/{task_id}/cancel`: cancel an unfunded draft or open no-reward task.
 - `POST /api/tasks/{task_id}/unpublish`: move an open task back to draft.
@@ -65,16 +78,16 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 ## Reservations And Submissions
 
 - `POST /api/tasks/{task_id}/reservations`: reserve a user-assignee task or reserve/request approval for an organization-team assignee task.
-- `GET /api/tasks/{task_id}/reservations`: list reservations for a task.
+- `GET /api/tasks/{task_id}/reservations`: list reservations for a task. Each reservation carries `holder_display_name`, the requesting worker's display name.
 - `POST /api/tasks/{task_id}/reservations/{reservation_id}/approve`: approve a requested reservation.
 - `POST /api/tasks/{task_id}/reservations/{reservation_id}/decline`: decline a requested reservation.
 - `POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel`: cancel a reservation as requester.
 - `POST /api/tasks/{task_id}/submissions`: submit a JSON response. The request
   may include the same small `attachments` shape and limits as task creation.
-- `GET /api/tasks/{task_id}/submissions`: list task submissions for an authorized reviewer.
+- `GET /api/tasks/{task_id}/submissions`: list task submissions for an authorized reviewer. Each submission carries `submitter_display_name`.
 - `GET /api/users/{user_id}/submissions`: list the authenticated user's own submissions. Supports `limit` and `offset`.
-- `GET /api/users`: search the user directory with `query`, `limit`, and `offset`; returns id/email/status entries for selector-backed flows.
-- `GET /api/users/{user_id}`: read a user's profile: the tasks they created that are visible to the caller.
+- `GET /api/users`: search the user directory with `query`, `limit`, and `offset`; returns id/email/display_name/status entries for selector-backed flows.
+- `GET /api/users/{user_id}`: read a user's profile: their `display_name` and the tasks they created that are visible to the caller.
 - `GET /api/users/{user_id}/work`: list the tasks currently assigned to a user that are visible to the caller.
 - `GET /api/submission-receipts/{receipt_token}`: read receipt status by receipt token.
 - `POST /api/tasks/{task_id}/submissions/{submission_id}/accept`: accept a submission and settle reward/tips.
@@ -86,6 +99,40 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `GET /api/tasks/{task_id}/comments` and `POST /api/tasks/{task_id}/comments`: task thread.
 - `GET /api/submissions/{submission_id}/comments` and `POST /api/submissions/{submission_id}/comments`: private submission thread for the submitter and authorized reviewer.
 - `GET /api/task-series/{series_id}/comments` and `POST /api/task-series/{series_id}/comments`: series thread.
+- Every comment response carries `author_display_name` alongside `author_user_id`.
+
+## Events And Webhooks
+
+The domain event stream is one wire shape shared by the live feed and webhook deliveries: `id`, `kind`, `actor_kind`, `actor_user_id`, `actor_display_name`, `occurred_at`, `cursor`, subject references (`task_id`, `task_title`, `submission_id`, `reservation_id`, `series_id`, `organization_id`, `collectible_id`), and `metadata_json`. `actor_display_name` and `task_title` are read-time enrichments; they are empty for system actors, events without a task subject, and webhook deliveries (the dispatcher reads the unenriched stream).
+
+- `GET /api/events`: list the authenticated user's visible events after an optional `after` cursor. Feed paging is cursor-based (`after` and `limit`); `offset` is not accepted. The response carries `next_cursor` to resume from.
+- `GET /api/events/stream`: the same feed as Server-Sent Events. The `Last-Event-ID` header takes precedence over `?after` on reconnect. Connections end cleanly before the 30-second edge cap; clients reconnect with `Last-Event-ID`.
+- `POST /api/webhook-subscriptions`: create a subscription with `url`, `kinds` (domain event kinds), and an optional `audience`:
+  - `recipient` (the default): deliveries carry events addressed to the subscription owner.
+  - `marketplace`: deliveries carry every public open `task_opened` event, regardless of recipients. Requires `kinds` to be exactly `["task_opened"]`. Optional narrowing filters: `filter_task_type` (one task type) and `filter_min_credit_reward` (a positive integer credit floor). The filter fields are rejected with `invalid_argument` on recipient subscriptions.
+  The response returns the subscription plus the signing `secret` exactly once; listings never repeat it. Callers are a user session or an org credential holding `webhooks_manage`; an org credential must also hold the read scope matching every subscribed kind.
+- `GET /api/webhook-subscriptions`: list the caller's (or, with `organization_id`, an organization's) subscriptions. Subscription responses include `audience`, `filter_task_type`, and `filter_min_credit_reward` (empty / 0 when unset).
+- `DELETE /api/webhook-subscriptions/{subscription_id}`: revoke a subscription.
+- `GET /api/webhook-subscriptions/{subscription_id}/deliveries`: list a subscription's delivery attempts (`event_cursor`, `state`, `attempt_count`, `next_attempt_at`, `last_status`).
+
+### Signature Verification
+
+Every delivery is signed with the subscription's secret (`scrop_whsec_…`). Headers:
+
+- `Sharecrop-Webhook-Id`: the delivery id.
+- `Sharecrop-Webhook-Timestamp`: the send instant as a unix-seconds integer.
+- `Sharecrop-Webhook-Signature`: `v1=` + hex(HMAC-SHA256(secret, `<timestamp>.<raw body>`)).
+
+Verify by recomputing the HMAC over the timestamp header, a literal `.`, and the raw request body, then comparing in constant time:
+
+```python
+import hashlib, hmac
+
+expected = "v1=" + hmac.new(secret.encode(), f"{timestamp}.".encode() + raw_body, hashlib.sha256).hexdigest()
+valid = hmac.compare_digest(expected, signature_header)
+```
+
+Reject deliveries whose timestamp is far from your clock to bound replay.
 
 ## Task Series
 
@@ -117,7 +164,7 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 ## Collectibles, Ledger, Notifications, Admin
 
 - `GET /api/credits/balance`: read the authenticated user's credit balance. The account has two sections: `spendable_credits` (credits that can be spent or used to fund tasks) and `allocated_credits` (credits currently locked to funded tasks).
-- `GET /api/credits/ledger`: list authenticated-user ledger entries.
+- `GET /api/credits/ledger`: list authenticated-user ledger entries, newest first. Each entry carries `id`, `kind`, `amount`, `task_id` (empty when the entry is not tied to a task), and `note` (the stored note, for example the required explanation on a platform-admin credit grant; empty for entry kinds without one).
 - `GET /api/organizations/{organization_id}/credits/balance`: read the organization credit balance, with the same `spendable_credits` and `allocated_credits` sections.
 - `GET /api/organizations/{organization_id}/credits/ledger`: list organization ledger entries. Requires billing permission on the organization.
 - `GET /api/organizations/{organization_id}/audit-events`: list audit events whose subject is the organization. Requires membership-management permission on the organization. Supports `limit` and `offset`.
@@ -129,13 +176,14 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 - `GET /api/organizations/{id}/collectibles`: list organization collectible holdings.
 - `POST /api/organizations/{organization_id}/collectibles/{id}/award`: award one of the organization's held collectibles to a user (`recipient_id`). Requires membership-management permission on the organization.
 - `GET /api/teams/{id}/collectibles`: list team collectible holdings.
-- `GET /api/notifications`: list authenticated-user notifications.
+- `GET /api/notifications`: list authenticated-user notifications. Supports `state=unread`, `limit`, and `offset`. Each notification carries `actor_display_name` (empty for system actors) and `subject_title` (the subject task's title when the subject is a task, empty otherwise).
 - `POST /api/notifications/{notification_id}/read`: mark a notification read.
 - `GET /api/admin/operations`: platform-admin runtime status.
 - `GET /api/admin/platform-admins`: platform-admin configuration list.
 - `POST /api/admin/platform-admins`: grant platform-admin access to a user with `user_id`.
 - `POST /api/admin/platform-admins/{user_id}/revoke`: revoke a granted platform-admin role by lifecycle state.
 - `GET /api/admin/audit-events`: platform-admin audit event list. Supports `action`, `subject_kind`, `subject_id`, `limit`, and `offset`.
+- `POST /api/admin/credits/grants`: platform-admin manual credit grant. Request: `target_kind` (`user` or `organization`), `target_id`, `amount` (positive), `note` (required explanation, stored on the ledger entry), `idempotency_key`. The response returns `entry_id` and `amount`. Replaying the same idempotency key returns the original entry without double-crediting; a non-admin caller receives 403 `permission_denied`. The beneficiaries (the granted user, or the organization's owner/admin/billing members) receive a `credit_granted` notification.
 - `GET /api/admin/moderation/reports`: platform-admin moderation report list. Supports `state`, `limit`, and `offset`.
 - `POST /api/admin/moderation/reports/{report_id}/triage`: update moderation report `state` and `resolution_note`. Accepted states are `open`, `resolved`, and `dismissed`.
 - `GET /api/admin/privacy-requests`: platform-admin privacy request queue.
@@ -146,7 +194,7 @@ All protected routes require `Authorization: Bearer <access_token>` unless the r
 
 - Pagination uses `limit` and `offset` where list handlers expose paging.
 - Selector-backed browser flows use `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams.
-- Task list endpoints support `state`, `participation_policy`, `query`, `task_type`, `sort`, `limit`, and `offset` where the corresponding scope is exposed. Sort values are `newest`, `oldest`, `title_asc`, `title_desc`, `reward_desc`, and `reward_asc`.
+- Task list endpoints support `state`, `participation_policy`, `query`, `task_type`, `sort`, `created_after`, `limit`, and `offset` where the corresponding scope is exposed. Sort values are `newest`, `oldest`, `title_asc`, `title_desc`, `reward_desc`, and `reward_asc`.
 - Submission responses include `sensitive_fields` metadata for indexed sensitive response paths. The metadata identifies path, category, retention, redaction policy, lifecycle state, and redaction time.
 - Task detail and submission responses include `attachments` as
   `{name, content_type, size_bytes, data_url}`. Attachment bytes are stored

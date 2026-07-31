@@ -100,3 +100,35 @@ func newAgentCredentialID(t *testing.T) core.AgentCredentialID {
 	}
 	return created.Value
 }
+
+// TestAgentCredentialEveryScopeMintable proves the agent_credential_scopes
+// CHECK constraint stays in sync with the Go scope enum: a credential carrying
+// every scope must insert cleanly. The webhook scopes drifted out of the
+// constraint once and made those scopes unmintable; iterating the enum here
+// catches future drift at integration time.
+func TestAgentCredentialEveryScopeMintable(t *testing.T) {
+	pool := newPool(t)
+	owner := createUser(t, pool, "agent-all-scopes")
+	store := db.NewAgentStore(pool)
+
+	secret := mustSecret(t)
+	credential := agent.Credential{
+		ID:     newAgentCredentialID(t),
+		UserID: owner,
+		Label:  mustLabel(t, "Every scope"),
+		Scopes: agent.NewScopeSet(agent.AllScopes()),
+		State:  agent.StateActive,
+	}
+
+	if _, matched := store.CreateCredential(context.Background(), credential, secret.Hash()).(agent.CreateStoreAccepted); !matched {
+		t.Fatalf("create credential with every scope rejected: the scope CHECK constraint has drifted from the Go enum")
+	}
+
+	verified, matched := store.VerifyCredential(context.Background(), secret.Hash()).(agent.VerifyStoreFound)
+	if !matched {
+		t.Fatalf("verify credential rejected")
+	}
+	if got, want := len(verified.Value.Scopes.Values()), len(agent.AllScopes()); got != want {
+		t.Fatalf("scope count after round trip = %d, want %d", got, want)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 )
 
@@ -172,10 +173,13 @@ func (body CommentBody) String() string {
 }
 
 // SeriesComment is one message on a series discussion thread.
+// SeriesComment carries the author's display name, resolved by the store, so
+// threads can name the author without a per-row user fetch.
 type SeriesComment struct {
-	ID        core.SeriesCommentID
-	SeriesID  core.TaskSeriesID
-	AuthorID  core.UserID
-	Body      CommentBody
-	CreatedAt time.Time
+	ID                core.SeriesCommentID
+	SeriesID          core.TaskSeriesID
+	AuthorID          core.UserID
+	AuthorDisplayName auth.DisplayName
+	Body              CommentBody
+	CreatedAt         time.Time
 }

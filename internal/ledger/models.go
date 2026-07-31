@@ -18,11 +18,15 @@ func (NoTaskReference) taskReference() {}
 func (TaskReferenced) taskReference() {}
 
 // LedgerEntry is an append-only record of one credit movement on an account.
+// Note is the raw display copy of the entry's stored note (for example the
+// required explanation on a platform-admin credit grant); it is empty for
+// entry kinds that record no note.
 type LedgerEntry struct {
 	ID      core.LedgerEntryID
 	Kind    EntryKind
 	Amount  SignedAmount
 	TaskRef TaskReference
+	Note    string
 }
 
 // TaskFund records the credits currently allocated to a task. A TaskFund exists

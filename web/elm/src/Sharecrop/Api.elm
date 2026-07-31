@@ -226,6 +226,9 @@ createTaskCommand model state =
     else if participationUsesReservation state.createParticipationPolicy && (reservationHoursValue state.createReservationHours < 1 || reservationHoursValue state.createReservationHours > 720) then
         ( updateLoggedIn model (\current -> { current | createMessage = Just (FailureNote "Reservation expiry must be between 1 and 720 hours.") }), Cmd.none )
 
+    else if not (expiryDraftIsValid state.createExpiresAt) then
+        ( updateLoggedIn model (\current -> { current | createMessage = Just (FailureNote "Pick a complete expiry date and time, or clear the field for no expiration.") }), Cmd.none )
+
     else
         ( updateLoggedIn model (\current -> { current | createTitleInvalid = False, createDescriptionInvalid = False, createRewardAmountInvalid = False, createMessage = Nothing })
         , postCreateTask state
@@ -468,7 +471,10 @@ routeLoadCmd : String -> String -> Page -> Cmd Msg
 routeLoadCmd token subjectId page =
     case page of
         OverviewPage ->
-            Cmd.batch [ fetchBalance token, fetchLedger token 0, fetchEvents token "" ]
+            -- Tasks are fetched too: the Needs-review card is derived from
+            -- the My-tasks data and must reflect reviews done since the list
+            -- was last loaded.
+            Cmd.batch [ fetchBalance token, fetchLedger token 0, fetchEvents token "", fetchTasks token [] "" "newest" 0 ]
 
         TasksPage ->
             -- The Tasks hub embeds My tasks, Discover public tasks, My
@@ -505,8 +511,9 @@ routeLoadCmd token subjectId page =
         UserDetailPage userId ->
             if userId == subjectId then
                 -- Your own profile page carries the account-settings card,
-                -- whose Privacy section lists your own privacy requests.
-                Cmd.batch [ fetchUserProfile token userId, fetchMyPrivacyRequests token ]
+                -- whose Privacy section lists your own privacy requests, and
+                -- the identity card showing your display name and email.
+                Cmd.batch [ fetchUserProfile token userId, fetchMyPrivacyRequests token, fetchAccountProfile token ]
 
             else
                 fetchUserProfile token userId
@@ -774,9 +781,12 @@ logoutURLDecoder =
 
 authRequestBody : Model -> Encode.Value
 authRequestBody model =
+    -- display_name matters only to /register (optional there; blank means
+    -- "derive from the email"); /login ignores the extra field.
     Encode.object
         [ ( "email", Encode.string model.email )
         , ( "password", Encode.string model.password )
+        , ( "display_name", Encode.string (String.trim model.registerName) )
         ]
 
 
@@ -1292,6 +1302,46 @@ triageModerationReport token reportID stateValue resolutionNote =
         (expectJsonWithServerError AdminModerationReportTriaged Moderation.moderationReportResponseDecoder)
 
 
+{-| Validates the admin grant form and posts it. The idempotency key was
+minted when the form intent started (see Main's GrantCreditsClicked) so a
+retried click after a network timeout dedupes server-side instead of
+double-crediting.
+-}
+grantCreditsCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+grantCreditsCommand model state key =
+    if String.trim state.grantTargetId == "" then
+        ( updateLoggedIn model (\current -> { current | grantMessage = Just (FailureNote "Choose a target first.") }), Cmd.none )
+
+    else if Maybe.withDefault 0 (String.toInt (String.trim state.grantAmount)) < 1 then
+        ( updateLoggedIn model (\current -> { current | grantMessage = Just (FailureNote "Amount must be a positive whole number of credits.") }), Cmd.none )
+
+    else if String.trim state.grantNote == "" then
+        ( updateLoggedIn model (\current -> { current | grantMessage = Just (FailureNote "A note is required - it appears in the beneficiary's ledger.") }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | grantMessage = Nothing, grantKey = key })
+        , postCreditGrant state.accessToken state.grantTargetKind (String.trim state.grantTargetId) (Maybe.withDefault 0 (String.toInt (String.trim state.grantAmount))) (String.trim state.grantNote) key
+        )
+
+
+postCreditGrant : String -> String -> String -> Int -> String -> String -> Cmd Msg
+postCreditGrant token targetKind targetId amount note key =
+    authorizedRequest "POST"
+        token
+        "/api/admin/credits/grants"
+        (Http.jsonBody
+            (Encode.object
+                [ ( "target_kind", Encode.string targetKind )
+                , ( "target_id", Encode.string targetId )
+                , ( "amount", Encode.int amount )
+                , ( "note", Encode.string note )
+                , ( "idempotency_key", Encode.string key )
+                ]
+            )
+        )
+        (expectJsonWithServerError CreditsGranted Ledger.creditGrantResponseDecoder)
+
+
 runPrivacyRetention : String -> Cmd Msg
 runPrivacyRetention token =
     authorizedRequest "POST"
@@ -1340,6 +1390,20 @@ confirmEmailVerification token accountToken =
         "/api/auth/email-verification/confirm"
         (Http.jsonBody (Encode.object [ ( "token", Encode.string accountToken ) ]))
         (expectWhateverWithServerError AccountActionReceived)
+
+
+fetchAccountProfile : String -> Cmd Msg
+fetchAccountProfile token =
+    authorizedRequest "GET" token "/api/account/profile" Http.emptyBody (expectJsonWithServerError AccountProfileReceived Auth.accountProfileResponseDecoder)
+
+
+patchDisplayName : String -> String -> Cmd Msg
+patchDisplayName token name =
+    authorizedRequest "PATCH"
+        token
+        "/api/account/display-name"
+        (Http.jsonBody (Encode.object [ ( "display_name", Encode.string name ) ]))
+        (expectWhateverWithServerError DisplayNameSaved)
 
 
 updateProfile : String -> String -> Cmd Msg
@@ -1592,8 +1656,45 @@ createTaskRequestBody state =
         , ( "task_type", Encode.string state.createTaskType )
         , ( "reference_url", Encode.string state.createReferenceURL )
         , ( "attachments", Encode.list attachmentRequestBody state.createAttachments )
-        , ( "expires_at", Encode.string (String.trim state.createExpiresAt) )
+        , ( "expires_at", Encode.string (expiryRFC3339 state.createExpiresAt) )
         ]
+
+
+{-| Converts the expiry field's native datetime-local value
+("YYYY-MM-DDTHH:MM", seconds optional) into the RFC3339 UTC instant the API
+expects. The field is labeled UTC, so no timezone conversion happens here.
+Blank stays blank (no expiration).
+-}
+expiryRFC3339 : String -> String
+expiryRFC3339 raw =
+    let
+        trimmed =
+            String.trim raw
+    in
+    if trimmed == "" then
+        ""
+
+    else if String.length trimmed == 16 then
+        trimmed ++ ":00Z"
+
+    else if String.length trimmed == 19 then
+        trimmed ++ "Z"
+
+    else
+        trimmed
+
+
+{-| Whether the expiry draft is blank or a complete datetime-local value.
+The native picker cannot produce free text, so this only guards a partially
+filled control (some browsers report "" there, but not all).
+-}
+expiryDraftIsValid : String -> Bool
+expiryDraftIsValid raw =
+    let
+        trimmed =
+            String.trim raw
+    in
+    trimmed == "" || String.length trimmed == 16 || String.length trimmed == 19
 
 
 createSchemaString : LoggedInModel -> String
@@ -1892,6 +1993,7 @@ taskDetailFromResponse response =
     , payloadJson = response.payloadJSON
     , attachments = response.attachments
     , createdBy = response.createdBy
+    , creatorDisplayName = response.creatorDisplayName
     , seriesID = response.seriesID
     , taskType = response.taskType
     , referenceURL = response.referenceURL
@@ -2078,20 +2180,39 @@ fetchWebhookSubscriptions token =
     authorizedRequest "GET" token "/api/webhook-subscriptions" Http.emptyBody (expectJsonWithServerError WebhooksReceived Events.webhookSubscriptionsResponseDecoder)
 
 
-createWebhookSubscription : String -> String -> List Events.DomainEventKind -> Cmd Msg
-createWebhookSubscription token url kinds =
+createWebhookSubscription : String -> LoggedInModel -> Cmd Msg
+createWebhookSubscription token state =
     authorizedRequest "POST"
         token
         "/api/webhook-subscriptions"
         (Http.jsonBody
             (Encode.object
-                [ ( "url", Encode.string (String.trim url) )
-                , ( "kinds", Encode.list (\kind -> Encode.string (domainEventKindTag kind)) kinds )
-                , ( "organization_id", Encode.string "" )
-                ]
+                ([ ( "url", Encode.string (String.trim state.webhookURL) )
+                 , ( "kinds", Encode.list (\kind -> Encode.string (domainEventKindTag kind)) state.webhookKinds )
+                 , ( "organization_id", Encode.string "" )
+                 ]
+                    ++ webhookAudienceFields state
+                )
             )
         )
         (expectJsonWithServerError WebhookCreated Events.webhookSubscriptionCreatedResponseDecoder)
+
+
+{-| The audience block of a create-subscription request. The filter fields
+are marketplace-only: the server rejects them on recipient subscriptions, so
+they are omitted entirely there.
+-}
+webhookAudienceFields : LoggedInModel -> List ( String, Encode.Value )
+webhookAudienceFields state =
+    case state.webhookAudience of
+        Events.WebhookAudienceRecipient ->
+            [ ( "audience", Encode.string "recipient" ) ]
+
+        Events.WebhookAudienceMarketplace ->
+            [ ( "audience", Encode.string "marketplace" )
+            , ( "filter_task_type", Encode.string (String.trim state.webhookFilterTaskType) )
+            , ( "filter_min_credit_reward", Encode.int (intInputOrZero state.webhookFilterMinReward) )
+            ]
 
 
 revokeWebhookSubscription : String -> String -> Cmd Msg
@@ -2120,10 +2241,23 @@ createWebhookCommand model state =
     else if List.isEmpty state.webhookKinds then
         ( updateLoggedIn model (\current -> { current | webhookMessage = Just (FailureNote "Select at least one event kind.") }), Cmd.none )
 
+    else if state.webhookAudience == Events.WebhookAudienceMarketplace && not (minRewardIsValid state.webhookFilterMinReward) then
+        ( updateLoggedIn model (\current -> { current | webhookMessage = Just (FailureNote "Minimum reward must be a positive whole number of credits, or blank for no floor.") }), Cmd.none )
+
     else
         ( updateLoggedIn model (\current -> { current | webhookMessage = Nothing, newWebhookSecret = Nothing })
-        , createWebhookSubscription state.accessToken state.webhookURL state.webhookKinds
+        , createWebhookSubscription state.accessToken state
         )
+
+
+minRewardIsValid : String -> Bool
+minRewardIsValid raw =
+    case String.toInt (String.trim raw) of
+        Just floor ->
+            floor > 0
+
+        Nothing ->
+            String.trim raw == ""
 
 
 toggleWebhookKind : Events.DomainEventKind -> List Events.DomainEventKind -> List Events.DomainEventKind

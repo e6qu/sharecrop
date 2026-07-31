@@ -20,6 +20,7 @@ const (
 	methodRequestChanges           = "ledger.RequestChanges"
 	methodRejectSubmission         = "ledger.RejectSubmission"
 	methodRefundTask               = "ledger.RefundTask"
+	methodGrantCredits             = "ledger.GrantCredits"
 	methodTaskAllocatedCredits     = "ledger.TaskAllocatedCredits"
 	methodBalance                  = "ledger.Balance"
 	methodOrganizationBalance      = "ledger.OrganizationBalance"
@@ -49,6 +50,10 @@ type rejectSubmissionArgs struct {
 
 type refundTaskArgs struct {
 	RefundCommand refundCommandWire `json:"refundcommand"`
+}
+
+type grantCreditsArgs struct {
+	GrantCommand grantCommandWire `json:"grantcommand"`
 }
 
 type taskAllocatedCreditsArgs struct {
@@ -138,6 +143,16 @@ func Dispatch(ctx context.Context, store ledger.Store, method string, args []byt
 			return nil, err
 		}
 		return json.Marshal(encodeRefundResult(store.RefundTask(ctx, argRefundCommand)))
+	case methodGrantCredits:
+		var decoded grantCreditsArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("ledger bridge: decode GrantCredits args: %w", err)
+		}
+		argGrantCommand, err := decodeGrantCommand(decoded.GrantCommand)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeGrantResult(store.GrantCredits(ctx, argGrantCommand)))
 	case methodTaskAllocatedCredits:
 		var decoded taskAllocatedCreditsArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -333,6 +348,26 @@ func (g GuestStore) RefundTask(ctx context.Context, argRefundCommand ledger.Refu
 	result, err := decodeRefundResult(wire)
 	if err != nil {
 		return ledger.RefundRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) GrantCredits(ctx context.Context, argGrantCommand ledger.GrantStoreCommand) ledger.GrantResult {
+	args, err := json.Marshal(grantCreditsArgs{GrantCommand: encodeGrantCommand(argGrantCommand)})
+	if err != nil {
+		return ledger.GrantRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodGrantCredits, args)
+	if err != nil {
+		return ledger.GrantRejected{Reason: guestError(err)}
+	}
+	var wire grantResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return ledger.GrantRejected{Reason: guestError(err)}
+	}
+	result, err := decodeGrantResult(wire)
+	if err != nil {
+		return ledger.GrantRejected{Reason: guestError(err)}
 	}
 	return result
 }

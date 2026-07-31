@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -36,13 +37,11 @@ func (store NotificationStore) List(ctx context.Context, recipient core.UserID, 
 	// The unread branch is served by notifications_recipient_state_idx.
 	stateClause := ""
 	if _, unreadOnly := filter.(notification.UnreadOnly); unreadOnly {
-		stateClause = " and state = 'unread'"
+		stateClause = " and notifications.state = 'unread'"
 	}
-	query := `
-		select id::text, recipient_user_id::text, actor_user_id::text, kind, subject_kind, subject_id, state, metadata_json::text, created_at
-		from notifications
-		where recipient_user_id = $1` + stateClause + `
-		order by created_at desc, id desc
+	query := notificationSelectSQL + `
+		where notifications.recipient_user_id = $1` + stateClause + `
+		order by notifications.created_at desc, notifications.id desc
 		limit $2 offset $3
 	`
 	rows, err := store.db.Query(ctx, query, recipient.String(), page.Limit(), page.Offset())
@@ -65,14 +64,22 @@ func (store NotificationStore) CountUnread(ctx context.Context, recipient core.U
 }
 
 func (store NotificationStore) MarkRead(ctx context.Context, recipient core.UserID, id core.NotificationID) notification.MarkReadStoreResult {
-	rows, err := store.db.Query(ctx, `
+	tag, err := store.db.Exec(ctx, `
 		update notifications
 		set state = $3
 		where id = $1 and recipient_user_id = $2
-		returning id::text, recipient_user_id::text, actor_user_id::text, kind, subject_kind, subject_id, state, metadata_json::text, created_at
 	`, id.String(), recipient.String(), notification.StateRead.String())
 	if err != nil {
 		return notification.MarkReadStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "mark notification read failed")}
+	}
+	if tag == 0 {
+		return notification.MarkReadStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "notification was not found")}
+	}
+	rows, err := store.db.Query(ctx, notificationSelectSQL+`
+		where notifications.id = $1
+	`, id.String())
+	if err != nil {
+		return notification.MarkReadStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read marked notification failed")}
 	}
 	defer rows.Close()
 	result := scanNotificationRows(rows)
@@ -85,6 +92,21 @@ func (store NotificationStore) MarkRead(ctx context.Context, recipient core.User
 	}
 	return notification.MarkReadStoreAccepted{Value: listed.Values[0]}
 }
+
+// notificationSelectSQL selects inbox rows with their read-time enrichment:
+// the actor's display name and, when the subject is a task, the task's title.
+var notificationSelectSQL = `
+	select notifications.id::text, notifications.recipient_user_id::text, notifications.actor_user_id::text,
+		` + displayNameSQL("actor_user") + `,
+		notifications.kind, notifications.subject_kind, notifications.subject_id,
+		coalesce(subject_task.title, ''),
+		notifications.state, notifications.metadata_json::text, notifications.created_at
+	from notifications
+	join users as actor_user on actor_user.id = notifications.actor_user_id
+	left join tasks as subject_task
+		on notifications.subject_kind = 'task'
+		and subject_task.id::text = notifications.subject_id
+`
 
 func scanNotificationRows(rows Rows) notification.ListStoreResult {
 	values := make([]notification.Notification, 0)
@@ -122,13 +144,15 @@ func scanNotificationRow(rows Rows) notificationRowResult {
 	var rawID string
 	var rawRecipientID string
 	var rawActorID string
+	var rawActorName string
 	var kind string
 	var subjectKind string
 	var subjectID string
+	var rawSubjectTitle string
 	var state string
 	var metadataJSON string
 	var createdAt time.Time
-	if err := rows.Scan(&rawID, &rawRecipientID, &rawActorID, &kind, &subjectKind, &subjectID, &state, &metadataJSON, &createdAt); err != nil {
+	if err := rows.Scan(&rawID, &rawRecipientID, &rawActorID, &rawActorName, &kind, &subjectKind, &subjectID, &rawSubjectTitle, &state, &metadataJSON, &createdAt); err != nil {
 		return notificationRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan notification failed")}
 	}
 	idResult := core.ParseNotificationID(rawID)
@@ -158,14 +182,25 @@ func scanNotificationRow(rows Rows) notificationRowResult {
 	if !stateMatched {
 		return notificationRowRejected{reason: stateResult.(notification.StateRejected).Reason}
 	}
+	actorNameResult := auth.NewDisplayName(rawActorName)
+	actorName, actorNameMatched := actorNameResult.(auth.DisplayNameAccepted)
+	if !actorNameMatched {
+		return notificationRowRejected{reason: actorNameResult.(auth.DisplayNameRejected).Reason}
+	}
+	var subjectTitle notification.SubjectTitleRef = notification.NoSubjectTitle{}
+	if subjectKind == "task" && rawSubjectTitle != "" {
+		subjectTitle = notification.TaskSubjectTitle{Title: rawSubjectTitle}
+	}
 	return notificationRowAccepted{value: notification.Notification{
-		ID:          id.Value,
-		RecipientID: recipient.Value,
-		ActorID:     actor.Value,
-		Kind:        kindParsed.Value,
-		Subject:     notification.Subject{Kind: subjectKind, ID: subjectID},
-		State:       stateParsed.Value,
-		Metadata:    notification.Metadata{JSON: metadataJSON},
-		CreatedAt:   createdAt,
+		ID:               id.Value,
+		RecipientID:      recipient.Value,
+		ActorID:          actor.Value,
+		ActorDisplayName: actorName.Value,
+		Kind:             kindParsed.Value,
+		Subject:          notification.Subject{Kind: subjectKind, ID: subjectID},
+		SubjectTitle:     subjectTitle,
+		State:            stateParsed.Value,
+		Metadata:         notification.Metadata{JSON: metadataJSON},
+		CreatedAt:        createdAt,
 	}}
 }

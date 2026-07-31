@@ -14,6 +14,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
@@ -364,6 +365,7 @@ type authHTTPResponse struct {
 	SubjectKind string `json:"subject_kind"`
 	SubjectID   string `json:"subject_id"`
 	AccessToken string `json:"access_token"`
+	DisplayName string `json:"display_name"`
 }
 
 func newAuthHTTPServer(t *testing.T, ctx context.Context) *httptest.Server {
@@ -411,7 +413,7 @@ func newAuthHTTPServer(t *testing.T, ctx context.Context) *httptest.Server {
 	recorder := event.NewRecorder(eventStore, notificationService)
 	taskService := task.NewService(taskStore, organizationService, agentService, recorder)
 	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService, recorder)
-	ledgerService := ledger.NewService(db.NewLedgerStore(pool), recorder)
+	ledgerService := ledger.NewService(db.NewLedgerStore(pool), recorder, audit.NewService(db.NewAuditStore(pool)))
 	assetService := assets.NewService(db.NewCollectibleStore(pool), recorder)
 	runtime := httpserver.DefaultRuntimeState(httpserver.ParseAdminUserIDsForRuntime(os.Getenv("SHARECROP_ADMIN_USER_IDS")))
 	runtime.NotificationService = notificationService

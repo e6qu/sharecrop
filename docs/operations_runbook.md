@@ -21,6 +21,12 @@ deployment reference is [deployment.md](./deployment.md).
 - `SHARECROP_ADMIN_USER_IDS`: comma-separated bootstrap platform-admin user ids. Platform admins can grant and revoke other platform admins (bootstrap admins cannot be revoked), award catalog collectibles, read admin operations status, list platform-wide audit events, list and triage moderation reports, list and resolve privacy requests, and run sensitive-field retention.
 - `SHARECROP_ACCOUNT_TOKEN_DELIVERY`: `api` for local/test token responses, or `log` to emit verification/reset tokens to structured logs and return only `{"status":"sent"}`.
 - `SHARECROP_INSECURE_COOKIES`: set to `true` only for local plain-HTTP development.
+- `SHARECROP_REGISTRATION_RATE_CAPACITY` / `SHARECROP_REGISTRATION_RATE_REFILL`:
+  optional overrides for the per-IP registration limiter (production defaults:
+  capacity 5, refill 1 token per 12 minutes). Blank or unparsable values keep
+  the defaults. Intended for test harnesses that register many accounts from
+  one address; registration buckets persist in the rate-limit store, so such
+  harnesses should raise both.
 
 ## Deploy
 

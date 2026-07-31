@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/auth"
@@ -287,8 +288,11 @@ type GetResult interface {
 	getResult()
 }
 
+// TaskGot carries the task plus the creator's display name resolved by the
+// store on the detail read path.
 type TaskGot struct {
-	Value Task
+	Value              Task
+	CreatorDisplayName auth.DisplayName
 }
 
 type GetRejected struct {
@@ -311,7 +315,7 @@ func (service Service) Get(ctx context.Context, actor auth.Subject, taskID core.
 	if rejected, matched := viewPermission.(viewPermissionRejected); matched {
 		return GetRejected{Reason: rejected.reason}
 	}
-	return TaskGot{Value: taskFound.Value}
+	return TaskGot{Value: taskFound.Value, CreatorDisplayName: taskFound.CreatorDisplayName}
 }
 
 type viewPermissionResult interface {
@@ -450,6 +454,24 @@ func (AnyTypeFilter) typeFilter() {}
 
 func (TypeEquals) typeFilter() {}
 
+// CreatedFilter is an optional creation-instant filter for task listing, the
+// foundation for incremental polling ("what appeared since I last looked").
+// AnyCreatedFilter means no restriction; CreatedAfter restricts the listing to
+// tasks created strictly after the given instant.
+type CreatedFilter interface {
+	createdFilter()
+}
+
+type AnyCreatedFilter struct{}
+
+type CreatedAfter struct {
+	Instant time.Time
+}
+
+func (AnyCreatedFilter) createdFilter() {}
+
+func (CreatedAfter) createdFilter() {}
+
 type SortOrder struct {
 	value string
 }
@@ -508,11 +530,12 @@ type ListFilters struct {
 	Participation ParticipationPolicyFilter
 	Search        SearchFilter
 	Type          TypeFilter
+	Created       CreatedFilter
 	Sort          SortOrder
 }
 
 func NoListFilters() ListFilters {
-	return ListFilters{State: AnyStateFilter{}, Participation: AnyParticipationPolicyFilter{}, Search: NoSearchFilter{}, Type: AnyTypeFilter{}, Sort: SortNewest}
+	return ListFilters{State: AnyStateFilter{}, Participation: AnyParticipationPolicyFilter{}, Search: NoSearchFilter{}, Type: AnyTypeFilter{}, Created: AnyCreatedFilter{}, Sort: SortNewest}
 }
 
 type PublicListScope struct {
@@ -742,28 +765,35 @@ func (service Service) CancelReservation(ctx context.Context, actor auth.Subject
 		return ReservationStateChangeRejected{Reason: rejected.Reason}
 	}
 
-	ownerPermission := service.requireOwnerPermission(ctx, actor, taskFound.Value.Owner)
-	if _, matched := ownerPermission.(ownerPermissionAccepted); !matched {
-		listResult := service.store.ListReservations(ctx, taskID, core.DefaultPage())
-		listed, listMatched := listResult.(ListReservationsStoreAccepted)
-		if !listMatched {
-			rejected := listResult.(ListReservationsStoreRejected)
-			return ReservationStateChangeRejected{Reason: rejected.Reason}
+	// The holder check runs first so a worker releasing their own reservation
+	// records cancelled_by_worker even when they also hold owner-level
+	// permission on the task (possible for organization members). Everyone
+	// else needs owner permission and records cancelled_by_requester.
+	listResult := service.store.ListReservations(ctx, taskID, core.DefaultPage())
+	listed, listMatched := listResult.(ListReservationsStoreAccepted)
+	if !listMatched {
+		rejected := listResult.(ListReservationsStoreRejected)
+		return ReservationStateChangeRejected{Reason: rejected.Reason}
+	}
+	requester, isUser := actor.(auth.UserSubject)
+	holdsReservation := false
+	for _, value := range listed.Values {
+		if value.ID == reservationID && isUser && value.RequestedBy == requester.ID {
+			holdsReservation = true
+			break
 		}
-		requester, isUser := actor.(auth.UserSubject)
-		holdsReservation := false
-		for _, value := range listed.Values {
-			if value.ID == reservationID && isUser && value.RequestedBy == requester.ID {
-				holdsReservation = true
-				break
-			}
-		}
-		if !holdsReservation {
+	}
+	cancelledState := ReservationStateCancelledByRequester
+	if holdsReservation {
+		cancelledState = ReservationStateCancelledByWorker
+	} else {
+		ownerPermission := service.requireOwnerPermission(ctx, actor, taskFound.Value.Owner)
+		if _, matched := ownerPermission.(ownerPermissionAccepted); !matched {
 			return ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner or the reservation holder can cancel this reservation")}
 		}
 	}
 
-	storeResult := service.store.ChangeReservationState(ctx, taskID, reservationID, ReservationStateCancelledByRequester)
+	storeResult := service.store.ChangeReservationState(ctx, taskID, reservationID, cancelledState)
 	changed, matched := storeResult.(ChangeReservationStateStoreAccepted)
 	if !matched {
 		rejected := storeResult.(ChangeReservationStateStoreRejected)

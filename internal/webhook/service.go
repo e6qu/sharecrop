@@ -39,7 +39,11 @@ func (SubscriptionCreated) createResult() {}
 
 func (CreateRejected) createResult() {}
 
-func (service Service) Create(ctx context.Context, owner Owner, endpoint EndpointURL, kinds KindFilter) CreateResult {
+func (service Service) Create(ctx context.Context, owner Owner, endpoint EndpointURL, kinds KindFilter, audience Audience) CreateResult {
+	if rejected, matched := ValidateAudienceKinds(audience, kinds).(AudienceKindsRejected); matched {
+		return CreateRejected{Reason: rejected.Reason}
+	}
+
 	idResult := core.NewWebhookSubscriptionID()
 	idCreated, idMatched := idResult.(core.WebhookSubscriptionIDCreated)
 	if !idMatched {
@@ -57,6 +61,7 @@ func (service Service) Create(ctx context.Context, owner Owner, endpoint Endpoin
 		Owner:     owner,
 		URL:       endpoint,
 		Kinds:     kinds,
+		Audience:  audience,
 		State:     StateActive,
 		CreatedAt: service.now().UTC(),
 	}

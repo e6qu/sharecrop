@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/event/eventtest"
@@ -29,7 +30,7 @@ func emittedKinds(events *eventtest.CapturingStore) []string {
 
 func TestFundTaskEmitsTaskFunded(t *testing.T) {
 	events := eventtest.NewCapturingStore()
-	service := NewService(&memoryStore{}, eventtest.RecorderOver(events))
+	service := NewService(&memoryStore{}, eventtest.RecorderOver(events), noopAuditRecorder{})
 	funder := newTestUserID(t)
 
 	if _, matched := service.FundTask(context.Background(), funder, newTestTaskID(t), newTestAmount(t, 50), newTestKey(t, "fund-emit-1")).(TaskFunded); !matched {
@@ -52,7 +53,7 @@ func TestReviewAcceptEmitsAcceptedPayoutAndTip(t *testing.T) {
 		payout: CreditPayout{WorkerUserID: worker, Amount: newTestAmount(t, 40)},
 		tip:    CreditTip{WorkerUserID: worker, Amount: newTestAmount(t, 5)},
 	}
-	service := NewService(store, eventtest.RecorderOver(events))
+	service := NewService(store, eventtest.RecorderOver(events), noopAuditRecorder{})
 	requester := newTestUserID(t)
 
 	if _, matched := service.ReviewAcceptSubmission(context.Background(), requester, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-emit-1"), FullCreditReviewSelection{}, CreditTipSelection{Amount: newTestAmount(t, 5)}, NoCollectibleTipSelection{}).(SubmissionAccepted); !matched {
@@ -83,7 +84,7 @@ func TestReviewAcceptEmitsAcceptedPayoutAndTip(t *testing.T) {
 func TestReviewAcceptWithoutRewardStillEmitsAcceptedToWorker(t *testing.T) {
 	events := eventtest.NewCapturingStore()
 	worker := newTestUserID(t)
-	service := NewService(&memoryStore{worker: worker}, eventtest.RecorderOver(events))
+	service := NewService(&memoryStore{worker: worker}, eventtest.RecorderOver(events), noopAuditRecorder{})
 
 	if _, matched := service.AcceptSubmission(context.Background(), newTestUserID(t), newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-emit-2")).(SubmissionAccepted); !matched {
 		t.Fatalf("accept rejected")
@@ -100,7 +101,7 @@ func TestReviewAcceptWithoutRewardStillEmitsAcceptedToWorker(t *testing.T) {
 func TestRequestChangesAndRejectEmitReviewEvents(t *testing.T) {
 	events := eventtest.NewCapturingStore()
 	worker := newTestUserID(t)
-	service := NewService(&memoryStore{worker: worker}, eventtest.RecorderOver(events))
+	service := NewService(&memoryStore{worker: worker}, eventtest.RecorderOver(events), noopAuditRecorder{})
 	requester := newTestUserID(t)
 
 	if _, matched := service.RequestChanges(context.Background(), requester, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "changes-emit-1"), submissionNote(t, "needs current data")).(ChangesRequested); !matched {
@@ -123,7 +124,7 @@ func TestRequestChangesAndRejectEmitReviewEvents(t *testing.T) {
 
 func TestRefundTaskEmitsTaskCancelledWithRefundCause(t *testing.T) {
 	events := eventtest.NewCapturingStore()
-	service := NewService(&memoryStore{}, eventtest.RecorderOver(events))
+	service := NewService(&memoryStore{}, eventtest.RecorderOver(events), noopAuditRecorder{})
 	requester := newTestUserID(t)
 	taskID := newTestTaskID(t)
 
@@ -140,5 +141,49 @@ func TestRefundTaskEmitsTaskCancelledWithRefundCause(t *testing.T) {
 	}
 	if !ledgerRecipientsContain(events.RecipientsAt(0), requester) {
 		t.Fatalf("task_cancelled recipients missed the requester")
+	}
+}
+
+// capturingAuditRecorder records every audit call for assertions.
+type capturingAuditRecorder struct {
+	actors  []core.UserID
+	actions []string
+}
+
+func (recorder *capturingAuditRecorder) Record(_ context.Context, actor core.UserID, action audit.Action, subject audit.Subject, metadata audit.Metadata) audit.RecordResult {
+	recorder.actors = append(recorder.actors, actor)
+	recorder.actions = append(recorder.actions, action.String())
+	return audit.EventRecorded{Value: audit.Event{ActorUserID: actor, Action: action, Subject: subject, Metadata: metadata}}
+}
+
+func TestGrantCreditsEmitsCreditGrantedAndAudits(t *testing.T) {
+	events := eventtest.NewCapturingStore()
+	auditRecorder := &capturingAuditRecorder{}
+	service := NewService(&memoryStore{}, eventtest.RecorderOver(events), auditRecorder)
+	admin := newTestUserID(t)
+	grantee := newTestUserID(t)
+
+	if _, matched := service.GrantCredits(context.Background(), admin, GrantToUser{ID: grantee}, newTestAmount(t, 75), grantNote(t, "manual top-up"), newTestKey(t, "grant-emit-1")).(CreditsGranted); !matched {
+		t.Fatalf("grant rejected")
+	}
+
+	appended := events.Appended()
+	if len(appended) != 1 || appended[0].Kind != event.KindCreditGranted {
+		t.Fatalf("emitted kinds = %v, want [credit_granted]", emittedKinds(events))
+	}
+	if appended[0].Metadata.JSON != `{"amount":75}` {
+		t.Fatalf("grant metadata = %s, want amount 75", appended[0].Metadata.JSON)
+	}
+	if !ledgerRecipientsContain(events.RecipientsAt(0), grantee) {
+		t.Fatalf("credit_granted recipients missed the grantee")
+	}
+	if !ledgerRecipientsContain(events.RecipientsAt(0), admin) {
+		t.Fatalf("credit_granted recipients missed the acting admin's own feed")
+	}
+	if len(auditRecorder.actions) != 1 || auditRecorder.actions[0] != "admin_credit_granted" {
+		t.Fatalf("audit actions = %v, want [admin_credit_granted]", auditRecorder.actions)
+	}
+	if auditRecorder.actors[0] != admin {
+		t.Fatalf("audit actor = %s, want the acting admin", auditRecorder.actors[0].String())
 	}
 }

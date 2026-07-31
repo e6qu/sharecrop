@@ -77,7 +77,7 @@ func TestSubjectRoundTrip(t *testing.T) {
 }
 
 func TestCredentialLookupResultRoundTrip(t *testing.T) {
-	record := auth.CredentialRecord{UserID: mustUserID(t), Email: mustEmail(t), PasswordHash: mustPasswordHash(t), Status: "active"}
+	record := auth.CredentialRecord{UserID: mustUserID(t), Email: mustEmail(t), DisplayName: mustDisplayName(t), PasswordHash: mustPasswordHash(t), Status: "active"}
 
 	found, err := decodeCredentialLookupResult(encodeCredentialLookupResult(auth.CredentialFound{Record: record}))
 	if err != nil {
@@ -88,6 +88,7 @@ func TestCredentialLookupResultRoundTrip(t *testing.T) {
 		t.Fatalf("found result = %T", found)
 	}
 	if typed.Record.UserID != record.UserID || typed.Record.Email.String() != record.Email.String() ||
+		typed.Record.DisplayName.String() != record.DisplayName.String() ||
 		typed.Record.PasswordHash.String() != record.PasswordHash.String() || typed.Record.Status != record.Status {
 		t.Errorf("credential record did not round-trip: %+v", typed.Record)
 	}
@@ -192,4 +193,13 @@ func TestAcceptedRejectedRoundTrip(t *testing.T) {
 	if typed, matched := rejected.(auth.AccountMutationRejected); !matched || typed.Reason.Code() != core.ErrorCodeNotFound {
 		t.Errorf("account mutation rejection not preserved: %T", rejected)
 	}
+}
+
+func mustDisplayName(t *testing.T) auth.DisplayName {
+	t.Helper()
+	accepted, matched := auth.NewDisplayName("Codec Tester").(auth.DisplayNameAccepted)
+	if !matched {
+		t.Fatalf("display name rejected")
+	}
+	return accepted.Value
 }

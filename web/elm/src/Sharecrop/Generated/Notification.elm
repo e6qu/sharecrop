@@ -22,6 +22,7 @@ type NotificationKind
     | NotificationKindReservationCancelled
     | NotificationKindReservationExpired
     | NotificationKindPayoutReceived
+    | NotificationKindCreditGranted
     | NotificationKindTipReceived
     | NotificationKindCollectibleAwarded
 
@@ -78,6 +79,9 @@ notificationKindDecoder =
 
                     "payout_received" ->
                         Decode.succeed NotificationKindPayoutReceived
+
+                    "credit_granted" ->
+                        Decode.succeed NotificationKindCreditGranted
 
                     "tip_received" ->
                         Decode.succeed NotificationKindTipReceived
@@ -140,6 +144,9 @@ notificationKindEncoder notificationKind =
         NotificationKindPayoutReceived ->
             Encode.string "payout_received"
 
+        NotificationKindCreditGranted ->
+            Encode.string "credit_granted"
+
         NotificationKindTipReceived ->
             Encode.string "tip_received"
 
@@ -151,9 +158,11 @@ type alias NotificationResponse =
     { id : String
     , recipientUserID : String
     , actorUserID : String
+    , actorDisplayName : String
     , kind : NotificationKind
     , subjectKind : String
     , subjectID : String
+    , subjectTitle : String
     , state : String
     , metadataJSON : String
     , createdAt : String
@@ -165,14 +174,16 @@ notificationResponseDecoder =
         (Decode.field "id" Decode.string)
         (Decode.field "recipient_user_id" Decode.string)
         (Decode.field "actor_user_id" Decode.string)
+        (Decode.field "actor_display_name" Decode.string)
         (Decode.field "kind" notificationKindDecoder)
         (Decode.field "subject_kind" Decode.string)
         (Decode.field "subject_id" Decode.string)
-        (Decode.field "state" Decode.string)
-        (Decode.field "metadata_json" Decode.string)
+        (Decode.field "subject_title" Decode.string)
         |> Decode.andThen
             (\finish ->
-                Decode.map finish
+                Decode.map3 finish
+                    (Decode.field "state" Decode.string)
+                    (Decode.field "metadata_json" Decode.string)
                     (Decode.field "created_at" Decode.string)
             )
 
@@ -182,9 +193,11 @@ notificationResponseEncoder notificationResponse =
         [ ( "id", Encode.string notificationResponse.id )
         , ( "recipient_user_id", Encode.string notificationResponse.recipientUserID )
         , ( "actor_user_id", Encode.string notificationResponse.actorUserID )
+        , ( "actor_display_name", Encode.string notificationResponse.actorDisplayName )
         , ( "kind", notificationKindEncoder notificationResponse.kind )
         , ( "subject_kind", Encode.string notificationResponse.subjectKind )
         , ( "subject_id", Encode.string notificationResponse.subjectID )
+        , ( "subject_title", Encode.string notificationResponse.subjectTitle )
         , ( "state", Encode.string notificationResponse.state )
         , ( "metadata_json", Encode.string notificationResponse.metadataJSON )
         , ( "created_at", Encode.string notificationResponse.createdAt )

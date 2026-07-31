@@ -165,7 +165,7 @@ test("agents discover, submit to, and have a task accepted through the browser",
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-inbox").click();
   const submissionNotification = page.getByTestId("notification-row").filter({
-    hasText: "submission_created",
+    hasText: "submitted a response to",
   });
   await expect(submissionNotification.getByTestId("notification-task-link"))
     .toBeVisible();
@@ -462,8 +462,10 @@ test("an owner approves a worker's reservation request from the task detail page
   await page.getByTestId("task-row").filter({ hasText: title }).getByTestId(
     "view-task",
   ).click();
+  // Reservation rows name the holder by display name (derived from the
+  // email's local part at registration), not by raw subject id.
   const reservationRow = page.getByTestId("reservation-row").filter({
-    hasText: worker.body.subject_id,
+    hasText: worker.email.split("@")[0],
   });
   await expect(reservationRow).toHaveCount(1);
   await reservationRow.getByTestId("approve-reservation").click();
@@ -613,7 +615,7 @@ test("users open an organization and manage its teams and members", async ({ pag
   await page.getByTestId("org-task-search").click();
   await expect(page.getByTestId("org-tasks-empty")).toBeVisible();
   await expect(page.getByTestId("org-tasks-page-offset")).toHaveText(
-    "Offset 0",
+    "Page 1",
   );
   await page.getByTestId("org-task-filter-open").click();
   await page.getByTestId("org-task-saved-view-name").fill("Open tasks");
@@ -676,7 +678,7 @@ test("users open an organization and manage its teams and members", async ({ pag
   await page.getByTestId("team-work-query").fill("missing task");
   await page.getByTestId("team-work-search").click();
   await expect(page.getByTestId("team-work-page-offset")).toHaveText(
-    "Offset 0",
+    "Page 1",
   );
   await page.getByTestId("team-work-filter-ready").click();
   await page.getByTestId("team-work-saved-view-name").fill("Ready work");
@@ -1630,7 +1632,21 @@ test("owners request changes on a submission through the browser", async ({ page
 
 test("another actor's submission raises the unread badge and the inbox unread filter narrows", async ({ page, request }) => {
   const owner = await registerViaApi(request, "badge-owner");
-  const worker = await registerViaApi(request, "badge-worker");
+  // The worker registers with an explicit display name so the inbox sentence
+  // can be asserted to name a person rather than a derived email local part.
+  const workerEmail = uniqueEmail("badge-worker");
+  const workerRegister = await request.post("/api/auth/register", {
+    data: {
+      email: workerEmail,
+      password,
+      display_name: "Ren Okafor",
+    },
+  });
+  expect(workerRegister.ok()).toBeTruthy();
+  const worker = {
+    email: workerEmail,
+    body: (await workerRegister.json()) as AuthBody,
+  };
   const title = `Badge task ${crypto.randomUUID()}`;
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${owner.body.access_token}` },
@@ -1666,9 +1682,29 @@ test("another actor's submission raises the unread badge and the inbox unread fi
   // list and clears the badge without waiting for a poll tick.
   await page.getByTestId("inbox-unread-only").check();
   const unreadRow = page.getByTestId("notification-row").filter({
-    hasText: "submission_created",
+    hasText: "submitted a response to",
   });
   await expect(unreadRow).toHaveCount(1);
+
+  // The row is a humane sentence naming the actor, with a relative
+  // timestamp - not a leading UUID/ISO dump. The absolute instant stays
+  // available as the timestamp's hover title. (Submission-subject
+  // notifications carry no task title from the API yet, so the sentence
+  // falls back to "a task".)
+  await expect(unreadRow.getByTestId("notification-sentence")).toContainText(
+    "Ren Okafor submitted a response to a task.",
+  );
+  const sentenceText = await unreadRow.getByTestId("notification-sentence")
+    .textContent();
+  expect(sentenceText).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  expect(sentenceText).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
+  await expect(unreadRow.getByTestId("notification-time")).toContainText(
+    /just now|ago/,
+  );
+  await expect(unreadRow.getByTestId("notification-time")).toHaveAttribute(
+    "title",
+    /\d{4}-\d{2}-\d{2}T/,
+  );
   await unreadRow.getByTestId("notification-mark-read").click();
   await expect(page.getByTestId("notification-state")).toHaveText("read");
   await expect(page.getByTestId("nav-unread-count")).toHaveCount(0);
@@ -1697,11 +1733,14 @@ test("the overview activity card lists recent events with subject links", async 
   expect(openResponse.ok()).toBeTruthy();
 
   await loginViaUi(page, owner.email);
+  // The feed row is a humane sentence: actor display name + action + task
+  // title, with a relative timestamp.
   const activityRow = page
     .getByTestId("overview-activity")
     .getByTestId("activity-row")
-    .filter({ hasText: "Task opened" });
+    .filter({ hasText: `opened '${title}'` });
   await expect(activityRow).toHaveCount(1);
+  await expect(activityRow).toContainText(/just now|ago/);
   await activityRow.getByTestId("activity-task-link").click();
   await expect(page.getByTestId("detail-title")).toContainText(title);
 });
@@ -1713,6 +1752,23 @@ test("users create, inspect, and revoke webhook subscriptions on the Agents page
   await page.getByTestId("nav-agents").click();
   await expect(page.getByTestId("webhook-list-empty")).toBeVisible();
 
+  // The audience defaults to recipient ("events about your own work") with
+  // the kind checkboxes editable; switching to marketplace pins the kinds to
+  // task_opened and swaps the checkboxes for the narrowing filters.
+  await expect(page.getByTestId("webhook-audience-recipient")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByTestId("webhook-audience-marketplace").click();
+  await expect(page.getByTestId("webhook-marketplace-filters")).toBeVisible();
+  await expect(page.getByTestId("webhook-filter-task-type")).toBeVisible();
+  await expect(page.getByTestId("webhook-filter-min-reward")).toBeVisible();
+  await expect(page.getByTestId("webhook-kind-submission_created")).toHaveCount(
+    0,
+  );
+  await page.getByTestId("webhook-audience-recipient").click();
+  await expect(page.getByTestId("webhook-marketplace-filters")).toHaveCount(0);
+
   // Create: URL plus a couple of kinds across groups.
   await page.getByTestId("webhook-url").fill(
     "https://receiver.example.com/hooks/sharecrop",
@@ -1721,15 +1777,29 @@ test("users create, inspect, and revoke webhook subscriptions on the Agents page
   await page.getByTestId("webhook-kind-submission_created").check();
   await page.getByTestId("webhook-create").click();
 
-  // The signing secret is revealed exactly once, with a warning.
+  // The signing secret is revealed exactly once, with a warning and a copy
+  // affordance, and the verification scheme is documented alongside it.
   await expect(page.getByTestId("webhook-secret")).toContainText(
     "scrop_whsec_",
   );
   await expect(page.getByTestId("webhook-secret-panel")).toContainText(
     "Store this secret now — it is not shown again.",
   );
+  await expect(
+    page.getByTestId("webhook-secret-panel").getByTestId("copy-command"),
+  ).toBeVisible();
+  await page.getByTestId("webhook-signature-help").click();
+  await expect(page.getByTestId("webhook-signature-scheme")).toContainText(
+    'Sharecrop-Webhook-Signature: v1=hex(HMAC-SHA256(secret, "<timestamp>.<raw body>"))',
+  );
+  await expect(page.getByTestId("webhook-signature-scheme")).toContainText(
+    "Sharecrop-Webhook-Timestamp",
+  );
+  await expect(page.getByTestId("webhook-signature-scheme")).toContainText(
+    "Sharecrop-Webhook-Id",
+  );
 
-  // The subscription is listed with its kinds and active state.
+  // The subscription is listed with its kinds, audience, and active state.
   const row = page.getByTestId("webhook-row");
   await expect(row).toHaveCount(1);
   await expect(row).toContainText(
@@ -1737,6 +1807,9 @@ test("users create, inspect, and revoke webhook subscriptions on the Agents page
   );
   await expect(row).toContainText("Task opened");
   await expect(row).toContainText("Submission received");
+  await expect(row.getByTestId("webhook-row-audience")).toContainText(
+    "events about your own work",
+  );
   await expect(row).toContainText("active");
 
   // Deliveries start empty (nothing has fired yet).
@@ -1752,7 +1825,7 @@ test("users create, inspect, and revoke webhook subscriptions on the Agents page
   await expect(row.getByTestId("webhook-revoke")).toHaveCount(0);
 });
 
-test("task creators set an expiration and the detail page shows it", async ({ page, request }) => {
+test("task creators set an expiration with the native picker and the detail page shows it", async ({ page, request }) => {
   const owner = await registerViaApi(request, "expires-owner");
   await loginViaUi(page, owner.email);
   await page.getByTestId("nav-tasks").click();
@@ -1761,24 +1834,148 @@ test("task creators set an expiration and the detail page shows it", async ({ pa
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill("Expires next year.");
   await page.getByTestId("create-advanced-options").click();
-  await page.getByTestId("create-expires-at").fill("2027-06-01T12:00:00Z");
+  // The expiry field is a native datetime-local control (no raw RFC3339
+  // typing); the client converts the picked UTC instant to RFC3339 on
+  // submit.
+  await expect(page.getByTestId("create-expires-at")).toHaveAttribute(
+    "type",
+    "datetime-local",
+  );
+  await page.getByTestId("create-expires-at").fill("2027-06-01T12:00");
   await page.getByTestId("create-task").click();
   await expect(page.getByTestId("detail-title")).toContainText(title);
   await expect(page.getByTestId("detail-expires")).toContainText(
     "Expires 2027-06-01T12:00:00Z",
   );
 
-  // A malformed expiration surfaces the server's validation error instead of
+  // An expiry in the past surfaces the server's validation error instead of
   // silently creating the task.
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill(
     `Bad expiry ${crypto.randomUUID()}`,
   );
-  await page.getByTestId("create-description").fill("Bad expiry input.");
+  await page.getByTestId("create-description").fill("Expiry in the past.");
   await page.getByTestId("create-advanced-options").click();
-  await page.getByTestId("create-expires-at").fill("tomorrow");
+  await page.getByTestId("create-expires-at").fill("2020-01-01T00:00");
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-message")).toBeVisible();
+  await expect(page.getByTestId("create-message")).toContainText(
+    "task expiration must be in the future",
+  );
   await expect(page.getByTestId("detail-title")).toHaveCount(0);
+});
+
+test("a marketplace webhook subscription pins task_opened and records its filters", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "webhook-market-owner");
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByTestId("nav-agents").click();
+
+  await page.getByTestId("webhook-url").fill(
+    "https://receiver.example.com/hooks/marketplace",
+  );
+  await page.getByTestId("webhook-audience-marketplace").click();
+  await page.getByTestId("webhook-filter-task-type").selectOption(
+    "code_review",
+  );
+  await page.getByTestId("webhook-filter-min-reward").fill("25");
+  await page.getByTestId("webhook-create").click();
+
+  await expect(page.getByTestId("webhook-secret")).toContainText(
+    "scrop_whsec_",
+  );
+  const row = page.getByTestId("webhook-row");
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Task opened");
+  await expect(row.getByTestId("webhook-row-audience")).toContainText(
+    "announcements of new public tasks",
+  );
+  await expect(row.getByTestId("webhook-row-audience")).toContainText(
+    "type Code review",
+  );
+  await expect(row.getByTestId("webhook-row-audience")).toContainText(
+    "min reward 25 credits",
+  );
+});
+
+test("pending submissions surface as needs-review indicators on Overview and My tasks", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "review-count-owner");
+  const worker = await registerViaApi(request, "review-count-worker");
+  const title = `Needs review ${crypto.randomUUID()}`;
+  await openTaskWithSubmission(request, owner, worker, title, "please review");
+
+  await loginViaUi(page, owner.email);
+
+  // Overview: the compact Needs-review list names the task with its count.
+  const needsReviewRow = page.getByTestId("needs-review-row").filter({
+    hasText: title,
+  });
+  await expect(needsReviewRow).toHaveCount(1);
+  await expect(needsReviewRow.getByTestId("pending-review-count"))
+    .toContainText("1 to review");
+
+  // My tasks: the owned row carries the same indicator.
+  await page.getByTestId("nav-tasks").click();
+  const taskRow = page.getByTestId("task-row").filter({ hasText: title });
+  await expect(taskRow.getByTestId("pending-review-count")).toContainText(
+    "1 to review",
+  );
+
+  // Reviewing the submission clears the indicator on Overview.
+  await needsReviewOwnerAccepts(page, title);
+  await page.getByTestId("nav-overview").click();
+  await expect(
+    page.getByTestId("needs-review-row").filter({ hasText: title }),
+  ).toHaveCount(0);
+});
+
+async function needsReviewOwnerAccepts(
+  page: Page,
+  title: string,
+): Promise<void> {
+  await page
+    .getByTestId("task-row")
+    .filter({ hasText: title })
+    .getByTestId("view-task")
+    .click();
+  await expect(page.getByTestId("submission-row")).toHaveCount(1);
+  await page.getByTestId("accept-submission").click();
+  await expect(page.getByTestId("review-message")).toContainText(
+    "Review saved.",
+  );
+}
+
+test("registering with a display name shows it in the header and profile, and it can be edited", async ({ page }) => {
+  const email = uniqueEmail("ui-identity");
+  await page.goto("/");
+  await page.getByTestId("email").fill(email);
+  await page.getByTestId("password").fill(password);
+  await page.getByTestId("register-name").fill("Pat Verifier");
+  await page.getByTestId("register").click();
+  await expect(page.getByTestId("balance")).toHaveText("100 credits");
+
+  // The Account menu trigger names the signed-in person.
+  await expect(page.getByTestId("nav-account-menu")).toContainText(
+    "Pat Verifier",
+  );
+
+  // The profile page leads with the display name and email; the raw account
+  // id is demoted to a small secondary line.
+  await page.getByTestId("nav-account-menu").click();
+  await page.getByTestId("nav-profile").click();
+  await expect(page.getByTestId("profile-display-name")).toHaveText(
+    "Pat Verifier",
+  );
+  await expect(page.getByTestId("profile-email")).toHaveText(email);
+  await expect(page.getByTestId("user-id")).toBeVisible();
+
+  // Editing the display name updates the header without a re-login.
+  await page.getByTestId("display-name-input").fill("Pat V. Renamed");
+  await page.getByTestId("save-display-name").click();
+  await expect(page.getByTestId("account-message")).toContainText(
+    "Display name updated.",
+  );
+  await expect(page.getByTestId("nav-account-menu")).toContainText(
+    "Pat V. Renamed",
+  );
 });

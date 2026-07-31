@@ -39,16 +39,18 @@ type alias SeriesCommentResponse =
     { id : String
     , seriesID : String
     , authorUserID : String
+    , authorDisplayName : String
     , body : String
     , createdAt : String
     }
 
 seriesCommentResponseDecoder : Decoder SeriesCommentResponse
 seriesCommentResponseDecoder =
-    Decode.map5 SeriesCommentResponse
+    Decode.map6 SeriesCommentResponse
         (Decode.field "id" Decode.string)
         (Decode.field "series_id" Decode.string)
         (Decode.field "author_user_id" Decode.string)
+        (Decode.field "author_display_name" Decode.string)
         (Decode.field "body" Decode.string)
         (Decode.field "created_at" Decode.string)
 
@@ -58,6 +60,7 @@ seriesCommentResponseEncoder seriesCommentResponse =
         [ ( "id", Encode.string seriesCommentResponse.id )
         , ( "series_id", Encode.string seriesCommentResponse.seriesID )
         , ( "author_user_id", Encode.string seriesCommentResponse.authorUserID )
+        , ( "author_display_name", Encode.string seriesCommentResponse.authorDisplayName )
         , ( "body", Encode.string seriesCommentResponse.body )
         , ( "created_at", Encode.string seriesCommentResponse.createdAt )
         ]

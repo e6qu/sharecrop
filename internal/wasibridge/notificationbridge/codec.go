@@ -8,6 +8,7 @@ package notificationbridge
 import (
 	"fmt"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
@@ -85,26 +86,47 @@ func decodeMetadata(raw string) notification.Metadata { return notification.Meta
 // ---- notification.Notification ----
 
 type notificationWire struct {
-	ID          string      `json:"id"`
-	RecipientID string      `json:"recipient_id"`
-	ActorID     string      `json:"actor_id"`
-	Kind        string      `json:"kind"`
-	Subject     subjectWire `json:"subject"`
-	State       string      `json:"state"`
-	Metadata    string      `json:"metadata"`
-	CreatedAt   string      `json:"created_at"`
+	ID          string `json:"id"`
+	RecipientID string `json:"recipient_id"`
+	ActorID     string `json:"actor_id"`
+	// ActorDisplayName and SubjectTitle are read-time enrichment: empty on
+	// create commands, populated on store reads (SubjectTitle only for task
+	// subjects).
+	ActorDisplayName string      `json:"actor_display_name,omitempty"`
+	Kind             string      `json:"kind"`
+	Subject          subjectWire `json:"subject"`
+	SubjectTitle     string      `json:"subject_title,omitempty"`
+	State            string      `json:"state"`
+	Metadata         string      `json:"metadata"`
+	CreatedAt        string      `json:"created_at"`
+}
+
+func encodeSubjectTitle(ref notification.SubjectTitleRef) string {
+	if titled, matched := ref.(notification.TaskSubjectTitle); matched {
+		return titled.Title
+	}
+	return ""
+}
+
+func decodeSubjectTitle(raw string, subjectKind string) notification.SubjectTitleRef {
+	if raw != "" && subjectKind == "task" {
+		return notification.TaskSubjectTitle{Title: raw}
+	}
+	return notification.NoSubjectTitle{}
 }
 
 func encodeNotification(value notification.Notification) notificationWire {
 	return notificationWire{
-		ID:          corewire.EncodeNotificationID(value.ID),
-		RecipientID: corewire.EncodeUserID(value.RecipientID),
-		ActorID:     corewire.EncodeUserID(value.ActorID),
-		Kind:        encodeKind(value.Kind),
-		Subject:     encodeSubject(value.Subject),
-		State:       encodeState(value.State),
-		Metadata:    encodeMetadata(value.Metadata),
-		CreatedAt:   corewire.EncodeTime(value.CreatedAt),
+		ID:               corewire.EncodeNotificationID(value.ID),
+		RecipientID:      corewire.EncodeUserID(value.RecipientID),
+		ActorID:          corewire.EncodeUserID(value.ActorID),
+		ActorDisplayName: value.ActorDisplayName.String(),
+		Kind:             encodeKind(value.Kind),
+		Subject:          encodeSubject(value.Subject),
+		SubjectTitle:     encodeSubjectTitle(value.SubjectTitle),
+		State:            encodeState(value.State),
+		Metadata:         encodeMetadata(value.Metadata),
+		CreatedAt:        corewire.EncodeTime(value.CreatedAt),
 	}
 }
 
@@ -133,16 +155,37 @@ func decodeNotification(wire notificationWire) (notification.Notification, error
 	if err != nil {
 		return notification.Notification{}, err
 	}
+	actorName, err := decodeOptionalNotificationDisplayName(wire.ActorDisplayName)
+	if err != nil {
+		return notification.Notification{}, err
+	}
+	subject := decodeSubject(wire.Subject)
 	return notification.Notification{
-		ID:          id,
-		RecipientID: recipient,
-		ActorID:     actor,
-		Kind:        kind,
-		Subject:     decodeSubject(wire.Subject),
-		State:       state,
-		Metadata:    decodeMetadata(wire.Metadata),
-		CreatedAt:   createdAt,
+		ID:               id,
+		RecipientID:      recipient,
+		ActorID:          actor,
+		ActorDisplayName: actorName,
+		Kind:             kind,
+		Subject:          subject,
+		SubjectTitle:     decodeSubjectTitle(wire.SubjectTitle, subject.Kind),
+		State:            state,
+		Metadata:         decodeMetadata(wire.Metadata),
+		CreatedAt:        createdAt,
 	}, nil
+}
+
+// decodeOptionalNotificationDisplayName decodes a display-name enrichment
+// field that is legitimately empty on create commands.
+func decodeOptionalNotificationDisplayName(raw string) (auth.DisplayName, error) {
+	if raw == "" {
+		return auth.DisplayName{}, nil
+	}
+	result := auth.NewDisplayName(raw)
+	accepted, matched := result.(auth.DisplayNameAccepted)
+	if !matched {
+		return auth.DisplayName{}, fmt.Errorf("display name is invalid")
+	}
+	return accepted.Value, nil
 }
 
 // ---- result unions ----

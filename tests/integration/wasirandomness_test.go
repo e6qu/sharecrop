@@ -70,6 +70,10 @@ func TestGuestPoolDrawsUniqueRandomnessPerInstance(t *testing.T) {
 				runID, index,
 			)
 			req := httptest.NewRequest("POST", "/api/auth/register", strings.NewReader(body))
+			// Spread the client IPs so the dedicated per-IP registration
+			// throttle (RegistrationRateCapacity) never gates this
+			// concurrency test; its subject is randomness, not rate limits.
+			req.RemoteAddr = fmt.Sprintf("192.0.2.%d:1234", index+1)
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			guest.ServeHTTP(rec, req)

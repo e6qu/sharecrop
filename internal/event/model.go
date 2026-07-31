@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 )
 
@@ -164,10 +165,56 @@ type Event struct {
 	OccurredAt time.Time
 }
 
-// StoredEvent is an event with its store-assigned cursor position.
+// StoredEvent is an event with its store-assigned cursor position, plus two
+// read-time enrichment references the feed read (ListForRecipient) resolves:
+// the acting user's display name and, when the event references a task, that
+// task's title. Append results and host-side pump reads carry the absent
+// variants.
 type StoredEvent struct {
-	Event  Event
-	Cursor Cursor
+	Event     Event
+	Cursor    Cursor
+	ActorName ActorNameRef
+	TaskTitle TaskTitleRef
+}
+
+// ActorNameRef is the acting user's display name on an enriched feed row.
+type ActorNameRef interface {
+	actorNameRef()
+}
+
+type NoActorName struct{}
+
+type ActorNamed struct {
+	DisplayName auth.DisplayName
+}
+
+func (NoActorName) actorNameRef() {}
+
+func (ActorNamed) actorNameRef() {}
+
+// TaskTitleRef is the referenced task's title on an enriched feed row.
+type TaskTitleRef interface {
+	taskTitleRef()
+}
+
+type NoTaskTitle struct{}
+
+// TaskTitled carries a raw display copy of the referenced task's title.
+type TaskTitled struct {
+	Title string
+}
+
+func (NoTaskTitle) taskTitleRef() {}
+
+func (TaskTitled) taskTitleRef() {}
+
+// WithoutEnrichment stamps the absent enrichment variants onto a stored
+// event, for construction sites that do not resolve names/titles (append
+// results, pump reads, in-memory stores).
+func WithoutEnrichment(value StoredEvent) StoredEvent {
+	value.ActorName = NoActorName{}
+	value.TaskTitle = NoTaskTitle{}
+	return value
 }
 
 // Cursor is an opaque position in the event stream. Consumers treat it as a

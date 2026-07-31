@@ -19,25 +19,25 @@ func usersToolDefinitions() []toolDefinition {
 			Name:        toolListUsers,
 			Description: "List the user directory. query optionally filters by email.",
 			Scope:       agent.ScopeUsersRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}}}`),
 		},
 		{
 			Name:        toolGetUserProfile,
 			Description: "Get a user's public profile: the tasks they created.",
 			Scope:       agent.ScopeUsersRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"user_id":{"type":"string"}},"required":["user_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"user_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["user_id"]}`),
 		},
 		{
 			Name:        toolGetUserWork,
 			Description: "List tasks a user is currently assigned to or has reserved.",
 			Scope:       agent.ScopeUsersRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"user_id":{"type":"string"}},"required":["user_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"user_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["user_id"]}`),
 		},
 		{
 			Name:        toolGetUserSubmissions,
 			Description: "List a user's own submissions. Only the user themselves may read their submissions.",
 			Scope:       agent.ScopeUsersRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"user_id":{"type":"string"}},"required":["user_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"user_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["user_id"]}`),
 		},
 	}
 }

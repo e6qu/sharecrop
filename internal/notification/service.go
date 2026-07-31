@@ -4,19 +4,43 @@ import (
 	"context"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 )
 
+// Notification also carries two read-time enrichment fields the store
+// resolves on reads: the actor's display name, and the subject's title when
+// the subject is a task. Both are absent on the create command (fan-out).
 type Notification struct {
-	ID          core.NotificationID
-	RecipientID core.UserID
-	ActorID     core.UserID
-	Kind        Kind
-	Subject     Subject
-	State       State
-	Metadata    Metadata
-	CreatedAt   time.Time
+	ID               core.NotificationID
+	RecipientID      core.UserID
+	ActorID          core.UserID
+	ActorDisplayName auth.DisplayName
+	Kind             Kind
+	Subject          Subject
+	SubjectTitle     SubjectTitleRef
+	State            State
+	Metadata         Metadata
+	CreatedAt        time.Time
 }
+
+// SubjectTitleRef names the notification's subject when it is a task, so
+// inbox rows can show "on <task title>" without a per-row task fetch.
+// NoSubjectTitle covers non-task subjects and create commands.
+type SubjectTitleRef interface {
+	subjectTitleRef()
+}
+
+type NoSubjectTitle struct{}
+
+// TaskSubjectTitle carries a raw display copy of the subject task's title.
+type TaskSubjectTitle struct {
+	Title string
+}
+
+func (NoSubjectTitle) subjectTitleRef() {}
+
+func (TaskSubjectTitle) subjectTitleRef() {}
 
 type Kind struct {
 	value string
@@ -39,6 +63,7 @@ var (
 	KindReservationCancelled       = Kind{value: "reservation_cancelled"}
 	KindReservationExpired         = Kind{value: "reservation_expired"}
 	KindPayoutReceived             = Kind{value: "payout_received"}
+	KindCreditGranted              = Kind{value: "credit_granted"}
 	KindTipReceived                = Kind{value: "tip_received"}
 	KindCollectibleAwarded         = Kind{value: "collectible_awarded"}
 )
@@ -63,6 +88,7 @@ func AllKinds() []Kind {
 		KindReservationCancelled,
 		KindReservationExpired,
 		KindPayoutReceived,
+		KindCreditGranted,
 		KindTipReceived,
 		KindCollectibleAwarded,
 	}
@@ -213,14 +239,15 @@ func (service Service) Notify(ctx context.Context, recipient core.UserID, actor 
 		return NotifyRejected{Reason: idResult.(core.NotificationIDRejected).Reason}
 	}
 	value := Notification{
-		ID:          id.Value,
-		RecipientID: recipient,
-		ActorID:     actor,
-		Kind:        kind,
-		Subject:     subject,
-		State:       StateUnread,
-		Metadata:    metadata,
-		CreatedAt:   service.now().UTC(),
+		ID:           id.Value,
+		RecipientID:  recipient,
+		ActorID:      actor,
+		Kind:         kind,
+		Subject:      subject,
+		SubjectTitle: NoSubjectTitle{},
+		State:        StateUnread,
+		Metadata:     metadata,
+		CreatedAt:    service.now().UTC(),
 	}
 	storeResult := service.store.Create(ctx, value)
 	if rejected, rejectedMatched := storeResult.(CreateStoreRejected); rejectedMatched {

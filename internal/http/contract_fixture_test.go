@@ -12,8 +12,8 @@ import (
 // the generated Elm contracts drift.
 
 func TestAuthResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(authResponse{SubjectKind: "user", SubjectID: "subject-1", AccessToken: "token-1", Role: "member", Username: "ada"})
-	assertWireShape(t, encoded, err, `{"subject_kind":"user","subject_id":"subject-1","access_token":"token-1","role":"member","username":"ada"}`)
+	encoded, err := json.Marshal(authResponse{SubjectKind: "user", SubjectID: "subject-1", AccessToken: "token-1", Role: "member", Username: "ada", DisplayName: "Ada"})
+	assertWireShape(t, encoded, err, `{"subject_kind":"user","subject_id":"subject-1","access_token":"token-1","role":"member","username":"ada","display_name":"Ada"}`)
 }
 
 func TestAuthRequestWireShape(t *testing.T) {
@@ -107,41 +107,43 @@ func TestModerationTriageRequestWireShape(t *testing.T) {
 }
 
 func TestUsersResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(usersResponse{Users: []userDirectoryEntryResponse{{ID: "user-1", Email: "person@example.com", Status: "active"}}})
-	assertWireShape(t, encoded, err, `{"users":[{"id":"user-1","email":"person@example.com","status":"active"}],"next_offset":0}`)
+	encoded, err := json.Marshal(usersResponse{Users: []userDirectoryEntryResponse{{ID: "user-1", Email: "person@example.com", DisplayName: "person", Status: "active"}}})
+	assertWireShape(t, encoded, err, `{"users":[{"id":"user-1","email":"person@example.com","display_name":"person","status":"active"}],"next_offset":0}`)
 }
 
 func TestEventListResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(eventListResponse{Events: []webhook.EventPayload{{
-		ID:           "event-1",
-		Kind:         "reservation_requested",
-		ActorKind:    "user",
-		ActorUserID:  "user-1",
-		OccurredAt:   "2026-01-02T03:04:05Z",
-		Cursor:       "7",
-		TaskID:       "task-1",
-		SubmissionID: "",
-		MetadataJSON: "{}",
+		ID:               "event-1",
+		Kind:             "reservation_requested",
+		ActorKind:        "user",
+		ActorUserID:      "user-1",
+		ActorDisplayName: "ada",
+		OccurredAt:       "2026-01-02T03:04:05Z",
+		Cursor:           "7",
+		TaskID:           "task-1",
+		TaskTitle:        "Label receipts",
+		SubmissionID:     "",
+		MetadataJSON:     "{}",
 	}}, NextCursor: "7"})
-	assertWireShape(t, encoded, err, `{"events":[{"id":"event-1","kind":"reservation_requested","actor_kind":"user","actor_user_id":"user-1","occurred_at":"2026-01-02T03:04:05Z","cursor":"7","task_id":"task-1","submission_id":"","reservation_id":"","series_id":"","organization_id":"","collectible_id":"","metadata_json":"{}"}],"next_cursor":"7"}`)
+	assertWireShape(t, encoded, err, `{"events":[{"id":"event-1","kind":"reservation_requested","actor_kind":"user","actor_user_id":"user-1","actor_display_name":"ada","occurred_at":"2026-01-02T03:04:05Z","cursor":"7","task_id":"task-1","task_title":"Label receipts","submission_id":"","reservation_id":"","series_id":"","organization_id":"","collectible_id":"","metadata_json":"{}"}],"next_cursor":"7"}`)
 }
 
 func TestWebhookSubscriptionRequestWireShape(t *testing.T) {
-	encoded, err := json.Marshal(webhookSubscriptionRequest{URL: "https://receiver.example.com/hooks", Kinds: []string{"task_opened"}, OrganizationID: ""})
-	assertWireShape(t, encoded, err, `{"url":"https://receiver.example.com/hooks","kinds":["task_opened"],"organization_id":""}`)
+	encoded, err := json.Marshal(webhookSubscriptionRequest{URL: "https://receiver.example.com/hooks", Kinds: []string{"task_opened"}, OrganizationID: "", Audience: "marketplace", FilterTaskType: "code_review", FilterMinCreditReward: 10})
+	assertWireShape(t, encoded, err, `{"url":"https://receiver.example.com/hooks","kinds":["task_opened"],"organization_id":"","audience":"marketplace","filter_task_type":"code_review","filter_min_credit_reward":10}`)
 }
 
 func TestWebhookSubscriptionCreatedResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(webhookSubscriptionCreatedResponse{
-		Subscription: webhookSubscriptionResponse{ID: "subscription-1", OwnerKind: "user", OwnerUserID: "user-1", OwnerOrganizationID: "", URL: "https://receiver.example.com/hooks", Kinds: []string{"task_opened", "payout_received"}, State: "active", CreatedAt: "2026-01-02T03:04:05Z"},
+		Subscription: webhookSubscriptionResponse{ID: "subscription-1", OwnerKind: "user", OwnerUserID: "user-1", OwnerOrganizationID: "", URL: "https://receiver.example.com/hooks", Kinds: []string{"task_opened", "payout_received"}, State: "active", CreatedAt: "2026-01-02T03:04:05Z", Audience: "recipient"},
 		Secret:       "scrop_whsec_fixture",
 	})
-	assertWireShape(t, encoded, err, `{"subscription":{"id":"subscription-1","owner_kind":"user","owner_user_id":"user-1","owner_organization_id":"","url":"https://receiver.example.com/hooks","kinds":["task_opened","payout_received"],"state":"active","created_at":"2026-01-02T03:04:05Z"},"secret":"scrop_whsec_fixture"}`)
+	assertWireShape(t, encoded, err, `{"subscription":{"id":"subscription-1","owner_kind":"user","owner_user_id":"user-1","owner_organization_id":"","url":"https://receiver.example.com/hooks","kinds":["task_opened","payout_received"],"state":"active","created_at":"2026-01-02T03:04:05Z","audience":"recipient","filter_task_type":"","filter_min_credit_reward":0},"secret":"scrop_whsec_fixture"}`)
 }
 
 func TestWebhookSubscriptionsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(webhookSubscriptionsResponse{Subscriptions: []webhookSubscriptionResponse{{ID: "subscription-1", OwnerKind: "organization", OwnerUserID: "", OwnerOrganizationID: "organization-1", URL: "https://receiver.example.com/hooks", Kinds: []string{"submission_created"}, State: "revoked", CreatedAt: "2026-01-02T03:04:05Z"}}})
-	assertWireShape(t, encoded, err, `{"subscriptions":[{"id":"subscription-1","owner_kind":"organization","owner_user_id":"","owner_organization_id":"organization-1","url":"https://receiver.example.com/hooks","kinds":["submission_created"],"state":"revoked","created_at":"2026-01-02T03:04:05Z"}],"next_offset":0}`)
+	encoded, err := json.Marshal(webhookSubscriptionsResponse{Subscriptions: []webhookSubscriptionResponse{{ID: "subscription-1", OwnerKind: "organization", OwnerUserID: "", OwnerOrganizationID: "organization-1", URL: "https://receiver.example.com/hooks", Kinds: []string{"submission_created"}, State: "revoked", CreatedAt: "2026-01-02T03:04:05Z", Audience: "marketplace", FilterTaskType: "code_review", FilterMinCreditReward: 25}}})
+	assertWireShape(t, encoded, err, `{"subscriptions":[{"id":"subscription-1","owner_kind":"organization","owner_user_id":"","owner_organization_id":"organization-1","url":"https://receiver.example.com/hooks","kinds":["submission_created"],"state":"revoked","created_at":"2026-01-02T03:04:05Z","audience":"marketplace","filter_task_type":"code_review","filter_min_credit_reward":25}],"next_offset":0}`)
 }
 
 func TestWebhookDeliveriesResponseWireShape(t *testing.T) {
@@ -170,13 +172,13 @@ func TestBalanceResponseWireShape(t *testing.T) {
 }
 
 func TestLedgerEntryResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(ledgerEntryResponse{ID: "entry-1", Kind: "signup_grant", Amount: 100, TaskID: ""})
-	assertWireShape(t, encoded, err, `{"id":"entry-1","kind":"signup_grant","amount":100,"task_id":""}`)
+	encoded, err := json.Marshal(ledgerEntryResponse{ID: "entry-1", Kind: "signup_grant", Amount: 100, TaskID: "", Note: ""})
+	assertWireShape(t, encoded, err, `{"id":"entry-1","kind":"signup_grant","amount":100,"task_id":"","note":""}`)
 }
 
 func TestLedgerListResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(ledgerListResponse{Entries: []ledgerEntryResponse{{ID: "entry-1", Kind: "task_payout", Amount: 25, TaskID: "task-1"}}})
-	assertWireShape(t, encoded, err, `{"entries":[{"id":"entry-1","kind":"task_payout","amount":25,"task_id":"task-1"}],"next_offset":0}`)
+	encoded, err := json.Marshal(ledgerListResponse{Entries: []ledgerEntryResponse{{ID: "entry-1", Kind: "manual_adjustment", Amount: 25, TaskID: "", Note: "Reimbursed the cancelled batch."}}})
+	assertWireShape(t, encoded, err, `{"entries":[{"id":"entry-1","kind":"manual_adjustment","amount":25,"task_id":"","note":"Reimbursed the cancelled batch."}],"next_offset":0}`)
 }
 
 func TestTaskFundResponseWireShape(t *testing.T) {
@@ -195,13 +197,13 @@ func TestReviewSubmissionResponseWireShape(t *testing.T) {
 }
 
 func TestReservationResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(reservationResponse{ID: "reservation-1", TaskID: "task-1", AssigneeKind: "user", AssigneeID: "user-1", State: "active", RequestedBy: "user-1"})
-	assertWireShape(t, encoded, err, `{"id":"reservation-1","task_id":"task-1","assignee_kind":"user","assignee_id":"user-1","state":"active","requested_by":"user-1","issued_worker_credential":""}`)
+	encoded, err := json.Marshal(reservationResponse{ID: "reservation-1", TaskID: "task-1", AssigneeKind: "user", AssigneeID: "user-1", State: "active", RequestedBy: "user-1", HolderDisplayName: "ada"})
+	assertWireShape(t, encoded, err, `{"id":"reservation-1","task_id":"task-1","assignee_kind":"user","assignee_id":"user-1","state":"active","requested_by":"user-1","issued_worker_credential":"","holder_display_name":"ada"}`)
 }
 
 func TestReservationsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(reservationsResponse{Reservations: []reservationResponse{{ID: "reservation-1", TaskID: "task-1", AssigneeKind: "user", AssigneeID: "user-1", State: "requested", RequestedBy: "user-1"}}})
-	assertWireShape(t, encoded, err, `{"reservations":[{"id":"reservation-1","task_id":"task-1","assignee_kind":"user","assignee_id":"user-1","state":"requested","requested_by":"user-1","issued_worker_credential":""}],"next_offset":0}`)
+	encoded, err := json.Marshal(reservationsResponse{Reservations: []reservationResponse{{ID: "reservation-1", TaskID: "task-1", AssigneeKind: "user", AssigneeID: "user-1", State: "requested", RequestedBy: "user-1", HolderDisplayName: "ada"}}})
+	assertWireShape(t, encoded, err, `{"reservations":[{"id":"reservation-1","task_id":"task-1","assignee_kind":"user","assignee_id":"user-1","state":"requested","requested_by":"user-1","issued_worker_credential":"","holder_display_name":"ada"}],"next_offset":0}`)
 }
 
 func TestTeamResponseWireShape(t *testing.T) {
@@ -275,8 +277,8 @@ func TestOrganizationTeamsResponseWireShape(t *testing.T) {
 }
 
 func TestTaskResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(taskResponse{ID: "task-1", OwnerKind: "user", OwnerID: "user-1", Title: "Label receipts", Description: "Extract totals.", TaskType: "general", ReferenceURL: "https://example.com/pr/1", RewardKind: "credit", RewardCreditAmount: 25, RewardCollectibleCount: 1, AllocatedCredits: 25, AllocatedCollectibleIDs: []string{}, ParticipationPolicy: "reservation_required", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", VisibilityID: "", SeriesKind: "standalone", SeriesID: "", SeriesPosition: 0, ResponseSchemaJSON: `{"kind":"freeform"}`, PayloadKind: "json", PayloadJSON: `{"batch":"A"}`, Attachments: []attachmentResponse{{Name: "brief.txt", ContentType: "text/plain", SizeBytes: 5, DataURL: "data:text/plain;base64,aGVsbG8="}}, CreatedBy: "user-1", AvailabilityKind: "available", ViewerAction: "reserve", ReviewerAction: "none"})
-	assertWireShape(t, encoded, err, `{"id":"task-1","owner_kind":"user","owner_id":"user-1","title":"Label receipts","description":"Extract totals.","task_type":"general","reference_url":"https://example.com/pr/1","reward_kind":"credit","reward_credit_amount":25,"reward_collectible_count":1,"allocated_credits":25,"allocated_collectible_ids":[],"participation_policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","visibility_id":"","series_kind":"standalone","series_id":"","series_position":0,"response_schema_json":"{\"kind\":\"freeform\"}","payload_kind":"json","payload_json":"{\"batch\":\"A\"}","attachments":[{"name":"brief.txt","content_type":"text/plain","size_bytes":5,"data_url":"data:text/plain;base64,aGVsbG8="}],"created_by":"user-1","availability_kind":"available","viewer_action":"reserve","reviewer_action":"none","expires_at":""}`)
+	encoded, err := json.Marshal(taskResponse{ID: "task-1", OwnerKind: "user", OwnerID: "user-1", Title: "Label receipts", Description: "Extract totals.", TaskType: "general", ReferenceURL: "https://example.com/pr/1", RewardKind: "credit", RewardCreditAmount: 25, RewardCollectibleCount: 1, AllocatedCredits: 25, AllocatedCollectibleIDs: []string{}, ParticipationPolicy: "reservation_required", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", VisibilityID: "", SeriesKind: "standalone", SeriesID: "", SeriesPosition: 0, ResponseSchemaJSON: `{"kind":"freeform"}`, PayloadKind: "json", PayloadJSON: `{"batch":"A"}`, Attachments: []attachmentResponse{{Name: "brief.txt", ContentType: "text/plain", SizeBytes: 5, DataURL: "data:text/plain;base64,aGVsbG8="}}, CreatedBy: "user-1", AvailabilityKind: "available", ViewerAction: "reserve", ReviewerAction: "none", CreatorDisplayName: "ada"})
+	assertWireShape(t, encoded, err, `{"id":"task-1","owner_kind":"user","owner_id":"user-1","title":"Label receipts","description":"Extract totals.","task_type":"general","reference_url":"https://example.com/pr/1","reward_kind":"credit","reward_credit_amount":25,"reward_collectible_count":1,"allocated_credits":25,"allocated_collectible_ids":[],"participation_policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","visibility_id":"","series_kind":"standalone","series_id":"","series_position":0,"response_schema_json":"{\"kind\":\"freeform\"}","payload_kind":"json","payload_json":"{\"batch\":\"A\"}","attachments":[{"name":"brief.txt","content_type":"text/plain","size_bytes":5,"data_url":"data:text/plain;base64,aGVsbG8="}],"created_by":"user-1","availability_kind":"available","viewer_action":"reserve","reviewer_action":"none","expires_at":"","creator_display_name":"ada"}`)
 }
 
 func TestAttachmentRequestWireShape(t *testing.T) {
@@ -310,8 +312,8 @@ func TestAttachmentResponseWireShape(t *testing.T) {
 }
 
 func TestTasksResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(tasksResponse{Tasks: []taskListItemResponse{{ID: "task-1", OwnerKind: "user", Title: "Label receipts", RewardKind: "none", RewardCreditAmount: 0, RewardCollectibleCount: 0, ParticipationPolicy: "open", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", AvailabilityKind: "available", ViewerAction: "submit", ReviewerAction: "none", CreatedBy: "user-1", ActiveAssigneeKind: "", ActiveAssigneeID: ""}}})
-	assertWireShape(t, encoded, err, `{"tasks":[{"id":"task-1","owner_kind":"user","title":"Label receipts","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","availability_kind":"available","viewer_action":"submit","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"","active_assignee_id":""}],"next_offset":0}`)
+	encoded, err := json.Marshal(tasksResponse{Tasks: []taskListItemResponse{{ID: "task-1", OwnerKind: "user", Title: "Label receipts", RewardKind: "none", RewardCreditAmount: 0, RewardCollectibleCount: 0, ParticipationPolicy: "open", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", AvailabilityKind: "available", ViewerAction: "submit", ReviewerAction: "none", CreatedBy: "user-1", ActiveAssigneeKind: "", ActiveAssigneeID: "", CreatorDisplayName: "ada", PendingReviewCount: 2}}})
+	assertWireShape(t, encoded, err, `{"tasks":[{"id":"task-1","owner_kind":"user","title":"Label receipts","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","availability_kind":"available","viewer_action":"submit","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"","active_assignee_id":"","creator_display_name":"ada","pending_review_count":2}],"next_offset":0}`)
 }
 
 func TestTaskRequestWireShape(t *testing.T) {
@@ -372,8 +374,8 @@ func TestRejectSubmissionRequestWireShape(t *testing.T) {
 }
 
 func TestSubmissionCreatedResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionCreatedResponse{Submission: submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", Attachments: []attachmentResponse{}, ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{}}, ReceiptToken: "receipt-1"})
-	assertWireShape(t, encoded, err, `{"submission":{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","attachments":[],"validation_errors":[],"sensitive_fields":[]},"receipt_token":"receipt-1"}`)
+	encoded, err := json.Marshal(submissionCreatedResponse{Submission: submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", SubmitterDisplayName: "ada", State: "submitted", ResponseJSON: "{}", ReviewNote: "", Attachments: []attachmentResponse{}, ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{}}, ReceiptToken: "receipt-1"})
+	assertWireShape(t, encoded, err, `{"submission":{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","submitter_display_name":"ada","state":"submitted","response_json":"{}","review_note":"","attachments":[],"validation_errors":[],"sensitive_fields":[]},"receipt_token":"receipt-1"}`)
 }
 
 func TestSubmissionValidationErrorResponseWireShape(t *testing.T) {
@@ -382,18 +384,18 @@ func TestSubmissionValidationErrorResponseWireShape(t *testing.T) {
 }
 
 func TestSubmissionResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "changes_requested", ResponseJSON: "{}", ReviewNote: "Use the current API.", Attachments: []attachmentResponse{{Name: "evidence.png", ContentType: "image/png", SizeBytes: 8, DataURL: "data:image/png;base64,iVBORw0KGgo="}}, ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{{Path: "email", Category: "pii", Retention: "delete_on_request", Redaction: "replace", State: "redacted", RedactedAt: "2026-01-02T03:05:05Z"}}})
-	assertWireShape(t, encoded, err, `{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"changes_requested","response_json":"{}","review_note":"Use the current API.","attachments":[{"name":"evidence.png","content_type":"image/png","size_bytes":8,"data_url":"data:image/png;base64,iVBORw0KGgo="}],"validation_errors":[],"sensitive_fields":[{"path":"email","category":"pii","retention":"delete_on_request","redaction":"replace","state":"redacted","redacted_at":"2026-01-02T03:05:05Z"}]}`)
+	encoded, err := json.Marshal(submissionResponse{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", SubmitterDisplayName: "ada", State: "changes_requested", ResponseJSON: "{}", ReviewNote: "Use the current API.", Attachments: []attachmentResponse{{Name: "evidence.png", ContentType: "image/png", SizeBytes: 8, DataURL: "data:image/png;base64,iVBORw0KGgo="}}, ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{{Path: "email", Category: "pii", Retention: "delete_on_request", Redaction: "replace", State: "redacted", RedactedAt: "2026-01-02T03:05:05Z"}}})
+	assertWireShape(t, encoded, err, `{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","submitter_display_name":"ada","state":"changes_requested","response_json":"{}","review_note":"Use the current API.","attachments":[{"name":"evidence.png","content_type":"image/png","size_bytes":8,"data_url":"data:image/png;base64,iVBORw0KGgo="}],"validation_errors":[],"sensitive_fields":[{"path":"email","category":"pii","retention":"delete_on_request","redaction":"replace","state":"redacted","redacted_at":"2026-01-02T03:05:05Z"}]}`)
 }
 
 func TestSubmissionsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionsResponse{Submissions: []submissionResponse{{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", State: "submitted", ResponseJSON: "{}", ReviewNote: "", Attachments: []attachmentResponse{}, ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{}}}})
-	assertWireShape(t, encoded, err, `{"submissions":[{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","state":"submitted","response_json":"{}","review_note":"","attachments":[],"validation_errors":[],"sensitive_fields":[]}],"next_offset":0}`)
+	encoded, err := json.Marshal(submissionsResponse{Submissions: []submissionResponse{{ID: "submission-1", TaskID: "task-1", SubmitterID: "user-1", SubmitterDisplayName: "ada", State: "submitted", ResponseJSON: "{}", ReviewNote: "", Attachments: []attachmentResponse{}, ValidationErrors: []submissionValidationErrorResponse{}, SensitiveFields: []submissionSensitiveFieldResponse{}}}})
+	assertWireShape(t, encoded, err, `{"submissions":[{"id":"submission-1","task_id":"task-1","submitter_id":"user-1","submitter_display_name":"ada","state":"submitted","response_json":"{}","review_note":"","attachments":[],"validation_errors":[],"sensitive_fields":[]}],"next_offset":0}`)
 }
 
 func TestSubmissionCommentsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(submissionCommentsResponse{Comments: []submissionCommentResponse{{ID: "comment-1", SubmissionID: "submission-1", AuthorUserID: "user-1", Body: "Please revise.", CreatedAt: "2026-06-29T00:00:00Z"}}})
-	assertWireShape(t, encoded, err, `{"comments":[{"id":"comment-1","submission_id":"submission-1","author_user_id":"user-1","body":"Please revise.","created_at":"2026-06-29T00:00:00Z"}],"next_offset":0}`)
+	encoded, err := json.Marshal(submissionCommentsResponse{Comments: []submissionCommentResponse{{ID: "comment-1", SubmissionID: "submission-1", AuthorUserID: "user-1", AuthorDisplayName: "ada", Body: "Please revise.", CreatedAt: "2026-06-29T00:00:00Z"}}})
+	assertWireShape(t, encoded, err, `{"comments":[{"id":"comment-1","submission_id":"submission-1","author_user_id":"user-1","author_display_name":"ada","body":"Please revise.","created_at":"2026-06-29T00:00:00Z"}],"next_offset":0}`)
 }
 
 func TestSubmissionCommentRequestWireShape(t *testing.T) {
@@ -402,8 +404,8 @@ func TestSubmissionCommentRequestWireShape(t *testing.T) {
 }
 
 func TestTaskCommentsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(taskCommentsResponse{Comments: []taskCommentResponse{{ID: "comment-1", TaskID: "task-1", AuthorUserID: "user-1", Body: "Looks ready.", CreatedAt: "2026-06-29T00:00:00Z"}}})
-	assertWireShape(t, encoded, err, `{"comments":[{"id":"comment-1","task_id":"task-1","author_user_id":"user-1","body":"Looks ready.","created_at":"2026-06-29T00:00:00Z"}],"next_offset":0}`)
+	encoded, err := json.Marshal(taskCommentsResponse{Comments: []taskCommentResponse{{ID: "comment-1", TaskID: "task-1", AuthorUserID: "user-1", AuthorDisplayName: "ada", Body: "Looks ready.", CreatedAt: "2026-06-29T00:00:00Z"}}})
+	assertWireShape(t, encoded, err, `{"comments":[{"id":"comment-1","task_id":"task-1","author_user_id":"user-1","author_display_name":"ada","body":"Looks ready.","created_at":"2026-06-29T00:00:00Z"}],"next_offset":0}`)
 }
 
 func TestCreateSeriesRequestWireShape(t *testing.T) {
@@ -435,9 +437,9 @@ func TestTaskSeriesDetailResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(taskSeriesDetailResponse{
 		Series:   taskSeriesResponse{ID: "series-1", OwnerKind: "user", Title: "Release checks", Description: "Grouped QA work.", State: "published", CreatedBy: "user-1"},
 		Tasks:    []taskResponse{{ID: "task-1", OwnerKind: "user", OwnerID: "user-1", Title: "Label receipts", Description: "Extract totals.", TaskType: "general", ReferenceURL: "", RewardKind: "none", RewardCreditAmount: 0, RewardCollectibleCount: 0, AllocatedCredits: 0, AllocatedCollectibleIDs: []string{}, ParticipationPolicy: "open", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", VisibilityID: "", SeriesKind: "existing_series", SeriesID: "series-1", SeriesPosition: 1, ResponseSchemaJSON: `{"kind":"freeform"}`, PayloadKind: "none", PayloadJSON: "", Attachments: []attachmentResponse{}, CreatedBy: "user-1", AvailabilityKind: "available", ViewerAction: "submit", ReviewerAction: "none"}},
-		Comments: []seriesCommentResponse{{ID: "comment-1", SeriesID: "series-1", AuthorUserID: "user-1", Body: "Ready.", CreatedAt: "2026-06-29T00:00:00Z"}},
+		Comments: []seriesCommentResponse{{ID: "comment-1", SeriesID: "series-1", AuthorUserID: "user-1", AuthorDisplayName: "ada", Body: "Ready.", CreatedAt: "2026-06-29T00:00:00Z"}},
 	})
-	assertWireShape(t, encoded, err, `{"series":{"id":"series-1","owner_kind":"user","title":"Release checks","description":"Grouped QA work.","state":"published","created_by":"user-1"},"tasks":[{"id":"task-1","owner_kind":"user","owner_id":"user-1","title":"Label receipts","description":"Extract totals.","task_type":"general","reference_url":"","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"allocated_credits":0,"allocated_collectible_ids":[],"participation_policy":"open","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","visibility_id":"","series_kind":"existing_series","series_id":"series-1","series_position":1,"response_schema_json":"{\"kind\":\"freeform\"}","payload_kind":"none","payload_json":"","attachments":[],"created_by":"user-1","availability_kind":"available","viewer_action":"submit","reviewer_action":"none","expires_at":""}],"comments":[{"id":"comment-1","series_id":"series-1","author_user_id":"user-1","body":"Ready.","created_at":"2026-06-29T00:00:00Z"}]}`)
+	assertWireShape(t, encoded, err, `{"series":{"id":"series-1","owner_kind":"user","title":"Release checks","description":"Grouped QA work.","state":"published","created_by":"user-1"},"tasks":[{"id":"task-1","owner_kind":"user","owner_id":"user-1","title":"Label receipts","description":"Extract totals.","task_type":"general","reference_url":"","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"allocated_credits":0,"allocated_collectible_ids":[],"participation_policy":"open","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","visibility_id":"","series_kind":"existing_series","series_id":"series-1","series_position":1,"response_schema_json":"{\"kind\":\"freeform\"}","payload_kind":"none","payload_json":"","attachments":[],"created_by":"user-1","availability_kind":"available","viewer_action":"submit","reviewer_action":"none","expires_at":"","creator_display_name":""}],"comments":[{"id":"comment-1","series_id":"series-1","author_user_id":"user-1","author_display_name":"ada","body":"Ready.","created_at":"2026-06-29T00:00:00Z"}]}`)
 }
 
 func TestMintCollectibleRequestWireShape(t *testing.T) {
@@ -496,8 +498,8 @@ func TestAgentCredentialsResponseWireShape(t *testing.T) {
 }
 
 func TestUserProfileResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(userProfileResponse{ID: "user-1", Tasks: []taskListItemResponse{{ID: "task-1", OwnerKind: "user", Title: "Label receipts", RewardKind: "none", RewardCreditAmount: 0, RewardCollectibleCount: 0, ParticipationPolicy: "open", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", AvailabilityKind: "available", ViewerAction: "submit", ReviewerAction: "none", CreatedBy: "user-1", ActiveAssigneeKind: "", ActiveAssigneeID: ""}}})
-	assertWireShape(t, encoded, err, `{"id":"user-1","tasks":[{"id":"task-1","owner_kind":"user","title":"Label receipts","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","availability_kind":"available","viewer_action":"submit","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"","active_assignee_id":""}]}`)
+	encoded, err := json.Marshal(userProfileResponse{ID: "user-1", DisplayName: "ada", Tasks: []taskListItemResponse{{ID: "task-1", OwnerKind: "user", Title: "Label receipts", RewardKind: "none", RewardCreditAmount: 0, RewardCollectibleCount: 0, ParticipationPolicy: "open", AssigneeScope: "user", ReservationExpiryHours: 48, State: "open", VisibilityKind: "public", AvailabilityKind: "available", ViewerAction: "submit", ReviewerAction: "none", CreatedBy: "user-1", ActiveAssigneeKind: "", ActiveAssigneeID: "", CreatorDisplayName: "ada"}}})
+	assertWireShape(t, encoded, err, `{"id":"user-1","display_name":"ada","tasks":[{"id":"task-1","owner_kind":"user","title":"Label receipts","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","availability_kind":"available","viewer_action":"submit","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"","active_assignee_id":"","creator_display_name":"ada","pending_review_count":0}]}`)
 }
 
 func TestOperationsResponseWireShape(t *testing.T) {
@@ -535,22 +537,24 @@ func TestPlatformAdminsResponseWireShape(t *testing.T) {
 
 func TestNotificationResponseWireShape(t *testing.T) {
 	encoded, err := json.Marshal(notificationResponse{
-		ID:              "notification-1",
-		RecipientUserID: "user-2",
-		ActorUserID:     "user-1",
-		Kind:            "submission_created",
-		SubjectKind:     "submission",
-		SubjectID:       "submission-1",
-		State:           "unread",
-		MetadataJSON:    `{"task_id":"task-1"}`,
-		CreatedAt:       "2026-06-29T00:00:00Z",
+		ID:               "notification-1",
+		RecipientUserID:  "user-2",
+		ActorUserID:      "user-1",
+		ActorDisplayName: "ada",
+		Kind:             "submission_created",
+		SubjectKind:      "submission",
+		SubjectID:        "submission-1",
+		SubjectTitle:     "",
+		State:            "unread",
+		MetadataJSON:     `{"task_id":"task-1"}`,
+		CreatedAt:        "2026-06-29T00:00:00Z",
 	})
-	assertWireShape(t, encoded, err, `{"id":"notification-1","recipient_user_id":"user-2","actor_user_id":"user-1","kind":"submission_created","subject_kind":"submission","subject_id":"submission-1","state":"unread","metadata_json":"{\"task_id\":\"task-1\"}","created_at":"2026-06-29T00:00:00Z"}`)
+	assertWireShape(t, encoded, err, `{"id":"notification-1","recipient_user_id":"user-2","actor_user_id":"user-1","actor_display_name":"ada","kind":"submission_created","subject_kind":"submission","subject_id":"submission-1","subject_title":"","state":"unread","metadata_json":"{\"task_id\":\"task-1\"}","created_at":"2026-06-29T00:00:00Z"}`)
 }
 
 func TestNotificationsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(notificationsResponse{Notifications: []notificationResponse{{ID: "notification-1", RecipientUserID: "user-2", ActorUserID: "user-1", Kind: "submission_commented", SubjectKind: "submission", SubjectID: "submission-1", State: "unread", MetadataJSON: `{"task_id":"task-1"}`, CreatedAt: "2026-06-29T00:00:00Z"}}})
-	assertWireShape(t, encoded, err, `{"notifications":[{"id":"notification-1","recipient_user_id":"user-2","actor_user_id":"user-1","kind":"submission_commented","subject_kind":"submission","subject_id":"submission-1","state":"unread","metadata_json":"{\"task_id\":\"task-1\"}","created_at":"2026-06-29T00:00:00Z"}],"next_offset":0}`)
+	encoded, err := json.Marshal(notificationsResponse{Notifications: []notificationResponse{{ID: "notification-1", RecipientUserID: "user-2", ActorUserID: "user-1", ActorDisplayName: "ada", Kind: "submission_commented", SubjectKind: "submission", SubjectID: "submission-1", SubjectTitle: "Label receipts", State: "unread", MetadataJSON: `{"task_id":"task-1"}`, CreatedAt: "2026-06-29T00:00:00Z"}}})
+	assertWireShape(t, encoded, err, `{"notifications":[{"id":"notification-1","recipient_user_id":"user-2","actor_user_id":"user-1","actor_display_name":"ada","kind":"submission_commented","subject_kind":"submission","subject_id":"submission-1","subject_title":"Label receipts","state":"unread","metadata_json":"{\"task_id\":\"task-1\"}","created_at":"2026-06-29T00:00:00Z"}],"next_offset":0}`)
 }
 
 func TestNotificationUnreadCountResponseWireShape(t *testing.T) {
@@ -592,8 +596,10 @@ func TestTaskListItemResponseWireShape(t *testing.T) {
 		CreatedBy:              "user-1",
 		ActiveAssigneeKind:     "user",
 		ActiveAssigneeID:       "user-2",
+		CreatorDisplayName:     "ada",
+		PendingReviewCount:     1,
 	})
-	assertWireShape(t, encoded, err, `{"id":"task-1","owner_kind":"user","title":"Label receipts","reward_kind":"credit","reward_credit_amount":25,"reward_collectible_count":0,"participation_policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","availability_kind":"reserved","viewer_action":"wait","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"user","active_assignee_id":"user-2"}`)
+	assertWireShape(t, encoded, err, `{"id":"task-1","owner_kind":"user","title":"Label receipts","reward_kind":"credit","reward_credit_amount":25,"reward_collectible_count":0,"participation_policy":"reservation_required","assignee_scope":"user","reservation_expiry_hours":48,"state":"open","visibility_kind":"public","availability_kind":"reserved","viewer_action":"wait","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"user","active_assignee_id":"user-2","creator_display_name":"ada","pending_review_count":1}`)
 }
 
 func TestOrganizationTeamTaskListItemResponseWireShape(t *testing.T) {
@@ -615,8 +621,10 @@ func TestOrganizationTeamTaskListItemResponseWireShape(t *testing.T) {
 		CreatedBy:              "user-1",
 		ActiveAssigneeKind:     "",
 		ActiveAssigneeID:       "",
+		CreatorDisplayName:     "ada",
+		PendingReviewCount:     0,
 	})
-	assertWireShape(t, encoded, err, `{"id":"task-2","owner_kind":"organization","title":"Review org queue","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"organization_team","reservation_expiry_hours":48,"state":"open","visibility_kind":"organization_team","availability_kind":"available","viewer_action":"submit","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"","active_assignee_id":""}`)
+	assertWireShape(t, encoded, err, `{"id":"task-2","owner_kind":"organization","title":"Review org queue","reward_kind":"none","reward_credit_amount":0,"reward_collectible_count":0,"participation_policy":"open","assignee_scope":"organization_team","reservation_expiry_hours":48,"state":"open","visibility_kind":"organization_team","availability_kind":"available","viewer_action":"submit","reviewer_action":"none","created_by":"user-1","active_assignee_kind":"","active_assignee_id":"","creator_display_name":"ada","pending_review_count":0}`)
 }
 
 func assertWireShape(t *testing.T, got []byte, err error, want string) {

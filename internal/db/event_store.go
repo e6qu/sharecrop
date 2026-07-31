@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -81,7 +82,7 @@ func (store EventStore) Append(ctx context.Context, value event.Event, recipient
 	if err := tx.Commit(ctx); err != nil {
 		return event.AppendStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit event append failed")}
 	}
-	return event.AppendStoreAccepted{Value: event.StoredEvent{Event: value, Cursor: event.CursorFromSequence(sequence)}}
+	return event.AppendStoreAccepted{Value: event.WithoutEnrichment(event.StoredEvent{Event: value, Cursor: event.CursorFromSequence(sequence)})}
 }
 
 func (store EventStore) ListForRecipient(ctx context.Context, recipient core.UserID, filter event.CursorFilter, page core.Page) event.ListStoreResult {
@@ -90,9 +91,13 @@ func (store EventStore) ListForRecipient(ctx context.Context, recipient core.Use
 		afterSequence = after.Cursor.Sequence()
 	}
 	rows, err := store.db.Query(ctx, `
-		select `+eventColumns+`
+		select `+eventColumns+`,
+			`+displayNameSQL("actor_user")+`,
+			coalesce(subject_task.title, '')
 		from domain_events
 		join domain_event_recipients on domain_event_recipients.event_seq = domain_events.seq
+		join users as actor_user on actor_user.id = domain_events.actor_user_id
+		left join tasks as subject_task on subject_task.id = domain_events.task_id
 		where domain_event_recipients.user_id = $1 and domain_events.seq > $2
 		order by domain_events.seq
 		limit $3 offset $4
@@ -104,7 +109,7 @@ func (store EventStore) ListForRecipient(ctx context.Context, recipient core.Use
 
 	values := make([]event.StoredEvent, 0)
 	for rows.Next() {
-		stored, scanErr := scanStoredEvent(rows)
+		stored, scanErr := scanEnrichedFeedEvent(rows)
 		if scanErr != nil {
 			return event.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan event failed")}
 		}
@@ -116,22 +121,36 @@ func (store EventStore) ListForRecipient(ctx context.Context, recipient core.Use
 	return event.ListStoreAccepted{Values: values}
 }
 
-// scanStoredEvent decodes one domain_events row (joined or not) selected with
-// eventColumns.
-func scanStoredEvent(rows Rows) (event.StoredEvent, error) {
+// scanEnrichedFeedEvent decodes one feed row: the eventColumns plus the
+// actor's display name and the referenced task's title (empty when the event
+// references no task).
+func scanEnrichedFeedEvent(rows Rows) (event.StoredEvent, error) {
 	var sequence int64
 	var rawID, rawKind, actorKind, rawActorUser string
 	var rawTask, rawSubmission, rawReservation, rawSeries, rawOrganization, rawCollectible *string
 	var rawMetadata string
 	var occurredAt time.Time
+	var rawActorName, rawTaskTitle string
 	if err := rows.Scan(&sequence, &rawID, &rawKind, &actorKind, &rawActorUser,
 		&rawTask, &rawSubmission, &rawReservation, &rawSeries, &rawOrganization, &rawCollectible,
-		&rawMetadata, &occurredAt); err != nil {
+		&rawMetadata, &occurredAt, &rawActorName, &rawTaskTitle); err != nil {
 		return event.StoredEvent{}, err
 	}
-	return parseStoredEventColumns(sequence, rawID, rawKind, actorKind, rawActorUser,
+	stored, err := parseStoredEventColumns(sequence, rawID, rawKind, actorKind, rawActorUser,
 		rawTask, rawSubmission, rawReservation, rawSeries, rawOrganization, rawCollectible,
 		rawMetadata, occurredAt)
+	if err != nil {
+		return event.StoredEvent{}, err
+	}
+	nameResult, nameMatched := auth.NewDisplayName(rawActorName).(auth.DisplayNameAccepted)
+	if !nameMatched {
+		return event.StoredEvent{}, ErrNoRows
+	}
+	stored.ActorName = event.ActorNamed{DisplayName: nameResult.Value}
+	if rawTaskTitle != "" {
+		stored.TaskTitle = event.TaskTitled{Title: rawTaskTitle}
+	}
+	return stored, nil
 }
 
 // parseStoredEventColumns rebuilds a stored event from the raw eventColumns
@@ -201,7 +220,7 @@ func parseStoredEventColumns(sequence int64, rawID string, rawKind string, actor
 		subject.Collectible = event.CollectibleSubject{ID: parsed.Value}
 	}
 
-	return event.StoredEvent{
+	return event.WithoutEnrichment(event.StoredEvent{
 		Event: event.Event{
 			ID:         idResult.Value,
 			Kind:       kindResult.Value,
@@ -211,7 +230,7 @@ func parseStoredEventColumns(sequence int64, rawID string, rawKind string, actor
 			OccurredAt: occurredAt,
 		},
 		Cursor: event.CursorFromSequence(sequence),
-	}, nil
+	}), nil
 }
 
 // The ref helpers return the id string or nil for the nullable subject

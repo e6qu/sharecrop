@@ -116,15 +116,17 @@ type alias LedgerEntryResponse =
     , kind : LedgerEntryKind
     , amount : Int
     , taskID : String
+    , note : String
     }
 
 ledgerEntryResponseDecoder : Decoder LedgerEntryResponse
 ledgerEntryResponseDecoder =
-    Decode.map4 LedgerEntryResponse
+    Decode.map5 LedgerEntryResponse
         (Decode.field "id" Decode.string)
         (Decode.field "kind" ledgerEntryKindDecoder)
         (Decode.field "amount" Decode.int)
         (Decode.field "task_id" Decode.string)
+        (Decode.field "note" Decode.string)
 
 ledgerEntryResponseEncoder : LedgerEntryResponse -> Encode.Value
 ledgerEntryResponseEncoder ledgerEntryResponse =
@@ -133,6 +135,25 @@ ledgerEntryResponseEncoder ledgerEntryResponse =
         , ( "kind", ledgerEntryKindEncoder ledgerEntryResponse.kind )
         , ( "amount", Encode.int ledgerEntryResponse.amount )
         , ( "task_id", Encode.string ledgerEntryResponse.taskID )
+        , ( "note", Encode.string ledgerEntryResponse.note )
+        ]
+
+type alias CreditGrantResponse =
+    { entryID : String
+    , amount : Int
+    }
+
+creditGrantResponseDecoder : Decoder CreditGrantResponse
+creditGrantResponseDecoder =
+    Decode.map2 CreditGrantResponse
+        (Decode.field "entry_id" Decode.string)
+        (Decode.field "amount" Decode.int)
+
+creditGrantResponseEncoder : CreditGrantResponse -> Encode.Value
+creditGrantResponseEncoder creditGrantResponse =
+    Encode.object
+        [ ( "entry_id", Encode.string creditGrantResponse.entryID )
+        , ( "amount", Encode.int creditGrantResponse.amount )
         ]
 
 type alias LedgerResponse =

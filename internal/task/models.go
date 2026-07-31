@@ -2,6 +2,7 @@ package task
 
 import (
 	"github.com/e6qu/sharecrop/internal/attachment"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 )
 
@@ -56,10 +57,16 @@ func (ActiveOrganizationTeamAssignee) activeAssignee() {}
 func (ActiveTeamAssignee) activeAssignee() {}
 
 // ListItem is the read model returned by task listings. It carries the task plus
-// the active reservation assignee, which the bare Task domain object does not track.
+// the active reservation assignee, which the bare Task domain object does not
+// track; the creator's display name, so listings can name the requester
+// without a per-task user fetch; and the count of submissions still waiting
+// for review (state submitted), so an owner's queue can surface "needs
+// review" without a per-task submission fetch.
 type ListItem struct {
-	Task           Task
-	ActiveAssignee ActiveAssignee
+	Task               Task
+	ActiveAssignee     ActiveAssignee
+	CreatorDisplayName auth.DisplayName
+	PendingReviewCount int64
 }
 
 type Series struct {
@@ -71,12 +78,16 @@ type Series struct {
 	CreatedBy   core.UserID
 }
 
+// Reservation also carries the holder's display name (the user who requested
+// it), resolved by the store, so reservation rows can name the worker without
+// a per-row user fetch.
 type Reservation struct {
-	ID          core.TaskReservationID
-	TaskID      core.TaskID
-	Assignee    Assignee
-	State       ReservationState
-	RequestedBy core.UserID
+	ID                core.TaskReservationID
+	TaskID            core.TaskID
+	Assignee          Assignee
+	State             ReservationState
+	RequestedBy       core.UserID
+	HolderDisplayName auth.DisplayName
 }
 
 type Owner interface {

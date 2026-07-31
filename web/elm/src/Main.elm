@@ -75,6 +75,7 @@ initialModel flags key url =
     , route = pageFromUrl url
     , email = ""
     , password = ""
+    , registerName = ""
     , resetEmail = ""
     , resetToken = ""
     , resetPassword = ""
@@ -89,6 +90,8 @@ emptyLoggedIn response =
     { accessToken = response.accessToken
     , subjectId = response.subjectID
     , username = response.username
+    , displayName = response.displayName
+    , now = Time.millisToPosix 0
     , isAdmin = response.role == "admin"
     , page = OverviewPage
     , openNavMenu = Nothing
@@ -103,6 +106,9 @@ emptyLoggedIn response =
     , webhookSubscriptions = []
     , webhookURL = ""
     , webhookKinds = []
+    , webhookAudience = Events.WebhookAudienceRecipient
+    , webhookFilterTaskType = ""
+    , webhookFilterMinReward = ""
     , webhookMessage = Nothing
     , newWebhookSecret = Nothing
     , activeWebhookDeliveriesID = Nothing
@@ -273,6 +279,8 @@ emptyLoggedIn response =
     , taskAgentToken = Nothing
     , taskActionMessage = Nothing
     , userAgentToken = Nothing
+    , accountProfile = Nothing
+    , displayNameDraft = ""
     , accountEmail = ""
     , currentPassword = ""
     , newPassword = ""
@@ -312,6 +320,12 @@ emptyLoggedIn response =
     , adminPrivacyNextOffset = 0
     , adminPrivacyResolutionNote = ""
     , adminRetentionRedactedFieldCount = Nothing
+    , grantTargetKind = "user"
+    , grantTargetId = ""
+    , grantAmount = ""
+    , grantNote = ""
+    , grantKey = ""
+    , grantMessage = Nothing
     , auditActionFilter = ""
     , auditSubjectKindFilter = ""
     , auditSubjectIDFilter = ""
@@ -639,7 +653,7 @@ enterPageFields page state =
             { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = [], orgLedgerOffset = 0, orgAuditEvents = [], orgAuditMessage = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, awardOrgCollectibleRecipientId = "", awardOrgCollectibleMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
-            { state | page = page, userProfile = Nothing, userProfileError = Nothing }
+            { state | page = page, userProfile = Nothing, userProfileError = Nothing, accountProfile = Nothing, displayNameDraft = "" }
 
         UserWorkPage _ ->
             { state | page = page, userWork = [] }
@@ -654,7 +668,7 @@ enterPageFields page state =
             { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkTypeFilter = "", teamWorkSort = "newest", teamWorkOffset = 0, teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
 
         AdminPage ->
-            { state | page = page, operations = Nothing, auditEvents = [], auditEventsOffset = 0, platformAdmins = [], platformAdminsOffset = 0, adminSelectedUserId = "", adminModerationReports = [], adminModerationStateFilter = "open", adminModerationOffset = 0, adminModerationResolutionNote = "", adminPrivacyRequests = [], adminPrivacyOffset = 0, adminPrivacyResolutionNote = "", adminRetentionRedactedFieldCount = Nothing, auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
+            { state | page = page, operations = Nothing, auditEvents = [], auditEventsOffset = 0, platformAdmins = [], platformAdminsOffset = 0, adminSelectedUserId = "", adminModerationReports = [], adminModerationStateFilter = "open", adminModerationOffset = 0, adminModerationResolutionNote = "", adminPrivacyRequests = [], adminPrivacyOffset = 0, adminPrivacyResolutionNote = "", adminRetentionRedactedFieldCount = Nothing, grantTargetKind = "user", grantTargetId = "", grantAmount = "", grantNote = "", grantKey = "", grantMessage = Nothing, auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
 
         OverviewPage ->
             -- The activity feed restarts from the top of the stream on every
@@ -663,7 +677,7 @@ enterPageFields page state =
             { state | page = page, activityEvents = [], activityCursor = "" }
 
         AgentsPage ->
-            { state | page = page, webhookURL = "", webhookKinds = [], webhookMessage = Nothing, newWebhookSecret = Nothing, activeWebhookDeliveriesID = Nothing, webhookDeliveries = [] }
+            { state | page = page, webhookURL = "", webhookKinds = [], webhookAudience = Events.WebhookAudienceRecipient, webhookFilterTaskType = "", webhookFilterMinReward = "", webhookMessage = Nothing, newWebhookSecret = Nothing, activeWebhookDeliveriesID = Nothing, webhookDeliveries = [] }
 
         InboxPage ->
             { state | page = page, notifications = [], notificationsOffset = 0, notificationsNextOffset = 0, inboxUnreadOnly = False, inboxMessage = Nothing }
@@ -727,6 +741,12 @@ update msg model =
         PasswordChanged value ->
             ( { model | password = value }, Cmd.none )
 
+        RegisterNameChanged value ->
+            ( { model | registerName = value }, Cmd.none )
+
+        NowReceived posix ->
+            ( Api.updateLoggedIn model (\state -> { state | now = posix }), Cmd.none )
+
         RegisterClicked ->
             ( { model | authError = Nothing, authNotice = Nothing }, Api.postAuth "/api/auth/register" model )
 
@@ -746,8 +766,8 @@ update msg model =
             -- deep link (a task, org, or profile URL) would otherwise stay
             -- on "Loading..." forever, since loadAfterAuth only fetches the
             -- shared dashboard data.
-            ( { model | password = "", authError = Nothing, session = LoggedIn { state | accountEmail = model.email } }
-            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken response.subjectID model.route ]
+            ( { model | password = "", registerName = "", authError = Nothing, session = LoggedIn { state | accountEmail = model.email } }
+            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken response.subjectID model.route, ElmTask.perform NowReceived Time.now ]
             )
 
         AuthReceived (Err error) ->
@@ -755,7 +775,7 @@ update msg model =
 
         RefreshReceived (Ok response) ->
             ( { model | session = LoggedIn (loggedInForPage response model.route) }
-            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken response.subjectID model.route ]
+            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken response.subjectID model.route, ElmTask.perform NowReceived Time.now ]
             )
 
         RefreshReceived (Err _) ->
@@ -772,7 +792,7 @@ update msg model =
             -- Swap only the rotated token (and any changed role) into the
             -- existing state: rebuilding the page here would wipe whatever
             -- the user is in the middle of typing.
-            ( Api.updateLoggedIn model (\state -> { state | accessToken = response.accessToken, subjectId = response.subjectID, username = response.username, isAdmin = response.role == "admin" }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | accessToken = response.accessToken, subjectId = response.subjectID, username = response.username, displayName = response.displayName, isAdmin = response.role == "admin" }), Cmd.none )
 
         SessionRefreshed (Err _) ->
             -- The refresh cookie is gone or revoked: the session is over.
@@ -1145,6 +1165,11 @@ update msg model =
 
         ToggleScope scope ->
             ( Api.updateLoggedIn model (\state -> { state | agentScopes = Api.toggleScope scope state.agentScopes }), Cmd.none )
+
+        AgentScopePresetClicked scopes ->
+            -- A preset replaces the current selection with the recommended
+            -- set; the checkboxes stay editable afterwards.
+            ( Api.updateLoggedIn model (\state -> { state | agentScopes = scopes }), Cmd.none )
 
         AgentExpiresHoursChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | agentExpiresHours = value }), Cmd.none )
@@ -2515,6 +2540,56 @@ update msg model =
         AccountEmailChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | accountEmail = value }), Cmd.none )
 
+        AccountProfileReceived (Ok profile) ->
+            -- Prefill the email form from the profile only when the field is
+            -- still blank, so a half-typed new address is not overwritten.
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | accountProfile = Just profile
+                        , displayNameDraft = profile.displayName
+                        , accountEmail =
+                            if String.trim state.accountEmail == "" then
+                                profile.email
+
+                            else
+                                state.accountEmail
+                    }
+                )
+            , Cmd.none
+            )
+
+        AccountProfileReceived (Err _) ->
+            -- The identity card simply stays in its loading state; the rest
+            -- of the profile page still works.
+            ( model, Cmd.none )
+
+        DisplayNameDraftChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | displayNameDraft = value }), Cmd.none )
+
+        SaveDisplayNameClicked ->
+            Api.withSession model
+                (\state ->
+                    if String.trim state.displayNameDraft == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | accountMessage = Just (FailureNote "Enter a display name first.") }), Cmd.none )
+
+                    else
+                        ( Api.updateLoggedIn model (\current -> { current | accountMessage = Nothing }), Api.patchDisplayName state.accessToken (String.trim state.displayNameDraft) )
+                )
+
+        DisplayNameSaved (Ok ()) ->
+            -- The header shows the display name, so it updates immediately
+            -- rather than waiting for the next session refresh.
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | displayName = String.trim current.displayNameDraft, accountMessage = Just (SuccessNote "Display name updated.") })
+                    , Api.fetchAccountProfile state.accessToken
+                    )
+                )
+
+        DisplayNameSaved (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | accountMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
         CurrentPasswordChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | currentPassword = value }), Cmd.none )
 
@@ -2752,6 +2827,54 @@ update msg model =
         AdminPrivacyResolutionNoteChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | adminPrivacyResolutionNote = value }), Cmd.none )
 
+        GrantTargetKindChanged value ->
+            -- Changing any grant input starts a new grant intent, so the
+            -- idempotency key is discarded and reminted on the next submit.
+            ( Api.updateLoggedIn model (\state -> { state | grantTargetKind = value, grantTargetId = "", grantKey = "" }), Cmd.none )
+
+        GrantTargetIdChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | grantTargetId = value, grantKey = "" }), Cmd.none )
+
+        GrantAmountChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | grantAmount = value, grantKey = "" }), Cmd.none )
+
+        GrantNoteChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | grantNote = value, grantKey = "" }), Cmd.none )
+
+        GrantCreditsClicked ->
+            -- The key is minted on the first submit of this form intent and
+            -- reused by retries of the same intent (network timeouts), so
+            -- the server can dedupe instead of double-crediting. Editing any
+            -- field clears it (see the *Changed handlers above).
+            Api.withSession model
+                (\state ->
+                    Api.grantCreditsCommand model
+                        state
+                        (if state.grantKey == "" then
+                            "ui-grant:" ++ String.fromInt (Time.posixToMillis state.now) ++ ":" ++ state.subjectId
+
+                         else
+                            state.grantKey
+                        )
+                )
+
+        CreditsGranted (Ok granted) ->
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | grantMessage = Just (SuccessNote ("Granted " ++ String.fromInt granted.amount ++ " credits."))
+                        , grantTargetId = ""
+                        , grantAmount = ""
+                        , grantNote = ""
+                        , grantKey = ""
+                    }
+                )
+            , Api.refreshBalanceAndLedger model
+            )
+
+        CreditsGranted (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | grantMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
         RunPrivacyRetentionClicked ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminMessage = Nothing }), Api.runPrivacyRetention state.accessToken ))
 
@@ -2880,8 +3003,10 @@ update msg model =
                     )
                 )
 
-        PollTick _ ->
-            Api.withSession model (\state -> ( model, pollCmd state ))
+        PollTick posix ->
+            -- The tick doubles as the clock for relative timestamps ("2
+            -- hours ago"), so no separate Time subscription is needed.
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | now = posix }), pollCmd state ))
 
         VisibilityChanged visibility ->
             case visibility of
@@ -2924,6 +3049,28 @@ update msg model =
         ToggleWebhookKind kind ->
             ( Api.updateLoggedIn model (\state -> { state | webhookKinds = Api.toggleWebhookKind kind state.webhookKinds }), Cmd.none )
 
+        WebhookAudienceChosen audience ->
+            -- Marketplace subscriptions may listen only for task_opened (the
+            -- server enforces this), so choosing marketplace pins the kinds;
+            -- switching back to recipient reopens the kind checkboxes empty.
+            ( Api.updateLoggedIn model
+                (\state ->
+                    case audience of
+                        Events.WebhookAudienceMarketplace ->
+                            { state | webhookAudience = audience, webhookKinds = [ Events.DomainEventKindTaskOpened ] }
+
+                        Events.WebhookAudienceRecipient ->
+                            { state | webhookAudience = audience, webhookKinds = [], webhookFilterTaskType = "", webhookFilterMinReward = "" }
+                )
+            , Cmd.none
+            )
+
+        WebhookFilterTaskTypeChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | webhookFilterTaskType = value }), Cmd.none )
+
+        WebhookFilterMinRewardChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | webhookFilterMinReward = value }), Cmd.none )
+
         CreateWebhookClicked ->
             Api.withSession model (\state -> Api.createWebhookCommand model state)
 
@@ -2936,6 +3083,9 @@ update msg model =
                                 | newWebhookSecret = Just created
                                 , webhookURL = ""
                                 , webhookKinds = []
+                                , webhookAudience = Events.WebhookAudienceRecipient
+                                , webhookFilterTaskType = ""
+                                , webhookFilterMinReward = ""
                                 , webhookMessage = Nothing
                             }
                         )

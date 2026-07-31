@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event/eventtest"
 	"github.com/e6qu/sharecrop/internal/submission"
@@ -96,7 +97,7 @@ func TestBalanceSectionsAndTotal(t *testing.T) {
 
 func TestServiceFundTaskGeneratesEntryAndDelegates(t *testing.T) {
 	store := &memoryStore{}
-	service := NewService(store, eventtest.NewRecorder())
+	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
 	amount := newTestAmount(t, 50)
 
 	result := service.FundTask(context.Background(), newTestUserID(t), newTestTaskID(t), amount, newTestKey(t, "fund-1"))
@@ -113,7 +114,7 @@ func TestServiceFundTaskGeneratesEntryAndDelegates(t *testing.T) {
 
 func TestServiceAcceptSubmissionDelegates(t *testing.T) {
 	store := &memoryStore{}
-	service := NewService(store, eventtest.NewRecorder())
+	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
 
 	result := service.AcceptSubmission(context.Background(), newTestUserID(t), newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-1"))
 	if _, matched := result.(SubmissionAccepted); !matched {
@@ -126,7 +127,7 @@ func TestServiceAcceptSubmissionDelegates(t *testing.T) {
 
 func TestServiceRejectSubmissionDelegates(t *testing.T) {
 	store := &memoryStore{}
-	service := NewService(store, eventtest.NewRecorder())
+	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
 	note := submissionNote(t, "needs current data")
 
 	result := service.RejectSubmission(context.Background(), newTestUserID(t), newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "reject-1"), note, NoCreditReviewSelection{}, NoTipSelection{}, BanImplementorSelection{})
@@ -143,6 +144,7 @@ func TestServiceRejectSubmissionDelegates(t *testing.T) {
 
 type memoryStore struct {
 	fundCommand   FundStoreCommand
+	grantCommand  GrantStoreCommand
 	acceptCommand AcceptStoreCommand
 	refundCommand RefundStoreCommand
 	rejectCommand RejectStoreCommand
@@ -284,4 +286,88 @@ func newTestEntryID(t *testing.T) core.LedgerEntryID {
 		t.Fatalf("new ledger entry id rejected")
 	}
 	return created.Value
+}
+
+// noopAuditRecorder satisfies AuditRecorder for tests that do not assert on
+// audit output.
+type noopAuditRecorder struct{}
+
+func (noopAuditRecorder) Record(_ context.Context, actor core.UserID, action audit.Action, subject audit.Subject, metadata audit.Metadata) audit.RecordResult {
+	return audit.EventRecorded{Value: audit.Event{ActorUserID: actor, Action: action, Subject: subject, Metadata: metadata}}
+}
+
+func (store *memoryStore) GrantCredits(_ context.Context, command GrantStoreCommand) GrantResult {
+	store.grantCommand = command
+	recipients := []core.UserID{}
+	if target, matched := command.Target.(GrantToUser); matched {
+		recipients = append(recipients, target.ID)
+	}
+	return CreditsGranted{EntryID: command.EntryID, Amount: command.Amount, RecipientUserIDs: recipients}
+}
+
+func TestNewGrantNoteTrimsAndBounds(t *testing.T) {
+	accepted, matched := NewGrantNote("  goodwill for outage  ").(GrantNoteAccepted)
+	if !matched {
+		t.Fatalf("grant note rejected")
+	}
+	if accepted.Value.String() != "goodwill for outage" {
+		t.Fatalf("grant note = %q, want trimmed", accepted.Value.String())
+	}
+	if _, rejected := NewGrantNote("   ").(GrantNoteRejected); !rejected {
+		t.Fatalf("blank grant note was accepted")
+	}
+	long := make([]byte, 501)
+	for index := range long {
+		long[index] = 'x'
+	}
+	if _, rejected := NewGrantNote(string(long)).(GrantNoteRejected); !rejected {
+		t.Fatalf("over-long grant note was accepted")
+	}
+}
+
+func grantNote(t *testing.T, raw string) GrantNote {
+	t.Helper()
+	accepted, matched := NewGrantNote(raw).(GrantNoteAccepted)
+	if !matched {
+		t.Fatalf("grant note rejected")
+	}
+	return accepted.Value
+}
+
+func TestGrantCreditsDelegatesToStore(t *testing.T) {
+	store := &memoryStore{}
+	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
+	admin := newTestUserID(t)
+	grantee := newTestUserID(t)
+
+	result := service.GrantCredits(context.Background(), admin, GrantToUser{ID: grantee}, newTestAmount(t, 250), grantNote(t, "beta compensation"), newTestKey(t, "grant-1"))
+	granted, matched := result.(CreditsGranted)
+	if !matched {
+		t.Fatalf("result = %T, want CreditsGranted", result)
+	}
+	if store.grantCommand.EntryID.String() == "" {
+		t.Fatalf("service did not generate a ledger entry id")
+	}
+	if store.grantCommand.Amount.Int64() != 250 {
+		t.Fatalf("amount = %d, want 250", store.grantCommand.Amount.Int64())
+	}
+	if store.grantCommand.Note.String() != "beta compensation" {
+		t.Fatalf("note = %q, want beta compensation", store.grantCommand.Note.String())
+	}
+	if len(granted.RecipientUserIDs) != 1 || granted.RecipientUserIDs[0] != grantee {
+		t.Fatalf("recipients = %v, want the grantee", granted.RecipientUserIDs)
+	}
+}
+
+func TestGrantCreditsRejectsNilTargetBeforeStore(t *testing.T) {
+	store := &memoryStore{}
+	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
+
+	result := service.GrantCredits(context.Background(), newTestUserID(t), nil, newTestAmount(t, 10), grantNote(t, "n"), newTestKey(t, "grant-nil"))
+	if _, matched := result.(GrantRejected); !matched {
+		t.Fatalf("result = %T, want GrantRejected", result)
+	}
+	if store.grantCommand.Note.String() != "" {
+		t.Fatalf("store was called with an invalid target")
+	}
 }

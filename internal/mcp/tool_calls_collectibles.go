@@ -24,6 +24,7 @@ type collectibleSummary struct {
 
 type collectiblesListPayload struct {
 	Collectibles []collectibleSummary `json:"collectibles"`
+	NextOffset   int                  `json:"next_offset"`
 }
 
 type catalogEntryPayload struct {
@@ -133,16 +134,21 @@ func (server Server) callTransferCollectible(ctx context.Context, subject auth.U
 }
 
 func (server Server) callListCollectibles(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
-	result := server.services.ListCollectibles(ctx, subject.ID, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListCollectibles(ctx, subject.ID, page.Probe())
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
 		return toolFailed{code: result.(assets.ListRejected).Reason.Code(), message: result.(assets.ListRejected).Reason.Description()}
 	}
-	summaries := make([]collectibleSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]collectibleSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, collectibleToSummary(listed.Values[index]))
 	}
-	return marshalPayload(collectiblesListPayload{Collectibles: summaries})
+	return marshalPayload(collectiblesListPayload{Collectibles: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callFundCollectibleReward(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -191,7 +197,7 @@ func (server Server) callListOrganizationCollectibles(ctx context.Context, subje
 	if problem != nil {
 		return problem
 	}
-	return server.listCollectiblesByOwner(ctx, assets.CollectibleOwnerKindOrganization, organizationID.String())
+	return server.listCollectiblesByOwner(ctx, assets.CollectibleOwnerKindOrganization, organizationID.String(), arguments)
 }
 
 func (server Server) callListTeamCollectibles(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -199,23 +205,28 @@ func (server Server) callListTeamCollectibles(ctx context.Context, subject auth.
 	if problem != nil {
 		return problem
 	}
-	return server.listCollectiblesByOwner(ctx, assets.CollectibleOwnerKindTeam, teamID.String())
+	return server.listCollectiblesByOwner(ctx, assets.CollectibleOwnerKindTeam, teamID.String(), arguments)
 }
 
-func (server Server) listCollectiblesByOwner(ctx context.Context, ownerKind string, ownerID string) toolResult {
+func (server Server) listCollectiblesByOwner(ctx context.Context, ownerKind string, ownerID string, arguments json.RawMessage) toolResult {
 	if strings.TrimSpace(ownerID) == "" {
 		return toolProtocolError{code: codeInvalidParams, message: "owner id is required"}
 	}
-	result := server.services.ListCollectiblesByOwner(ctx, ownerKind, ownerID, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListCollectiblesByOwner(ctx, ownerKind, ownerID, page.Probe())
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
 		return toolFailed{code: result.(assets.ListRejected).Reason.Code(), message: result.(assets.ListRejected).Reason.Description()}
 	}
-	summaries := make([]collectibleSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]collectibleSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, collectibleToSummary(listed.Values[index]))
 	}
-	return marshalPayload(collectiblesListPayload{Collectibles: summaries})
+	return marshalPayload(collectiblesListPayload{Collectibles: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callAwardCollectible(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {

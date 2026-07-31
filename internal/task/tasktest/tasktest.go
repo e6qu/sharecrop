@@ -141,6 +141,9 @@ func SeriesDiff(got, want task.Series) string {
 
 // ReservationDiff compares two reservations.
 func ReservationDiff(got, want task.Reservation) string {
+	if got.HolderDisplayName.String() != want.HolderDisplayName.String() {
+		return fmt.Sprintf("holder_display_name: %q != %q", got.HolderDisplayName.String(), want.HolderDisplayName.String())
+	}
 	switch {
 	case got.ID != want.ID:
 		return fmt.Sprintf("id: %s != %s", got.ID, want.ID)
@@ -164,6 +167,12 @@ func ListItemDiff(got, want task.ListItem) string {
 	}
 	if activeAssigneeKey(got.ActiveAssignee) != activeAssigneeKey(want.ActiveAssignee) {
 		return fmt.Sprintf("active_assignee: %s != %s", activeAssigneeKey(got.ActiveAssignee), activeAssigneeKey(want.ActiveAssignee))
+	}
+	if got.PendingReviewCount != want.PendingReviewCount {
+		return fmt.Sprintf("pending_review_count: %d != %d", got.PendingReviewCount, want.PendingReviewCount)
+	}
+	if got.CreatorDisplayName.String() != want.CreatorDisplayName.String() {
+		return fmt.Sprintf("creator_display_name: %q != %q", got.CreatorDisplayName.String(), want.CreatorDisplayName.String())
 	}
 	return ""
 }

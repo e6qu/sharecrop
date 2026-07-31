@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -20,15 +21,22 @@ func (store TaskStore) CreateTaskComment(ctx context.Context, comment task.TaskC
 		return task.CreateTaskCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "create task comment failed")}
 	}
 	comment.CreatedAt = createdAt
+	authorName, nameReason := fetchUserDisplayName(ctx, store.db, comment.AuthorID)
+	if nameReason != nil {
+		return task.CreateTaskCommentStoreRejected{Reason: *nameReason}
+	}
+	comment.AuthorDisplayName = authorName
 	return task.CreateTaskCommentStoreAccepted{Value: comment}
 }
 
 func (store TaskStore) ListTaskComments(ctx context.Context, taskID core.TaskID, page core.Page) task.ListTaskCommentsStoreResult {
 	rows, err := store.db.Query(ctx, `
-		select id::text, task_id::text, author_user_id::text, body, created_at
+		select task_comments.id::text, task_comments.task_id::text, task_comments.author_user_id::text,
+			`+displayNameSQL("users")+`, task_comments.body, task_comments.created_at
 		from task_comments
-		where task_id = $1
-		order by created_at desc, id desc
+		join users on users.id = task_comments.author_user_id
+		where task_comments.task_id = $1
+		order by task_comments.created_at desc, task_comments.id desc
 		limit $2 offset $3
 	`, taskID.String(), page.Limit(), page.Offset())
 	if err != nil {
@@ -38,12 +46,12 @@ func (store TaskStore) ListTaskComments(ctx context.Context, taskID core.TaskID,
 
 	values := make([]task.TaskComment, 0)
 	for rows.Next() {
-		var rawID, rawTaskID, rawAuthor, rawBody string
+		var rawID, rawTaskID, rawAuthor, rawAuthorName, rawBody string
 		var createdAt time.Time
-		if scanErr := rows.Scan(&rawID, &rawTaskID, &rawAuthor, &rawBody, &createdAt); scanErr != nil {
+		if scanErr := rows.Scan(&rawID, &rawTaskID, &rawAuthor, &rawAuthorName, &rawBody, &createdAt); scanErr != nil {
 			return task.ListTaskCommentsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task comment failed")}
 		}
-		parsed := parseTaskComment(rawID, rawTaskID, rawAuthor, rawBody, createdAt)
+		parsed := parseTaskComment(rawID, rawTaskID, rawAuthor, rawAuthorName, rawBody, createdAt)
 		accepted, matched := parsed.(task.CreateTaskCommentStoreAccepted)
 		if !matched {
 			return task.ListTaskCommentsStoreRejected{Reason: parsed.(task.CreateTaskCommentStoreRejected).Reason}
@@ -59,7 +67,7 @@ func (store TaskStore) ListTaskComments(ctx context.Context, taskID core.TaskID,
 	return task.ListTaskCommentsStoreAccepted{Values: values}
 }
 
-func parseTaskComment(rawID string, rawTaskID string, rawAuthor string, rawBody string, createdAt time.Time) task.CreateTaskCommentStoreResult {
+func parseTaskComment(rawID string, rawTaskID string, rawAuthor string, rawAuthorName string, rawBody string, createdAt time.Time) task.CreateTaskCommentStoreResult {
 	idResult := core.ParseTaskCommentID(rawID)
 	commentID, idMatched := idResult.(core.TaskCommentIDCreated)
 	if !idMatched {
@@ -80,11 +88,17 @@ func parseTaskComment(rawID string, rawTaskID string, rawAuthor string, rawBody 
 	if !bodyMatched {
 		return task.CreateTaskCommentStoreRejected{Reason: bodyResult.(task.CommentBodyRejected).Reason}
 	}
+	authorNameResult := auth.NewDisplayName(rawAuthorName)
+	authorName, authorNameMatched := authorNameResult.(auth.DisplayNameAccepted)
+	if !authorNameMatched {
+		return task.CreateTaskCommentStoreRejected{Reason: authorNameResult.(auth.DisplayNameRejected).Reason}
+	}
 	return task.CreateTaskCommentStoreAccepted{Value: task.TaskComment{
-		ID:        commentID.Value,
-		TaskID:    taskID.Value,
-		AuthorID:  author.Value,
-		Body:      body.Value,
-		CreatedAt: createdAt,
+		ID:                commentID.Value,
+		TaskID:            taskID.Value,
+		AuthorID:          author.Value,
+		AuthorDisplayName: authorName.Value,
+		Body:              body.Value,
+		CreatedAt:         createdAt,
 	}}
 }

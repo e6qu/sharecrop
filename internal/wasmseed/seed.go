@@ -7,6 +7,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/attachment"
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
@@ -35,7 +36,7 @@ func Seed(ctx context.Context, secret auth.AccessTokenSecret, stores appmux.Stor
 	recorder := event.NewRecorder(stores.Event, notification.NewService(stores.Notification))
 	taskService := task.NewService(stores.Task, organizationService, agentService, recorder)
 	submissionService := submission.NewService(stores.Submission, stores.Task, organizationService, recorder)
-	ledgerService := ledger.NewService(stores.Ledger, recorder)
+	ledgerService := ledger.NewService(stores.Ledger, recorder, audit.NewService(stores.Audit))
 	assetService := assets.NewService(stores.Assets, recorder)
 
 	return SeedDemoScenario(ctx, authService.Value, organizationService, taskService, ledgerService, submissionService, assetService)
@@ -48,6 +49,7 @@ func Seed(ctx context.Context, secret auth.AccessTokenSecret, stores appmux.Stor
 type demoUserSeed struct {
 	label string
 	email string
+	name  string
 }
 
 // demoPassword is the known password for every seeded demo account - fine to
@@ -57,11 +59,11 @@ type demoUserSeed struct {
 const demoPassword = "sharecrop-demo-password-1"
 
 var demoUsers = []demoUserSeed{
-	{label: "mara", email: "mara@sharecrop.demo"},
-	{label: "jules", email: "jules@sharecrop.demo"},
-	{label: "ren", email: "ren@sharecrop.demo"},
-	{label: "tala", email: "tala@sharecrop.demo"},
-	{label: "sol", email: "sol@sharecrop.demo"},
+	{label: "mara", email: "mara@sharecrop.demo", name: "Mara Ellison"},
+	{label: "jules", email: "jules@sharecrop.demo", name: "Jules Arden"},
+	{label: "ren", email: "ren@sharecrop.demo", name: "Ren Okafor"},
+	{label: "tala", email: "tala@sharecrop.demo", name: "Tala Reyes"},
+	{label: "sol", email: "sol@sharecrop.demo", name: "Sol Marchetti"},
 }
 
 // SeedResult reports the outcome of SeedDemoScenario: the seeded admin
@@ -96,7 +98,12 @@ func SeedDemoScenario(ctx context.Context, authService auth.Service, organizatio
 		return seedErr(passwordResult.(auth.PasswordSecretRejected).Reason.Description())
 	}
 
-	registerResult := authService.Register(ctx, maraEmail.Value, password.Value)
+	maraNameResult := auth.NewDisplayName(demoUsers[0].name)
+	maraName, matched := maraNameResult.(auth.DisplayNameAccepted)
+	if !matched {
+		return seedErr(maraNameResult.(auth.DisplayNameRejected).Reason.Description())
+	}
+	registerResult := authService.Register(ctx, maraEmail.Value, password.Value, auth.ProvidedDisplayName{Value: maraName.Value})
 	if accepted, matched := registerResult.(auth.RegisterAccepted); matched {
 		if err := seedDemoScenarioData(ctx, authService, organizationService, taskService, ledgerService, submissionService, assetService, accepted.Subject.ID, password.Value); err != "" {
 			return seedErr(err)
@@ -133,7 +140,12 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 		if !matched {
 			return emailResult.(auth.EmailAddressRejected).Reason.Description()
 		}
-		registerResult := authService.Register(ctx, email.Value, password)
+		nameResult := auth.NewDisplayName(seed.name)
+		name, nameMatched := nameResult.(auth.DisplayNameAccepted)
+		if !nameMatched {
+			return nameResult.(auth.DisplayNameRejected).Reason.Description()
+		}
+		registerResult := authService.Register(ctx, email.Value, password, auth.ProvidedDisplayName{Value: name.Value})
 		accepted, matched := registerResult.(auth.RegisterAccepted)
 		if !matched {
 			return registerResult.(auth.RegisterRejected).Reason.Description()

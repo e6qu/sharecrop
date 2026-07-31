@@ -403,6 +403,8 @@ type alias TaskListItemResponse =
     , createdBy : String
     , activeAssigneeKind : String
     , activeAssigneeID : String
+    , creatorDisplayName : String
+    , pendingReviewCount : Int
     }
 
 taskListItemResponseDecoder : Decoder TaskListItemResponse
@@ -430,8 +432,10 @@ taskListItemResponseDecoder =
             )
         |> Decode.andThen
             (\finish ->
-                Decode.map finish
+                Decode.map3 finish
                     (Decode.field "active_assignee_id" Decode.string)
+                    (Decode.field "creator_display_name" Decode.string)
+                    (Decode.field "pending_review_count" Decode.int)
             )
 
 taskListItemResponseEncoder : TaskListItemResponse -> Encode.Value
@@ -454,6 +458,8 @@ taskListItemResponseEncoder taskListItemResponse =
         , ( "created_by", Encode.string taskListItemResponse.createdBy )
         , ( "active_assignee_kind", Encode.string taskListItemResponse.activeAssigneeKind )
         , ( "active_assignee_id", Encode.string taskListItemResponse.activeAssigneeID )
+        , ( "creator_display_name", Encode.string taskListItemResponse.creatorDisplayName )
+        , ( "pending_review_count", Encode.int taskListItemResponse.pendingReviewCount )
         ]
 
 type alias TaskAttachmentResponse =
@@ -511,6 +517,7 @@ type alias TaskResponse =
     , attachments : List TaskAttachmentResponse
     , createdBy : String
     , expiresAt : String
+    , creatorDisplayName : String
     }
 
 taskResponseDecoder : Decoder TaskResponse
@@ -550,13 +557,14 @@ taskResponseDecoder =
             )
         |> Decode.andThen
             (\finish ->
-                Decode.map6 finish
+                Decode.map7 finish
                     (Decode.field "response_schema_json" Decode.string)
                     (Decode.field "payload_kind" Decode.string)
                     (Decode.field "payload_json" Decode.string)
                     (Decode.field "attachments" (Decode.list taskAttachmentResponseDecoder))
                     (Decode.field "created_by" Decode.string)
                     (Decode.field "expires_at" Decode.string)
+                    (Decode.field "creator_display_name" Decode.string)
             )
 
 taskResponseEncoder : TaskResponse -> Encode.Value
@@ -592,22 +600,25 @@ taskResponseEncoder taskResponse =
         , ( "attachments", Encode.list taskAttachmentResponseEncoder taskResponse.attachments )
         , ( "created_by", Encode.string taskResponse.createdBy )
         , ( "expires_at", Encode.string taskResponse.expiresAt )
+        , ( "creator_display_name", Encode.string taskResponse.creatorDisplayName )
         ]
 
 type alias TaskCommentResponse =
     { id : String
     , taskID : String
     , authorUserID : String
+    , authorDisplayName : String
     , body : String
     , createdAt : String
     }
 
 taskCommentResponseDecoder : Decoder TaskCommentResponse
 taskCommentResponseDecoder =
-    Decode.map5 TaskCommentResponse
+    Decode.map6 TaskCommentResponse
         (Decode.field "id" Decode.string)
         (Decode.field "task_id" Decode.string)
         (Decode.field "author_user_id" Decode.string)
+        (Decode.field "author_display_name" Decode.string)
         (Decode.field "body" Decode.string)
         (Decode.field "created_at" Decode.string)
 
@@ -617,6 +628,7 @@ taskCommentResponseEncoder taskCommentResponse =
         [ ( "id", Encode.string taskCommentResponse.id )
         , ( "task_id", Encode.string taskCommentResponse.taskID )
         , ( "author_user_id", Encode.string taskCommentResponse.authorUserID )
+        , ( "author_display_name", Encode.string taskCommentResponse.authorDisplayName )
         , ( "body", Encode.string taskCommentResponse.body )
         , ( "created_at", Encode.string taskCommentResponse.createdAt )
         ]
@@ -641,19 +653,22 @@ tasksResponseEncoder tasksResponse =
 
 type alias UserProfileResponse =
     { id : String
+    , displayName : String
     , tasks : List TaskListItemResponse
     }
 
 userProfileResponseDecoder : Decoder UserProfileResponse
 userProfileResponseDecoder =
-    Decode.map2 UserProfileResponse
+    Decode.map3 UserProfileResponse
         (Decode.field "id" Decode.string)
+        (Decode.field "display_name" Decode.string)
         (Decode.field "tasks" (Decode.list taskListItemResponseDecoder))
 
 userProfileResponseEncoder : UserProfileResponse -> Encode.Value
 userProfileResponseEncoder userProfileResponse =
     Encode.object
         [ ( "id", Encode.string userProfileResponse.id )
+        , ( "display_name", Encode.string userProfileResponse.displayName )
         , ( "tasks", Encode.list taskListItemResponseEncoder userProfileResponse.tasks )
         ]
 
@@ -665,11 +680,12 @@ type alias TaskReservationResponse =
     , state : TaskReservationState
     , requestedBy : String
     , issuedWorkerCredential : String
+    , holderDisplayName : String
     }
 
 taskReservationResponseDecoder : Decoder TaskReservationResponse
 taskReservationResponseDecoder =
-    Decode.map7 TaskReservationResponse
+    Decode.map8 TaskReservationResponse
         (Decode.field "id" Decode.string)
         (Decode.field "task_id" Decode.string)
         (Decode.field "assignee_kind" taskAssigneeScopeDecoder)
@@ -677,6 +693,7 @@ taskReservationResponseDecoder =
         (Decode.field "state" taskReservationStateDecoder)
         (Decode.field "requested_by" Decode.string)
         (Decode.field "issued_worker_credential" Decode.string)
+        (Decode.field "holder_display_name" Decode.string)
 
 taskReservationResponseEncoder : TaskReservationResponse -> Encode.Value
 taskReservationResponseEncoder taskReservationResponse =
@@ -688,6 +705,7 @@ taskReservationResponseEncoder taskReservationResponse =
         , ( "state", taskReservationStateEncoder taskReservationResponse.state )
         , ( "requested_by", Encode.string taskReservationResponse.requestedBy )
         , ( "issued_worker_credential", Encode.string taskReservationResponse.issuedWorkerCredential )
+        , ( "holder_display_name", Encode.string taskReservationResponse.holderDisplayName )
         ]
 
 type alias TaskReservationsResponse =

@@ -84,13 +84,14 @@ func Build(secret auth.AccessTokenSecret, stores Stores) BuildResult {
 
 	notificationService := notification.NewService(stores.Notification)
 	recorder := event.NewRecorder(stores.Event, notificationService)
+	auditService := audit.NewService(stores.Audit)
 
 	agentService := agent.NewService(stores.Agent)
 	orgCredentialService := orgcred.NewService(stores.OrgCredential)
 	organizationService := org.NewService(stores.Organization)
 	taskService := task.NewService(stores.Task, organizationService, agentService, recorder)
 	submissionService := submission.NewService(stores.Submission, stores.Task, organizationService, recorder)
-	ledgerService := ledger.NewService(stores.Ledger, recorder)
+	ledgerService := ledger.NewService(stores.Ledger, recorder, auditService)
 	assetService := assets.NewService(stores.Assets, recorder)
 
 	return GraphBuilt{Value: Graph{
@@ -104,7 +105,7 @@ func Build(secret auth.AccessTokenSecret, stores Stores) BuildResult {
 		OrgCredentialService: orgCredentialService,
 		AssetService:         assetService,
 		NotificationService:  notificationService,
-		AuditService:         audit.NewService(stores.Audit),
+		AuditService:         auditService,
 		EventRecorder:        recorder,
 	}}
 }

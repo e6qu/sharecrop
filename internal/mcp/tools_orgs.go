@@ -38,13 +38,13 @@ func orgToolDefinitions() []toolDefinition {
 			Name:        toolListOrganizations,
 			Description: "List organizations the agent's user belongs to. query optionally filters by name.",
 			Scope:       agent.ScopeOrgRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}}}`),
 		},
 		{
 			Name:        toolListOrgMembers,
 			Description: "List an organization's members and their roles.",
 			Scope:       agent.ScopeOrgRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"organization_id":{"type":"string"}},"required":["organization_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"organization_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["organization_id"]}`),
 		},
 		{
 			Name:        toolProvisionOrgMember,
@@ -74,7 +74,7 @@ func orgToolDefinitions() []toolDefinition {
 			Name:        toolListOrganizationTeams,
 			Description: "List an organization's teams. query optionally filters by name.",
 			Scope:       agent.ScopeOrgRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"organization_id":{"type":"string"},"query":{"type":"string"}},"required":["organization_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"organization_id":{"type":"string"},"query":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["organization_id"]}`),
 		},
 		{
 			Name:        toolCreateStandaloneTeam,
@@ -86,7 +86,7 @@ func orgToolDefinitions() []toolDefinition {
 			Name:        toolListStandaloneTeams,
 			Description: "List standalone (non-organization) teams. query optionally filters by name.",
 			Scope:       agent.ScopeOrgRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}}}`),
 		},
 		{
 			Name:        toolGetTeam,
@@ -98,7 +98,7 @@ func orgToolDefinitions() []toolDefinition {
 			Name:        toolGetTeamWork,
 			Description: "List tasks assigned to or reserved by a team.",
 			Scope:       agent.ScopeOrgRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"team_id":{"type":"string"}},"required":["team_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"team_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["team_id"]}`),
 		},
 		{
 			Name:        toolAddTeamMember,
@@ -116,7 +116,7 @@ func orgToolDefinitions() []toolDefinition {
 			Name:        toolListOrgCredentials,
 			Description: "List an organization's org-wide credentials.",
 			Scope:       agent.ScopeCredentialsManage,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"organization_id":{"type":"string"}},"required":["organization_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"organization_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["organization_id"]}`),
 		},
 		{
 			Name:        toolRevokeOrgCredential,

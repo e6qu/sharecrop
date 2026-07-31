@@ -75,6 +75,7 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 	privacyStore := db.NewPrivacyStore(pool)
 	ipRateLimiter := db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec)
 	subjectRateLimiter := db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec)
+	registrationRateLimiter := db.NewRateLimiter(pool, "register", httpserver.ParseRegistrationRateCapacityForRuntime(os.Getenv("SHARECROP_REGISTRATION_RATE_CAPACITY")), httpserver.ParseRegistrationRateRefillForRuntime(os.Getenv("SHARECROP_REGISTRATION_RATE_REFILL")))
 	mcpSessionStore := db.NewMCPSessionStore(pool)
 
 	return func(ctx context.Context, method string, args []byte) ([]byte, error) {
@@ -113,7 +114,7 @@ func Dispatcher(pool *pgxpool.Pool) rpc.Dispatcher {
 		case "privacy":
 			return privacybridge.Dispatch(ctx, privacyStore, method, args)
 		case "ratelimit":
-			return ratelimitbridge.Dispatch(ctx, ipRateLimiter, subjectRateLimiter, method, args)
+			return ratelimitbridge.Dispatch(ctx, ipRateLimiter, subjectRateLimiter, registrationRateLimiter, method, args)
 		case "mcpsession":
 			return mcpsessionbridge.Dispatch(ctx, mcpSessionStore, method, args)
 		default:

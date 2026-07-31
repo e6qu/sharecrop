@@ -2,6 +2,39 @@
 
 ## Implemented surface
 
+- **Agent work loop, both directions**: agents discover work by polling
+  (`GET /api/tasks` — `scope` optional defaulting to `public`, `created_after`
+  incremental filter, personal agent credentials admitted for public listings)
+  or by push (webhook subscriptions with a `marketplace` audience deliver every
+  newly opened public `task_opened`, with optional task-type and
+  minimum-credit-reward filters; `recipient` audience keeps the original
+  own-work semantics). Webhook scopes are mintable (the credential scope CHECK
+  constraints previously omitted them). Reviewer agents read submission
+  content over MCP (`sharecrop.get_submission`), and `submit_response`
+  returns validation errors, keeps the reservation on invalid submissions,
+  and accepts attachments. `create_task` requires an explicit
+  `visibility_kind`. MCP `initialize` returns orientation instructions,
+  `tools/list` is scope-filtered, every MCP list tool pages with
+  `next_offset`, and `sharecrop mcp` (stdio) no longer requires HTTP config.
+- **Operable economy**: platform admins grant credits to users or
+  organizations (`POST /api/admin/credits/grants`, `sharecrop.grant_credits`,
+  Admin-page form) through `manual_adjustment` ledger entries with a required
+  note, per-account idempotency, a `credit_granted` event/notification, and
+  audit records. Ledger reads are newest-first and expose the note.
+  Registration is throttled per IP (capacity 5, ~12 min refill;
+  `SHARECROP_REGISTRATION_RATE_CAPACITY` overrides for test harnesses).
+- **Humans have names**: users carry a required `display_name` (derived from
+  the email local part when not provided; editable at
+  `PATCH /api/account/display-name`). Read models and DTOs expose
+  creator/holder/submitter/author/actor names, task subject titles,
+  and owned-task `pending_review_count`; the UI shows names (UUIDs demoted
+  to tooltips), the signed-in identity in the header, a first-run explainer,
+  a Needs-review card, sentence-style inbox/feed with relative timestamps,
+  a native UTC datetime expiry input, credential copy buttons and scope
+  presets, webhook audience choice with signature-verification instructions,
+  and the admin grant form. OpenAPI declares path and query parameters
+  (enums and defaults included) from contract-level declarations.
+
 - **Domain event stream** (`internal/event`, `domain_events` + `domain_event_recipients`):
   every externally meaningful mutation emits a typed event from the service
   layer, so REST and MCP actions produce identical downstream effects.
@@ -208,7 +241,18 @@ slimmed the image, and added the ghcr release workflow.
 
 ## Test status
 
-The review-upgrade branch passed the full local battery: every static gate
+The agent-loop-completion branch passed the full local battery: every static
+gate, Go unit suites, Deno tests, PostgreSQL integration (marketplace webhook
+expansion matrix, grants with idempotent replay, scope-mintability sweep,
+invalid-submission-keeps-reservation, created_after), HTTP end-to-end
+(including agent-credential public listing, admin grants, marketplace
+subscription validation, display-name lifecycle, and the MCP walkthrough
+scenarios: reviewer submission read, validation-error return with immediate
+resubmit, scope-filtered tools/list), both Playwright suites (71 DB-backed +
+16 demo/mobile), and WASM scenario parity. Screenshots of every changed
+screen were reviewed at 1280px and 375px.
+
+The prior review-upgrade branch passed the full local battery: every static gate
 (format, contracts, openapi, policy, release contract, TypeScript, copy-paste,
 dead code, WASI bridge, workflow timeouts, lint, vet), Go unit suites, Deno
 tests, PostgreSQL integration (including lifecycle-sweep, webhook-pump

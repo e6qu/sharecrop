@@ -7,6 +7,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
+	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/webhook"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -45,11 +46,29 @@ func webhookOwnerColumns(owner webhook.Owner) (kind string, userID *string, orga
 	}
 }
 
+// webhookAudienceColumns flattens the audience union into its three columns.
+func webhookAudienceColumns(audience webhook.Audience) (kind string, taskType *string, minReward *int64) {
+	marketplace, matched := audience.(webhook.MarketplaceAudience)
+	if !matched {
+		return "recipient", nil, nil
+	}
+	if typed, typedMatched := marketplace.TaskType.(webhook.MarketplaceTaskTypeIs); typedMatched {
+		value := typed.Value.String()
+		taskType = &value
+	}
+	if reward, rewardMatched := marketplace.MinReward.(webhook.MinimumCreditReward); rewardMatched {
+		value := reward.Amount()
+		minReward = &value
+	}
+	return "marketplace", taskType, minReward
+}
+
 func (store WebhookStore) CreateSubscription(ctx context.Context, subscription webhook.Subscription, secret webhook.Secret) webhook.CreateStoreResult {
 	ownerKind, ownerUserID, ownerOrganizationID := webhookOwnerColumns(subscription.Owner)
 	if ownerKind == "" {
 		return webhook.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "webhook subscription owner is invalid")}
 	}
+	audienceKind, filterTaskType, filterMinReward := webhookAudienceColumns(subscription.Audience)
 
 	tx, err := store.db.Begin(ctx)
 	if err != nil {
@@ -58,9 +77,9 @@ func (store WebhookStore) CreateSubscription(ctx context.Context, subscription w
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx, `
-		insert into webhook_subscriptions (id, owner_kind, owner_user_id, owner_organization_id, url, secret, state, created_at)
-		values ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, subscription.ID.String(), ownerKind, ownerUserID, ownerOrganizationID, subscription.URL.String(), secret.String(), subscription.State.String(), subscription.CreatedAt)
+		insert into webhook_subscriptions (id, owner_kind, owner_user_id, owner_organization_id, url, secret, state, created_at, audience, filter_task_type, filter_min_credit_reward)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`, subscription.ID.String(), ownerKind, ownerUserID, ownerOrganizationID, subscription.URL.String(), secret.String(), subscription.State.String(), subscription.CreatedAt, audienceKind, filterTaskType, filterMinReward)
 	if err != nil {
 		return webhook.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert webhook subscription failed")}
 	}
@@ -82,6 +101,9 @@ func webhookSubscriptionSelectSQL() string {
 		select webhook_subscriptions.id::text, webhook_subscriptions.owner_kind,
 			webhook_subscriptions.owner_user_id::text, webhook_subscriptions.owner_organization_id::text,
 			webhook_subscriptions.url, webhook_subscriptions.state, webhook_subscriptions.created_at,
+			webhook_subscriptions.audience,
+			coalesce(webhook_subscriptions.filter_task_type, ''),
+			coalesce(webhook_subscriptions.filter_min_credit_reward, 0),
 			coalesce(array_remove(array_agg(webhook_subscription_kinds.kind), null), '{}')::text as kinds
 		from webhook_subscriptions
 		left join webhook_subscription_kinds on webhook_subscription_kinds.subscription_id = webhook_subscriptions.id
@@ -229,8 +251,10 @@ func scanWebhookSubscription(rows Rows) (webhook.Subscription, error) {
 	var rawOwnerUser, rawOwnerOrganization *string
 	var rawURL, rawState string
 	var createdAt time.Time
+	var rawAudience, rawFilterTaskType string
+	var rawFilterMinReward int64
 	var rawKinds StringArray
-	if err := rows.Scan(&rawID, &ownerKind, &rawOwnerUser, &rawOwnerOrganization, &rawURL, &rawState, &createdAt, &rawKinds); err != nil {
+	if err := rows.Scan(&rawID, &ownerKind, &rawOwnerUser, &rawOwnerOrganization, &rawURL, &rawState, &createdAt, &rawAudience, &rawFilterTaskType, &rawFilterMinReward, &rawKinds); err != nil {
 		return webhook.Subscription{}, err
 	}
 
@@ -279,14 +303,47 @@ func scanWebhookSubscription(rows Rows) (webhook.Subscription, error) {
 		return webhook.Subscription{}, ErrNoRows
 	}
 
+	audience, audienceErr := parseWebhookAudience(rawAudience, rawFilterTaskType, rawFilterMinReward)
+	if audienceErr != nil {
+		return webhook.Subscription{}, audienceErr
+	}
+
 	return webhook.Subscription{
 		ID:        idResult.Value,
 		Owner:     owner,
 		URL:       urlResult.Value,
 		Kinds:     filterResult.Value,
+		Audience:  audience,
 		State:     stateResult.Value,
 		CreatedAt: createdAt,
 	}, nil
+}
+
+// parseWebhookAudience rebuilds the audience union from its three columns.
+func parseWebhookAudience(rawAudience string, rawTaskType string, rawMinReward int64) (webhook.Audience, error) {
+	switch rawAudience {
+	case "recipient":
+		return webhook.RecipientAudience{}, nil
+	case "marketplace":
+		audience := webhook.NewMarketplaceAudience()
+		if rawTaskType != "" {
+			parsed, matched := task.ParseTaskType(rawTaskType).(task.TaskTypeAccepted)
+			if !matched {
+				return nil, ErrNoRows
+			}
+			audience.TaskType = webhook.MarketplaceTaskTypeIs{Value: parsed.Value}
+		}
+		if rawMinReward != 0 {
+			reward, matched := webhook.NewMinimumCreditReward(rawMinReward).(webhook.MinimumCreditRewardAccepted)
+			if !matched {
+				return nil, ErrNoRows
+			}
+			audience.MinReward = reward.Value
+		}
+		return audience, nil
+	default:
+		return nil, ErrNoRows
+	}
 }
 
 // ---- host-only pump/claim/mark methods (internal/webhookdispatch) ----
@@ -394,13 +451,28 @@ func expandWebhookDeliveries(ctx context.Context, tx Tx, sequence int64) (int, e
 		where webhook_subscriptions.state = 'active'
 			and webhook_subscription_kinds.kind = domain_events.kind
 			and (
-				(webhook_subscriptions.owner_kind = 'user' and exists (
-					select 1 from domain_event_recipients
-					where domain_event_recipients.event_seq = domain_events.seq
-						and domain_event_recipients.user_id = webhook_subscriptions.owner_user_id
+				(webhook_subscriptions.audience = 'recipient' and (
+					(webhook_subscriptions.owner_kind = 'user' and exists (
+						select 1 from domain_event_recipients
+						where domain_event_recipients.event_seq = domain_events.seq
+							and domain_event_recipients.user_id = webhook_subscriptions.owner_user_id
+					))
+					or (webhook_subscriptions.owner_kind = 'organization'
+						and domain_events.organization_id = webhook_subscriptions.owner_organization_id)
 				))
-				or (webhook_subscriptions.owner_kind = 'organization'
-					and domain_events.organization_id = webhook_subscriptions.owner_organization_id)
+				or (webhook_subscriptions.audience = 'marketplace'
+					and domain_events.kind = 'task_opened'
+					and exists (
+						select 1 from tasks
+						join task_visibility_scopes on task_visibility_scopes.task_id = tasks.id
+						where tasks.id = domain_events.task_id
+							and tasks.state = 'open'
+							and task_visibility_scopes.visibility_kind = 'public'
+							and (webhook_subscriptions.filter_task_type is null
+								or tasks.task_type = webhook_subscriptions.filter_task_type)
+							and (webhook_subscriptions.filter_min_credit_reward is null
+								or coalesce(tasks.reward_credit_amount, 0) >= webhook_subscriptions.filter_min_credit_reward)
+					))
 			)
 	`, sequence)
 	if err != nil {

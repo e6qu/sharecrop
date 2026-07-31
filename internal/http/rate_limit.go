@@ -115,6 +115,19 @@ func (limiter *rateLimiter) StorageKind() string {
 	return "process_memory"
 }
 
+// allowRegistration applies the dedicated registration budget by client IP,
+// on top of the generic unauthenticated limiter. Registration mints accounts
+// and signup credit grants, so its budget is much tighter than the shared
+// per-path bucket. It writes a 429 and returns false when the caller should
+// stop.
+func (server Server) allowRegistration(w http.ResponseWriter, r *http.Request) bool {
+	if !server.registrationLimiter.Allow(clientIP(r)) {
+		writeError(w, http.StatusTooManyRequests, core.ErrorCodeRateLimited, "too many registration attempts; retry later")
+		return false
+	}
+	return true
+}
+
 // clientIP returns the direct peer address (host without port). It intentionally
 // does not trust X-Forwarded-For, which a client can forge to evade the limit.
 func clientIP(r *http.Request) string {

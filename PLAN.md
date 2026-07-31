@@ -25,6 +25,9 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - Tasks posted inside an organization are organization-scoped by default and hidden from the public marketplace unless an authorized organization role publishes them.
 - Users and organizations can hold Sharecrop credit accounts.
 - Each new registered user receives 100 Sharecrop credits.
+- Platform admins can grant further credits to users or organizations through
+  `manual_adjustment` ledger entries with a required note; grants are the only
+  credit source beyond signup grants.
 - Sharecrop credits are represented through an append-only ledger, not as a mutable balance field alone.
 - Task rewards are bundles that may contain Sharecrop credits, collectibles, both, or neither.
 - Sharecrop may sell platform-issued collectibles such as special emojis, graphics, badges, or other reward items.

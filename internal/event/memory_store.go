@@ -24,7 +24,7 @@ func (store *MemoryStore) Append(_ context.Context, value Event, recipients Reci
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.sequence++
-	stored := StoredEvent{Event: value, Cursor: CursorFromSequence(store.sequence)}
+	stored := WithoutEnrichment(StoredEvent{Event: value, Cursor: CursorFromSequence(store.sequence)})
 	store.values = append(store.values, stored)
 	users := make([]core.UserID, len(recipients.Users))
 	copy(users, recipients.Users)

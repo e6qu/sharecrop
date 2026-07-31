@@ -20,8 +20,8 @@ func newUserID(t *testing.T) core.UserID {
 
 func TestParseKindRoundTripsEveryKind(t *testing.T) {
 	kinds := AllKinds()
-	if len(kinds) != 19 {
-		t.Fatalf("AllKinds() has %d kinds, want 19", len(kinds))
+	if len(kinds) != 20 {
+		t.Fatalf("AllKinds() has %d kinds, want 20", len(kinds))
 	}
 	for _, kind := range kinds {
 		parsed, matched := ParseKind(kind.String()).(KindParsed)
@@ -98,7 +98,7 @@ type fakeEventStore struct {
 func (store *fakeEventStore) Append(_ context.Context, value Event, recipients Recipients) AppendStoreResult {
 	store.appended = append(store.appended, value)
 	store.recipients = append(store.recipients, recipients)
-	return AppendStoreAccepted{Value: StoredEvent{Event: value, Cursor: CursorFromSequence(int64(len(store.appended)))}}
+	return AppendStoreAccepted{Value: WithoutEnrichment(StoredEvent{Event: value, Cursor: CursorFromSequence(int64(len(store.appended)))})}
 }
 
 func (store *fakeEventStore) ListForRecipient(context.Context, core.UserID, CursorFilter, core.Page) ListStoreResult {

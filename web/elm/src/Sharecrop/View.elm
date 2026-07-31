@@ -23,9 +23,10 @@ import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
 import Sharecrop.ResponseSchema as ResponseSchema
 import Sharecrop.Sprites as Sprites
-import Sharecrop.Labels exposing (allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, domainEventKindLabel, domainEventKindTag, kindLabel, notificationKindLabel, participationPolicyLabel, participationPolicyTag, participationUsesReservation, reservationStateLabel, rewardLabel, scopeLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
+import Sharecrop.Labels exposing (allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, domainEventKindLabel, domainEventKindTag, eventSentence, kindLabel, notificationKindLabel, notificationSentence, participationPolicyLabel, participationPolicyTag, participationUsesReservation, relativeTimeLabel, reservationStateLabel, rewardLabel, scopeLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
 import Sharecrop.Types exposing (..)
 import Sharecrop.Ui as Ui exposing (testId)
+import Time
 
 
 view : Model -> Browser.Document Msg
@@ -80,6 +81,10 @@ authView model =
             [ p [ Html.Attributes.class "text-farm-muted" ] [ text "Sign in or create an account to view your credit ledger and set up agents." ]
             , Ui.textInput [ type_ "email", placeholder "Email", value model.email, onInput EmailChanged, testId "email" ]
             , Ui.textInput [ type_ "password", placeholder "Password", value model.password, onInput PasswordChanged, testId "password" ]
+
+            -- Only Register reads this; a blank name derives one from the
+            -- email's local part server-side.
+            , Ui.textInput [ type_ "text", placeholder "Display name (optional, for registering)", value model.registerName, onInput RegisterNameChanged, testId "register-name" ]
             , div [ Html.Attributes.class "flex flex-wrap gap-3" ]
                 ([ Ui.primaryButton [ type_ "submit", testId "login" ] "Log in"
                  , Ui.secondaryButton [ type_ "button", onClick RegisterClicked, testId "register" ] "Register"
@@ -124,7 +129,7 @@ authView model =
 loggedInView : Model -> LoggedInModel -> Html Msg
 loggedInView model state =
     div [ Html.Attributes.class "space-y-6" ]
-        [ navBar model.demo state.page state.subjectId state.username state.isAdmin state.openNavMenu state.unreadCount
+        [ navBar model.demo state.page state.subjectId (accountMenuName state) state.username state.isAdmin state.openNavMenu state.unreadCount
         , maybeError model.authError "logout-error"
 
         -- Keyed by route so navigating away and back always rebuilds the page
@@ -136,6 +141,22 @@ loggedInView model state =
         ]
 
 
+{-| The name the signed-in user goes by, for the Account menu trigger: the
+display name when one exists, else the provider username (Shauth sessions),
+else a generic "Account".
+-}
+accountMenuName : LoggedInModel -> String
+accountMenuName state =
+    if String.trim state.displayName /= "" then
+        state.displayName
+
+    else if String.trim state.username /= "" then
+        state.username
+
+    else
+        "Account"
+
+
 {-| The primary nav: just Overview and Tasks stay flat now — Tasks is the
 one hub for everything task-related (My tasks, Discover public tasks, My
 submissions, Series, and a "+ New task" shortcut all live there, see
@@ -145,8 +166,8 @@ the whole bar reads as one row instead of a wall of buttons. Every existing
 `nav-*` link keeps its exact `data-testid`, so moving a link doesn't change
 how a test finds it — only whether a surrounding menu needs opening first.
 -}
-navBar : Bool -> Page -> String -> String -> Bool -> Maybe String -> Int -> Html Msg
-navBar demo current subjectId username isAdmin openNavMenu unreadCount =
+navBar : Bool -> Page -> String -> String -> String -> Bool -> Maybe String -> Int -> Html Msg
+navBar demo current subjectId accountName username isAdmin openNavMenu unreadCount =
     let
         isCurrent target =
             pageToPath current == pageToPath target
@@ -194,12 +215,7 @@ navBar demo current subjectId username isAdmin openNavMenu unreadCount =
             accountMenuActive
             (isMenuOpen "nav-account-menu")
             (ToggleNavMenu "nav-account-menu")
-            (if String.isEmpty username then
-                "Account"
-
-             else
-                username
-            )
+            accountName
             [ unreadBadge "nav-unread-count" unreadCount ]
             (if String.isEmpty username then
                 Nothing
@@ -325,6 +341,31 @@ adminView state =
               else
                 div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "admin-platform-admins" ]
                     (List.map platformAdminRow state.platformAdmins)
+            ]
+        , Ui.disclosure "admin-section-grant-credits"
+            False
+            "Grant credits"
+            [ p [ Html.Attributes.class "text-xs text-farm-muted" ]
+                [ text "Credits a user's or organization's spendable balance. The note is required and appears in the beneficiary's ledger." ]
+            , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                [ Ui.chooserButton (state.grantTargetKind == "user") (GrantTargetKindChanged "user") "grant-kind-user" "User"
+                , Ui.chooserButton (state.grantTargetKind == "organization") (GrantTargetKindChanged "organization") "grant-kind-organization" "Organization"
+                ]
+            , if state.grantTargetKind == "organization" then
+                Ui.fieldLabel "Organization ID"
+                    [ Ui.textInput [ type_ "text", placeholder "Organization ID", value state.grantTargetId, onInput GrantTargetIdChanged, testId "grant-target-id" ] ]
+
+              else
+                Ui.fieldLabel "User"
+                    [ userPicker "grant-target-id" state.grantTargetId state.userDirectoryQuery GrantTargetIdChanged "Choose user" state.userDirectory state.userDirectoryOffset state.userDirectoryNextOffset ]
+            , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ]
+                [ Ui.fieldLabel "Amount (credits)"
+                    [ Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.grantAmount, onInput GrantAmountChanged, testId "grant-amount" ] ]
+                , Ui.fieldLabel "Note (required)"
+                    [ Ui.textInput [ type_ "text", placeholder "Why these credits are granted", value state.grantNote, onInput GrantNoteChanged, testId "grant-note" ] ]
+                ]
+            , Ui.primaryButton [ type_ "button", onClick GrantCreditsClicked, testId "grant-credits" ] "Grant credits"
+            , maybeNote state.grantMessage "grant-message"
             ]
         , Ui.disclosure "admin-section-privacy"
             False
@@ -489,6 +530,19 @@ emptyLabel value =
         value
 
 
+{-| A person's display name, falling back to the raw id when the name is
+blank (deleted or redacted accounts). The id keeps its operational value in
+a title/tooltip at each call site.
+-}
+personLabel : String -> String -> String
+personLabel displayName fallbackId =
+    if String.trim displayName == "" then
+        fallbackId
+
+    else
+        displayName
+
+
 inboxView : LoggedInModel -> Html Msg
 inboxView state =
     Ui.card
@@ -505,30 +559,42 @@ inboxView state =
 
           else
             div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "inbox-list" ]
-                (List.map notificationRow state.notifications)
+                (List.map (notificationRow state.now) state.notifications)
         , paginationControls "inbox-page" PreviousNotificationsPageClicked NextNotificationsPageClicked state.notificationsOffset state.notificationsNextOffset
         , maybeNote state.inboxMessage "inbox-message"
         ]
 
 
-notificationRow : Notification.NotificationResponse -> Html Msg
-notificationRow notification =
+notificationRow : Time.Posix -> Notification.NotificationResponse -> Html Msg
+notificationRow now notification =
     div [ Html.Attributes.class "space-y-2 py-3 text-sm", testId "notification-row" ]
         [ div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2" ]
-            [ p [ Html.Attributes.class "font-medium text-farm-ink" ] [ text (notificationKindLabel notification.kind ++ " on " ++ notification.subjectKind) ]
+            [ p [ Html.Attributes.class "font-medium text-farm-ink break-words", testId "notification-sentence" ]
+                [ text (notificationSentence notification.actorDisplayName notification.subjectTitle notification.kind) ]
             , span [ Html.Attributes.class (notificationStateClass notification.state), testId "notification-state" ] [ text notification.state ]
             ]
         , p [ Html.Attributes.class "break-words text-xs text-farm-muted" ]
-            [ text ("Subject " ++ notification.subjectID ++ " · actor ")
-            , a [ href ("#/users/" ++ notification.actorUserID), Html.Attributes.class "underline" ] [ text notification.actorUserID ]
-            , text (" · " ++ notification.createdAt)
-            ]
+            (span [ Html.Attributes.title notification.createdAt, testId "notification-time" ] [ text (relativeTimeLabel now notification.createdAt) ]
+                :: text (" · " ++ notificationKindLabel notification.kind)
+                :: (if notification.actorUserID == "" || String.trim notification.actorDisplayName == "" then
+                        []
+
+                    else
+                        [ text " · "
+                        , a [ href ("#/users/" ++ notification.actorUserID), Html.Attributes.class "underline", testId "notification-actor-link" ]
+                            [ text notification.actorDisplayName ]
+                        ]
+                   )
+            )
         , notificationTaskLink notification
         , if notification.metadataJSON == "{}" then
             text ""
 
           else
-            Ui.codeBlock [ testId "notification-metadata" ] notification.metadataJSON
+            Ui.disclosure ("notification-details-" ++ notification.id)
+                False
+                "Details"
+                [ Ui.codeBlock [ testId "notification-metadata" ] notification.metadataJSON ]
         , if notification.state == "unread" then
             Ui.secondaryButton [ type_ "button", onClick (MarkNotificationReadClicked notification.id), testId "notification-mark-read" ] "Mark read"
 
@@ -1256,7 +1322,7 @@ seriesCommentsSection seriesId state data =
 seriesCommentRow : TaskSeries.SeriesCommentResponse -> Html Msg
 seriesCommentRow comment =
     Ui.subCard [ testId "series-comment" ]
-        [ a [ href ("#/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-farm-muted underline" ] [ text comment.authorUserID ]
+        [ commentAuthorLink comment.authorUserID comment.authorDisplayName
         , p [ Html.Attributes.class "text-sm text-farm-ink break-words" ] [ text comment.body ]
         ]
 
@@ -1386,8 +1452,7 @@ userDetailView : String -> String -> LoggedInModel -> Html Msg
 userDetailView origin userId state =
     div [ Html.Attributes.class "space-y-6" ]
         (Ui.card
-            [ Ui.sectionTitle "User"
-            , p [ Html.Attributes.class "text-sm font-medium", testId "user-id" ] [ text userId ]
+            [ profileIdentityBlock userId state
             , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
                 (a [ href ("#/users/" ++ userId ++ "/work"), Html.Attributes.class Ui.secondaryButtonClass, testId "user-work-link" ] [ text "Currently working on" ]
                     -- The submissions API rejects any viewer who isn't the
@@ -1434,10 +1499,47 @@ userDetailView origin userId state =
         )
 
 
+{-| The identity block at the top of a profile: the person's display name
+first, their email (own profile only), and the raw account id demoted to a
+small monospace line - an id is for copying into API calls, not for
+identifying a person.
+-}
+profileIdentityBlock : String -> LoggedInModel -> Html Msg
+profileIdentityBlock userId state =
+    let
+        viewedName =
+            if userId == state.subjectId then
+                state.accountProfile
+                    |> Maybe.map .displayName
+                    |> Maybe.withDefault state.displayName
+
+            else
+                state.userProfile
+                    |> Maybe.map .displayName
+                    |> Maybe.withDefault ""
+    in
+    div [ Html.Attributes.class "space-y-1" ]
+        (p [ Html.Attributes.class "font-display text-base leading-relaxed text-farm-accent-strong break-words", testId "profile-display-name" ]
+            [ text (personLabel viewedName userId) ]
+            :: (case ( userId == state.subjectId, state.accountProfile ) of
+                    ( True, Just profile ) ->
+                        [ p [ Html.Attributes.class "text-sm text-farm-ink break-words", testId "profile-email" ] [ text profile.email ] ]
+
+                    _ ->
+                        []
+               )
+            ++ [ p [ Html.Attributes.class "font-mono text-xs text-farm-muted break-all", testId "user-id" ] [ text userId ] ]
+        )
+
+
 accountSettingsCard : LoggedInModel -> Html Msg
 accountSettingsCard state =
     Ui.card
         [ Ui.sectionTitle "Account settings"
+        , form [ Html.Attributes.class "space-y-2", onSubmit SaveDisplayNameClicked ]
+            [ Ui.fieldLabel "Display name" [ Ui.textInput [ type_ "text", placeholder "How you appear to others", value state.displayNameDraft, onInput DisplayNameDraftChanged, testId "display-name-input" ] ]
+            , Ui.primaryButton [ type_ "submit", testId "save-display-name" ] "Save display name"
+            ]
         , form [ Html.Attributes.class "space-y-2", onSubmit UpdateProfileClicked ]
             [ Ui.fieldLabel "Email" [ Ui.textInput [ type_ "email", placeholder "person@example.com", value state.accountEmail, onInput AccountEmailChanged, testId "account-email" ] ]
             , Ui.primaryButton [ type_ "submit", testId "update-profile" ] "Save profile"
@@ -1571,11 +1673,81 @@ mcpClaudeUpdate origin token =
 overviewView : LoggedInModel -> Html Msg
 overviewView state =
     div [ Html.Attributes.class "space-y-6", testId "overview" ]
-        [ Ui.sectionTitle "Credit account"
+        [ introCard
+        , needsReviewCard state
+        , Ui.sectionTitle "Credit account"
         , balanceView state.balance
         , ledgerView state.entries state.ledgerOffset state.ledgerNextOffset
         , activityCard state
         ]
+
+
+{-| A short static explainer for first-time visitors: what Sharecrop is and
+where to find work. The docs link points at the hosted docs site, which
+serves the same reference in every deployment.
+-}
+introCard : Html Msg
+introCard =
+    Ui.card
+        [ p [ Html.Attributes.class "text-sm text-farm-ink", testId "overview-intro" ]
+            [ text "Sharecrop is a task marketplace: humans and agents post tasks, and other humans and agents complete them for credit rewards." ]
+        , p [ Html.Attributes.class "text-sm text-farm-muted" ]
+            [ text "Looking for work? Open "
+            , a [ href "#/tasks", Html.Attributes.class "underline", testId "overview-intro-tasks-link" ] [ text "Tasks" ]
+            , text " and scan the \"Discover public tasks\" section."
+            ]
+        , a
+            [ href "https://e6qu.github.io/sharecrop/docs/"
+            , Html.Attributes.target "_blank"
+            , Html.Attributes.rel "noopener noreferrer"
+            , Html.Attributes.class "text-sm underline"
+            , testId "overview-intro-docs-link"
+            ]
+            [ text "Read the docs" ]
+        ]
+
+
+{-| Owned tasks with submissions waiting for review, straight from the
+already-loaded My-tasks data - the fastest path from "I have work to review"
+to the review controls.
+-}
+needsReviewCard : LoggedInModel -> Html Msg
+needsReviewCard state =
+    let
+        waiting =
+            List.filter (\item -> item.createdBy == state.subjectId && item.pendingReviewCount > 0) state.tasks
+    in
+    Ui.card
+        [ Ui.sectionTitle "Needs review"
+        , if List.isEmpty waiting then
+            p [ Html.Attributes.class "text-sm text-farm-muted", testId "overview-needs-review-empty" ]
+                [ text "No submissions are waiting for your review." ]
+
+          else
+            div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "overview-needs-review" ]
+                (List.map needsReviewRow waiting)
+        ]
+
+
+needsReviewRow : Task.TaskListItemResponse -> Html Msg
+needsReviewRow item =
+    div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "needs-review-row" ]
+        [ a [ href ("#/tasks/" ++ item.id), Html.Attributes.class "min-w-0 text-sm font-medium underline break-words" ] [ text item.title ]
+        , pendingReviewBadge item.pendingReviewCount
+        ]
+
+
+{-| "N to review" as a warning-toned badge, shared by the Overview
+needs-review list and the My-tasks rows.
+-}
+pendingReviewBadge : Int -> Html Msg
+pendingReviewBadge count =
+    if count <= 0 then
+        text ""
+
+    else
+        span [ testId "pending-review-count" ]
+            [ Ui.badgeVariant "warning" (String.fromInt count ++ " to review") ]
 
 
 {-| The Overview activity feed: what recently happened on tasks, submissions,
@@ -1591,16 +1763,18 @@ activityCard state =
 
           else
             div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "overview-activity" ]
-                (List.map activityRow (List.reverse state.activityEvents))
+                (List.map (activityRow state.now) (List.reverse state.activityEvents))
         ]
 
 
-activityRow : Events.EventResponse -> Html Msg
-activityRow event =
+activityRow : Time.Posix -> Events.EventResponse -> Html Msg
+activityRow now event =
     div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2 text-sm", testId "activity-row" ]
         [ div [ Html.Attributes.class "min-w-0 space-y-0.5" ]
-            [ p [ Html.Attributes.class "font-medium text-farm-ink" ] [ text (domainEventKindLabel event.kind) ]
-            , p [ Html.Attributes.class "break-words text-xs text-farm-muted" ] [ text event.occurredAt ]
+            [ p [ Html.Attributes.class "font-medium text-farm-ink break-words" ]
+                [ text (eventSentence event.actorDisplayName event.taskTitle event.kind) ]
+            , p [ Html.Attributes.class "break-words text-xs text-farm-muted", Html.Attributes.title event.occurredAt ]
+                [ text (relativeTimeLabel now event.occurredAt) ]
             ]
         , activitySubjectLink event
         ]
@@ -2193,7 +2367,10 @@ createTaskView state =
             False
             "Advanced options"
             [ Ui.fieldLabel "Reference URL (optional, e.g. a pull request)" [ Ui.textInput [ type_ "text", placeholder "https://github.com/org/repo/pull/123", value state.createReferenceURL, onInput CreateReferenceURLChanged, testId "create-reference-url" ] ]
-            , Ui.fieldLabel "Expires at (RFC3339, optional)" [ Ui.textInput [ type_ "text", placeholder "2026-12-31T00:00:00Z", value state.createExpiresAt, onInput CreateExpiresAtChanged, testId "create-expires-at" ] ]
+            -- A native datetime-local picker; the value is treated as UTC
+            -- and converted to an RFC3339 instant on submit (see
+            -- Api.expiryRFC3339), so no timezone math happens client-side.
+            , Ui.fieldLabel "Expires at (UTC, optional)" [ Ui.textInput [ type_ "datetime-local", value state.createExpiresAt, onInput CreateExpiresAtChanged, testId "create-expires-at" ] ]
             , Ui.fieldLabel "Response schema (JSON, advanced)" [ Ui.textarea_ [ placeholder "{\"kind\":\"freeform\"}", value state.createResponseSchema, onInput CreateResponseSchemaChanged, Html.Attributes.rows 3, testId "create-response-schema" ] ]
             , Ui.fieldLabel "Task input (JSON, optional)" [ Ui.textarea_ [ placeholder "Embed any data the worker needs, or leave blank", value state.createPayloadJson, onInput CreatePayloadChanged, Html.Attributes.rows 3, testId "create-payload" ] ]
             , selectedAttachmentsView "Attachments" state.createAttachments PickCreateAttachmentClicked RemoveCreateAttachmentClicked "create-attachments"
@@ -2638,7 +2815,15 @@ ledgerRow entry =
                 String.fromInt entry.amount
     in
     tr [ Html.Attributes.class "border-t-2 border-farm-line-soft", testId "ledger-entry" ]
-        [ td [ Html.Attributes.class "py-2" ] [ text (kindLabel entry.kind) ]
+        [ td [ Html.Attributes.class "py-2" ]
+            (p [] [ text (kindLabel entry.kind) ]
+                :: (if String.trim entry.note == "" then
+                        []
+
+                    else
+                        [ p [ Html.Attributes.class "text-xs text-farm-muted break-words", testId "ledger-entry-note" ] [ text entry.note ] ]
+                   )
+            )
         , td [ Html.Attributes.class amountClass ] [ text amountText ]
         ]
 
@@ -2856,7 +3041,7 @@ selectorSearchControls identifier placeholderText query queryChange search previ
             ]
         , div [ Html.Attributes.class "flex flex-wrap items-center gap-2 text-xs text-farm-muted" ]
             [ Ui.secondaryButton [ type_ "button", disabled (offset == 0), onClick previous, testId (identifier ++ "-previous") ] "Previous"
-            , span [ testId (identifier ++ "-offset") ] [ text ("Offset " ++ String.fromInt offset) ]
+            , span [ testId (identifier ++ "-offset") ] [ text (pageLabel offset) ]
             , Ui.secondaryButton [ type_ "button", disabled (nextOffset == 0), onClick next, testId (identifier ++ "-next") ] "Next"
             ]
         ]
@@ -2868,7 +3053,31 @@ activeAssigneeSuffix item =
         ""
 
     else
-        " · reserved by " ++ item.activeAssigneeID
+        " · reserved"
+
+
+{-| "reserved" as a hoverable span: the holder's raw id keeps operational
+value but has no business leading the row, so it lives in the tooltip.
+-}
+reservedIndicator : Task.TaskListItemResponse -> Html Msg
+reservedIndicator item =
+    if item.activeAssigneeID == "" then
+        text ""
+
+    else
+        span [ Html.Attributes.title item.activeAssigneeID, testId "task-reserved" ] [ text "· reserved" ]
+
+
+{-| The task's creator by display name, shown when the row belongs to
+someone other than the viewer (own rows already carry the MINE flag).
+-}
+taskCreatorSpan : String -> Task.TaskListItemResponse -> Html Msg
+taskCreatorSpan subjectId item =
+    if item.createdBy == subjectId || String.trim item.creatorDisplayName == "" then
+        text ""
+
+    else
+        span [ Html.Attributes.title item.createdBy, testId "task-creator" ] [ text ("by " ++ item.creatorDisplayName) ]
 
 
 filterTasksByQuery : String -> List Task.TaskListItemResponse -> List Task.TaskListItemResponse
@@ -2938,7 +3147,9 @@ taskRow subjectId item =
             , p [ Html.Attributes.class "flex flex-wrap items-center gap-1.5 text-xs text-farm-muted break-words" ]
                 [ taskStateBadge item.state
                 , taskRewardBadge item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount
-                , text (activeAssigneeSuffix item)
+                , pendingReviewBadge item.pendingReviewCount
+                , taskCreatorSpan subjectId item
+                , reservedIndicator item
                 ]
             ]
         , div [ Html.Attributes.class "flex shrink-0 gap-2" ]
@@ -2955,6 +3166,13 @@ agentsView origin state =
         , p [ Html.Attributes.class "text-sm text-farm-muted" ] [ text "Create a scoped credential for a local MCP agent." ]
         , form [ Html.Attributes.class "mt-3 space-y-3", onSubmit CreateAgentClicked ]
             [ Ui.textInput [ type_ "text", placeholder "Agent label", value state.agentLabel, onInput AgentLabelChanged, testId "agent-label" ]
+            , Ui.label_ "Scope presets"
+            , p [ Html.Attributes.class "text-xs text-farm-muted" ]
+                [ text "A preset ticks the recommended scopes for a common agent role; adjust the checkboxes below as needed." ]
+            , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                [ Ui.secondaryButton [ type_ "button", onClick (AgentScopePresetClicked workerPresetScopes), testId "scope-preset-worker" ] "Worker agent preset"
+                , Ui.secondaryButton [ type_ "button", onClick (AgentScopePresetClicked reviewerPresetScopes), testId "scope-preset-reviewer" ] "Reviewer agent preset"
+                ]
             , div [ Html.Attributes.class "space-y-1" ] (List.map (scopeCheckbox state.agentScopes) allScopes)
             , Ui.fieldLabel "Expires in (hours, blank for never)" [ Ui.textInput [ type_ "number", placeholder "never", value state.agentExpiresHours, onInput AgentExpiresHoursChanged, testId "agent-expires-hours" ] ]
             , Ui.primaryButton [ type_ "submit", testId "create-agent" ] "Create credential"
@@ -2964,6 +3182,21 @@ agentsView origin state =
         , credentialsList state.credentials
         , webhooksSection state
         ]
+
+
+{-| The scope sets recommended by docs/onboarding.md's agent recipes: a
+worker finds and submits work (webhooks_manage lets it swap polling for a
+marketplace webhook); a reviewer reads and reviews submissions, driven by
+notifications.
+-}
+workerPresetScopes : List Agent.AgentScope
+workerPresetScopes =
+    [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite, Agent.AgentScopeNotificationsRead, Agent.AgentScopeWebhooksManage ]
+
+
+reviewerPresetScopes : List Agent.AgentScope
+reviewerPresetScopes =
+    [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsRead, Agent.AgentScopeSubmissionsReview, Agent.AgentScopeNotificationsRead ]
 
 
 {-| Webhook management for the signed-in user: the Agents page is the
@@ -2978,11 +3211,23 @@ webhooksSection state =
         , form [ Html.Attributes.class "space-y-3", onSubmit CreateWebhookClicked ]
             [ Ui.fieldLabel "Endpoint URL"
                 [ Ui.textInput [ type_ "url", placeholder "https://example.com/hooks/sharecrop", value state.webhookURL, onInput WebhookURLChanged, testId "webhook-url" ] ]
-            , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ] (List.map (webhookKindGroup state.webhookKinds) webhookKindGroups)
+            , Ui.label_ "Audience"
+            , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+                [ Ui.chooserButton (state.webhookAudience == Events.WebhookAudienceRecipient) (WebhookAudienceChosen Events.WebhookAudienceRecipient) "webhook-audience-recipient" "Events about your own work"
+                , Ui.chooserButton (state.webhookAudience == Events.WebhookAudienceMarketplace) (WebhookAudienceChosen Events.WebhookAudienceMarketplace) "webhook-audience-marketplace" "Announcements of new public tasks"
+                ]
+            , webhookAudienceDetail state
             , Ui.primaryButton [ type_ "submit", testId "webhook-create" ] "Create webhook"
             , maybeNote state.webhookMessage "webhook-message"
             ]
         , newWebhookSecretView state.newWebhookSecret
+        , Ui.disclosure "webhook-signature-help"
+            False
+            "Verifying delivery signatures"
+            [ p [ Html.Attributes.class "text-sm text-farm-ink" ]
+                [ text "Every delivery is signed with the subscription's secret. Recompute the HMAC over the timestamp header, a literal dot, and the raw request body, then compare in constant time:" ]
+            , Ui.codeBlock [ testId "webhook-signature-scheme" ] webhookSignatureScheme
+            ]
         , if List.isEmpty state.webhookSubscriptions then
             Ui.emptyState "webhook-list-empty" "windmill" "No webhook subscriptions yet."
 
@@ -2992,7 +3237,38 @@ webhooksSection state =
         ]
 
 
-{-| The 19 event kinds, grouped the way people think about them so the
+{-| The audience-specific part of the create form. Recipient subscriptions
+choose their event kinds; marketplace subscriptions are pinned to
+task_opened (the server rejects anything else) and gain the optional
+narrowing filters instead.
+-}
+webhookAudienceDetail : LoggedInModel -> Html Msg
+webhookAudienceDetail state =
+    case state.webhookAudience of
+        Events.WebhookAudienceRecipient ->
+            div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ] (List.map (webhookKindGroup state.webhookKinds) webhookKindGroups)
+
+        Events.WebhookAudienceMarketplace ->
+            div [ Html.Attributes.class "space-y-3", testId "webhook-marketplace-filters" ]
+                [ p [ Html.Attributes.class "text-xs text-farm-muted" ]
+                    [ text "Marketplace webhooks deliver every newly opened public task (the task_opened event). Narrow them with the optional filters below." ]
+                , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ]
+                    [ Ui.fieldLabel "Task type (optional)"
+                        [ select [ Html.Attributes.class Ui.fieldClass, value state.webhookFilterTaskType, onInput WebhookFilterTaskTypeChanged, testId "webhook-filter-task-type" ]
+                            (List.map (stringOption state.webhookFilterTaskType) taskTypeFilterOptions)
+                        ]
+                    , Ui.fieldLabel "Minimum credit reward (optional)"
+                        [ Ui.textInput [ type_ "number", placeholder "no floor", value state.webhookFilterMinReward, onInput WebhookFilterMinRewardChanged, testId "webhook-filter-min-reward" ] ]
+                    ]
+                ]
+
+
+webhookSignatureScheme : String
+webhookSignatureScheme =
+    "Sharecrop-Webhook-Id: <delivery id>\nSharecrop-Webhook-Timestamp: <unix seconds>\nSharecrop-Webhook-Signature: v1=hex(HMAC-SHA256(secret, \"<timestamp>.<raw body>\"))"
+
+
+{-| The 20 event kinds, grouped the way people think about them so the
 checkbox wall scans as five short lists instead of one long one.
 -}
 webhookKindGroups : List ( String, List Events.DomainEventKind )
@@ -3024,6 +3300,7 @@ webhookKindGroups =
       )
     , ( "Rewards"
       , [ Events.DomainEventKindPayoutReceived
+        , Events.DomainEventKindCreditGranted
         , Events.DomainEventKindTipReceived
         ]
       )
@@ -3058,7 +3335,9 @@ newWebhookSecretView created =
             Ui.insetPanel [ Html.Attributes.class "space-y-2", testId "webhook-secret-panel" ]
                 [ Ui.label_ "Webhook signing secret (shown once)"
                 , Ui.codeBlock [ testId "webhook-secret" ] response.secret
+                , copyButton response.secret
                 , p [ Html.Attributes.class "text-xs font-medium text-farm-danger" ] [ text "Store this secret now — it is not shown again." ]
+                , p [ Html.Attributes.class "text-xs text-farm-muted" ] [ text "Use it to verify the signature headers on every delivery - see \"Verifying delivery signatures\" below." ]
                 ]
 
         Nothing ->
@@ -3074,6 +3353,8 @@ webhookRow state subscription =
             ]
         , p [ Html.Attributes.class "break-words text-xs text-farm-muted" ]
             [ text ("Events: " ++ String.join ", " (List.map domainEventKindLabel subscription.kinds)) ]
+        , p [ Html.Attributes.class "break-words text-xs text-farm-muted", testId "webhook-row-audience" ]
+            [ text (webhookAudienceSummary subscription) ]
         , p [ Html.Attributes.class "text-xs text-farm-muted" ] [ text ("Created " ++ subscription.createdAt) ]
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
             (Ui.secondaryButton [ type_ "button", onClick (OpenWebhookDeliveries subscription.id), testId "webhook-deliveries" ] "Deliveries"
@@ -3091,6 +3372,30 @@ webhookRow state subscription =
           else
             text ""
         ]
+
+
+webhookAudienceSummary : Events.WebhookSubscriptionResponse -> String
+webhookAudienceSummary subscription =
+    case subscription.audience of
+        Events.WebhookAudienceRecipient ->
+            "Audience: events about your own work"
+
+        Events.WebhookAudienceMarketplace ->
+            String.join " · "
+                ("Audience: announcements of new public tasks"
+                    :: List.filterMap identity
+                        [ if subscription.filterTaskType == "" then
+                            Nothing
+
+                          else
+                            Just ("type " ++ taskTypeLabel subscription.filterTaskType)
+                        , if subscription.filterMinCreditReward <= 0 then
+                            Nothing
+
+                          else
+                            Just ("min reward " ++ String.fromInt subscription.filterMinCreditReward ++ " credits")
+                        ]
+                )
 
 
 webhookStateBadge : Events.WebhookSubscriptionState -> Html Msg
@@ -3175,8 +3480,10 @@ newCredentialView origin created =
             Ui.insetPanel [ Html.Attributes.class "mt-4 space-y-3" ]
                 [ Ui.label_ "New agent token (shown once)"
                 , Ui.codeBlock [ testId "agent-secret" ] credential.secret
+                , copyButton credential.secret
                 , Ui.label_ "MCP client configuration"
                 , Ui.codeBlock [ testId "mcp-config" ] (mcpConfig origin credential.secret)
+                , copyButton (mcpConfig origin credential.secret)
                 ]
 
         Nothing ->
@@ -3426,7 +3733,9 @@ discoveryRow subjectId item =
             , p [ Html.Attributes.class "flex flex-wrap items-center gap-1.5 text-xs text-farm-muted break-words" ]
                 [ taskStateBadge item.state
                 , taskRewardBadge item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount
-                , text ("· " ++ participationPolicyLabel item.participationPolicy ++ activeAssigneeSuffix item)
+                , text ("· " ++ participationPolicyLabel item.participationPolicy)
+                , taskCreatorSpan subjectId item
+                , reservedIndicator item
                 ]
             ]
         , div [ Html.Attributes.class "shrink-0" ] [ Ui.secondaryButton [ onClick (DiscoveryViewClicked item.id), testId "discovery-view" ] "View" ]
@@ -3441,9 +3750,17 @@ paginationControls : String -> Msg -> Msg -> Int -> Int -> Html Msg
 paginationControls identifier previous next offset nextOffset =
     div [ Html.Attributes.class "flex flex-wrap items-center gap-2 text-xs text-farm-muted", testId identifier ]
         [ Ui.secondaryButton [ type_ "button", disabled (offset == 0), onClick previous, testId (identifier ++ "-previous") ] "Previous"
-        , span [ testId (identifier ++ "-offset") ] [ text ("Offset " ++ String.fromInt offset) ]
+        , span [ testId (identifier ++ "-offset") ] [ text (pageLabel offset) ]
         , Ui.secondaryButton [ type_ "button", disabled (nextOffset == 0), onClick next, testId (identifier ++ "-next") ] "Next"
         ]
+
+
+{-| "Page N" for a raw list offset - every list pages by `pageSize`, so the
+human page number is derivable and reads far better than "Offset 40".
+-}
+pageLabel : Int -> String
+pageLabel offset =
+    "Page " ++ String.fromInt (offset // pageSize + 1)
 
 
 
@@ -3514,9 +3831,18 @@ taskCommentsCard state =
 taskCommentRow : Task.TaskCommentResponse -> Html Msg
 taskCommentRow comment =
     Ui.subCard [ testId "task-comment" ]
-        [ a [ href ("#/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-farm-muted underline" ] [ text comment.authorUserID ]
+        [ commentAuthorLink comment.authorUserID comment.authorDisplayName
         , p [ Html.Attributes.class "text-sm text-farm-ink break-words" ] [ text comment.body ]
         ]
+
+
+{-| A comment author's profile link, labeled by display name (id in the
+tooltip) - shared by task, submission, and series comment rows.
+-}
+commentAuthorLink : String -> String -> Html Msg
+commentAuthorLink authorUserID authorDisplayName =
+    a [ href ("#/users/" ++ authorUserID), Html.Attributes.class "text-xs font-medium text-farm-muted underline", Html.Attributes.title authorUserID ]
+        [ text (personLabel authorDisplayName authorUserID) ]
 
 
 moderationReportCard : LoggedInModel -> Html Msg
@@ -3886,7 +4212,8 @@ detailCard origin state =
                     p [ Html.Attributes.class "text-xs font-medium text-farm-warning", testId "detail-expires" ] [ text ("Expires " ++ detail.expiresAt) ]
                 , p [ Html.Attributes.class "text-xs text-farm-muted" ]
                     [ text "Posted by "
-                    , a [ href ("#/users/" ++ detail.createdBy), Html.Attributes.class "underline", testId "detail-created-by-link" ] [ text detail.createdBy ]
+                    , a [ href ("#/users/" ++ detail.createdBy), Html.Attributes.class "underline", Html.Attributes.title detail.createdBy, testId "detail-created-by-link" ]
+                        [ text (personLabel detail.creatorDisplayName detail.createdBy) ]
                     ]
                 , p [ Html.Attributes.class "text-sm font-medium" ] [ text ("Reward: " ++ rewardLabel detail.rewardKind detail.rewardCreditAmount detail.rewardCollectibleCount) ]
                 , p [ Html.Attributes.class "text-sm text-farm-ink" ] [ text detail.description ]
@@ -3917,6 +4244,18 @@ reservationCard state =
             let
                 isOwner =
                     detail.createdBy == state.subjectId
+
+                viewerHoldsReservation =
+                    List.any
+                        (\reservation ->
+                            reservation.state
+                                == Task.TaskReservationStateActive
+                                && reservation.assigneeKind
+                                == Task.TaskAssigneeScopeUser
+                                && reservation.assigneeID
+                                == state.subjectId
+                        )
+                        state.reservations
             in
             Ui.card
                 [ Ui.sectionTitle "Reservation"
@@ -3925,7 +4264,7 @@ reservationCard state =
                 -- "wait user") read as noise to anyone who has not read the
                 -- API reference.
                 , p [ Html.Attributes.class "text-sm text-farm-muted", testId "reservation-summary" ]
-                    [ text ("You can: " ++ viewerActionSentence detail.viewerAction ++ " · Assignee scope: " ++ assigneeScopeLabel detail.assigneeScope) ]
+                    [ text ("You can: " ++ viewerActionSentence viewerHoldsReservation detail.viewerAction ++ " · Assignee scope: " ++ assigneeScopeLabel detail.assigneeScope) ]
 
                 -- The server's viewerAction doesn't rule out an owner
                 -- reserving their own task, but that's not a real workflow
@@ -4006,8 +4345,8 @@ workerRefundControl state detail isOwner =
         text ""
 
 
-viewerActionSentence : Task.TaskViewerAction -> String
-viewerActionSentence action =
+viewerActionSentence : Bool -> Task.TaskViewerAction -> String
+viewerActionSentence viewerHoldsReservation action =
     case action of
         Task.TaskViewerActionSubmit ->
             "submit a response now"
@@ -4020,9 +4359,13 @@ viewerActionSentence action =
 
         Task.TaskViewerActionWait ->
             -- viewerAction is computed without looking at who is asking, so
-            -- the active reservation may well be the viewer's own (listed
-            -- below) - do not claim it belongs to someone else.
-            "wait - this task already has an active reservation"
+            -- the "wait" may be about the viewer's own reservation - saying
+            -- "wait, someone has this" about your own hold reads as a bug.
+            if viewerHoldsReservation then
+                "submit a response - you hold this reservation"
+
+            else
+                "wait - this task already has an active reservation"
 
         Task.TaskViewerActionNone ->
             "view this task (no worker action available)"
@@ -4092,7 +4435,7 @@ reservationRow isOwner subjectId reservation =
     div [ Html.Attributes.class "flex items-center justify-between gap-3 py-2", testId "reservation-row" ]
         [ div []
             [ p [ Html.Attributes.class "text-sm font-medium" ]
-                [ assigneeIdentityLink reservation.assigneeKind reservation.assigneeID
+                [ assigneeIdentityLink reservation
                 , text (" · " ++ assigneeScopeLabel reservation.assigneeKind)
                 ]
             , p [ Html.Attributes.class "text-xs text-farm-muted" ] [ text (reservationStateLabel reservation.state) ]
@@ -4102,15 +4445,17 @@ reservationRow isOwner subjectId reservation =
 
 
 {-| Only a user-scoped assignee ID is a valid `/users/<id>` profile — team and
-organization-team IDs aren't, so those render as plain text.
+organization-team IDs aren't, so those render as plain text. User assignees
+show the holder's display name (id in the tooltip).
 -}
-assigneeIdentityLink : Task.TaskAssigneeScope -> String -> Html Msg
-assigneeIdentityLink assigneeKind assigneeID =
-    if assigneeKind == Task.TaskAssigneeScopeUser then
-        a [ href ("#/users/" ++ assigneeID), Html.Attributes.class "underline", testId "reservation-assignee-link" ] [ text assigneeID ]
+assigneeIdentityLink : Task.TaskReservationResponse -> Html Msg
+assigneeIdentityLink reservation =
+    if reservation.assigneeKind == Task.TaskAssigneeScopeUser then
+        a [ href ("#/users/" ++ reservation.assigneeID), Html.Attributes.class "underline", Html.Attributes.title reservation.assigneeID, testId "reservation-assignee-link" ]
+            [ text (personLabel reservation.holderDisplayName reservation.assigneeID) ]
 
     else
-        text assigneeID
+        text reservation.assigneeID
 
 
 {-| Only show actions the current viewer is actually entitled to take —
@@ -4294,6 +4639,7 @@ mySubmissionRow state submission =
             [ submissionStateBadge submission.state
             , Ui.secondaryButton [ type_ "button", onClick (OpenSubmissionComments submission.id), testId "my-submission-comments-toggle" ] (discussionButtonLabel state submission.id)
             ]
+        , p [ Html.Attributes.class "font-mono text-xs text-farm-muted break-all", testId "my-submission-id" ] [ text ("Submission " ++ submission.id) ]
         , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "my-submission-response" ] submission.responseJSON
         , submissionAttachmentsView submission.attachments
@@ -4370,7 +4716,8 @@ submissionRow state submission =
             ]
         , p [ Html.Attributes.class "text-xs text-farm-muted" ]
             [ text "Submitter: "
-            , a [ href ("#/users/" ++ submission.submitterID), Html.Attributes.class "underline", testId "submission-submitter-link" ] [ text submission.submitterID ]
+            , a [ href ("#/users/" ++ submission.submitterID), Html.Attributes.class "underline", Html.Attributes.title submission.submitterID, testId "submission-submitter-link" ]
+                [ text (personLabel submission.submitterDisplayName submission.submitterID) ]
             ]
         , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "submission-response" ] submission.responseJSON
@@ -4412,7 +4759,7 @@ discussionButtonLabel state submissionId =
 submissionCommentRow : Submission.SubmissionCommentResponse -> Html Msg
 submissionCommentRow comment =
     Ui.subCard [ testId "submission-comment" ]
-        [ a [ href ("#/users/" ++ comment.authorUserID), Html.Attributes.class "text-xs font-medium text-farm-muted underline" ] [ text comment.authorUserID ]
+        [ commentAuthorLink comment.authorUserID comment.authorDisplayName
         , p [ Html.Attributes.class "text-sm text-farm-ink break-words" ] [ text comment.body ]
         ]
 
@@ -4662,10 +5009,12 @@ submitSuccessLabel : Submission.SubmissionCreatedResponse -> String
 submitSuccessLabel created =
     let
         base =
-            "Submission " ++ created.submission.id ++ " (" ++ submissionStateLabel created.submission.state ++ ")."
+            "Submission received (" ++ submissionStateLabel created.submission.state ++ ")."
     in
     if List.isEmpty created.submission.validationErrors then
-        base
+        -- The submission id stays out of the confirmation (it is shown as a
+        -- secondary line on the row in "My submissions" below).
+        base ++ " The requester will be notified."
 
     else
         base ++ " " ++ String.join "; " (List.map (\error -> error.path ++ ": " ++ error.message) created.submission.validationErrors)

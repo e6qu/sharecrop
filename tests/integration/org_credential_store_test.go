@@ -114,3 +114,33 @@ func newOrgCredentialID(t *testing.T) core.OrgCredentialID {
 	}
 	return created.Value
 }
+
+// TestOrgCredentialEveryScopeMintable proves the org_credential_scopes CHECK
+// constraint stays in sync with the Go scope enum (same drift guard as
+// TestAgentCredentialEveryScopeMintable, for organization credentials).
+func TestOrgCredentialEveryScopeMintable(t *testing.T) {
+	pool := newPool(t)
+	organizationID := createOrganization(t, pool, "orgcred-all-scopes")
+	store := db.NewOrgCredentialStore(pool)
+
+	secret := mustOrgSecret(t)
+	credential := orgcred.Credential{
+		ID:             newOrgCredentialID(t),
+		OrganizationID: organizationID,
+		Label:          mustLabel(t, "Every scope"),
+		Scopes:         agent.NewScopeSet(agent.AllScopes()),
+		State:          agent.StateActive,
+	}
+
+	if _, matched := store.CreateCredential(context.Background(), credential, secret.Hash()).(orgcred.CreateStoreAccepted); !matched {
+		t.Fatalf("create org credential with every scope rejected: the scope CHECK constraint has drifted from the Go enum")
+	}
+
+	verified, matched := store.VerifyCredential(context.Background(), secret.Hash()).(orgcred.VerifyStoreFound)
+	if !matched {
+		t.Fatalf("verify credential rejected")
+	}
+	if got, want := len(verified.Value.Scopes.Values()), len(agent.AllScopes()); got != want {
+		t.Fatalf("scope count after round trip = %d, want %d", got, want)
+	}
+}

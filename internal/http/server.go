@@ -32,7 +32,7 @@ type healthResponse struct {
 }
 
 type AuthService interface {
-	Register(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.RegisterResult
+	Register(context.Context, auth.EmailAddress, auth.PasswordSecret, auth.DisplayNameChoice) auth.RegisterResult
 	Login(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.LoginResult
 	LoginExternal(context.Context, string, string, auth.EmailAddress) auth.ExternalLoginResult
 	Refresh(context.Context, auth.RefreshTokenPlain) auth.RefreshResult
@@ -46,6 +46,7 @@ type AuthService interface {
 	ResetPassword(context.Context, auth.AccountTokenPlain, auth.PasswordSecret) auth.AccountActionResult
 	ChangePassword(context.Context, core.UserID, auth.PasswordSecret, auth.PasswordSecret) auth.AccountActionResult
 	UpdateProfile(context.Context, core.UserID, auth.EmailAddress) auth.AccountActionResult
+	UpdateDisplayName(context.Context, core.UserID, auth.DisplayName) auth.AccountActionResult
 	DeactivateAccount(context.Context, core.UserID) auth.AccountActionResult
 }
 
@@ -148,6 +149,7 @@ type LedgerService interface {
 	OrganizationBalance(context.Context, core.OrganizationID) ledger.BalanceResult
 	ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
 	ListOrganizationEntries(context.Context, core.OrganizationID, core.Page) ledger.ListEntriesResult
+	GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult
 }
 
 type AuditService interface {
@@ -194,6 +196,7 @@ type Server struct {
 	secureCookies         bool
 	ipRateLimiter         RateLimiter
 	subjectRateLimiter    RateLimiter
+	registrationLimiter   RateLimiter
 	platformAdmins        PlatformAdminService
 	accountTokens         accountTokenDelivery
 	auditService          AuditService
@@ -209,28 +212,36 @@ type Server struct {
 }
 
 type RuntimeState struct {
-	IPRateLimiter       RateLimiter
-	SubjectRateLimiter  RateLimiter
-	MCPSessions         *mcpHTTPSessionStore
-	AuditService        AuditService
-	NotificationService NotificationService
-	EventStore          event.Store
-	WebhookStore        webhook.Store
-	SavedQueueViews     SavedQueueViewService
-	PrivacyService      PrivacyService
-	PlatformAdmins      PlatformAdminService
-	ModerationTriage    ModerationTriageService
-	OIDCSessions        auth.OpenIDConnectSessionStore
+	IPRateLimiter      RateLimiter
+	SubjectRateLimiter RateLimiter
+	// RegistrationRateLimiter is the dedicated, tighter per-IP budget applied
+	// to POST /api/auth/register on top of the generic unauthenticated limiter.
+	RegistrationRateLimiter RateLimiter
+	MCPSessions             *mcpHTTPSessionStore
+	AuditService            AuditService
+	NotificationService     NotificationService
+	EventStore              event.Store
+	WebhookStore            webhook.Store
+	SavedQueueViews         SavedQueueViewService
+	PrivacyService          PrivacyService
+	PlatformAdmins          PlatformAdminService
+	ModerationTriage        ModerationTriageService
+	OIDCSessions            auth.OpenIDConnectSessionStore
 }
 
 // Rate-limit budgets (burst capacity + steady refill per second): bound abusive
 // volume on unauthenticated endpoints (by client IP) and MCP tool calls (by agent
-// subject) without impeding normal use.
+// subject) without impeding normal use. Registration gets its own much tighter
+// per-IP budget (a burst of 5, one new attempt every 12 minutes) because account
+// creation is the one unauthenticated endpoint where volume directly mints
+// resources (accounts and signup credit grants).
 const (
-	IPRateCapacity      = 20
-	IPRateRefillPerSec  = 5
-	MCPRateCapacity     = 60
-	MCPRateRefillPerSec = 10
+	IPRateCapacity               = 20
+	IPRateRefillPerSec           = 5
+	MCPRateCapacity              = 60
+	MCPRateRefillPerSec          = 10
+	RegistrationRateCapacity     = 5
+	RegistrationRateRefillPerSec = 1.0 / 720
 )
 
 // DefaultRuntimeState builds the same in-memory RuntimeState New() uses,
@@ -240,18 +251,19 @@ const (
 // defaults - cmd/sharecrop-wasm does exactly this for the browser demo.
 func DefaultRuntimeState(bootstrapAdmins map[string]bool) RuntimeState {
 	return RuntimeState{
-		IPRateLimiter:       newRateLimiter(IPRateCapacity, IPRateRefillPerSec),
-		SubjectRateLimiter:  newRateLimiter(MCPRateCapacity, MCPRateRefillPerSec),
-		MCPSessions:         newMCPHTTPSessionStore(),
-		AuditService:        newMemoryAuditService(),
-		NotificationService: notification.NewService(notification.NewMemoryStore()),
-		EventStore:          event.NewMemoryStore(),
-		WebhookStore:        webhook.NewMemoryStore(),
-		SavedQueueViews:     newMemorySavedQueueViewService(),
-		PrivacyService:      newMemoryPrivacyService(),
-		PlatformAdmins:      newMemoryPlatformAdminService(bootstrapAdmins),
-		ModerationTriage:    newMemoryModerationTriageService(),
-		OIDCSessions:        newMemoryOpenIDConnectSessionStore(),
+		IPRateLimiter:           newRateLimiter(IPRateCapacity, IPRateRefillPerSec),
+		SubjectRateLimiter:      newRateLimiter(MCPRateCapacity, MCPRateRefillPerSec),
+		RegistrationRateLimiter: newRateLimiter(RegistrationRateCapacity, RegistrationRateRefillPerSec),
+		MCPSessions:             newMCPHTTPSessionStore(),
+		AuditService:            newMemoryAuditService(),
+		NotificationService:     notification.NewService(notification.NewMemoryStore()),
+		EventStore:              event.NewMemoryStore(),
+		WebhookStore:            webhook.NewMemoryStore(),
+		SavedQueueViews:         newMemorySavedQueueViewService(),
+		PrivacyService:          newMemoryPrivacyService(),
+		PlatformAdmins:          newMemoryPlatformAdminService(bootstrapAdmins),
+		ModerationTriage:        newMemoryModerationTriageService(),
+		OIDCSessions:            newMemoryOpenIDConnectSessionStore(),
 	}
 }
 
@@ -261,8 +273,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 }
 
 func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService, runtime RuntimeState) http.Handler {
-	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.EventStore == nil || runtime.WebhookStore == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil || runtime.PlatformAdmins == nil || runtime.ModerationTriage == nil || runtime.OIDCSessions == nil {
-		panic("runtime state requires explicit rate limiters, MCP sessions, audit service, notification service, event store, webhook store, saved queue views, privacy service, platform admin service, moderation triage service, and OpenID Connect session storage")
+	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.RegistrationRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.EventStore == nil || runtime.WebhookStore == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil || runtime.PlatformAdmins == nil || runtime.ModerationTriage == nil || runtime.OIDCSessions == nil {
+		panic("runtime state requires explicit rate limiters (including the registration limiter), MCP sessions, audit service, notification service, event store, webhook store, saved queue views, privacy service, platform admin service, moderation triage service, and OpenID Connect session storage")
 	}
 	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, runtime)
 }
@@ -290,6 +302,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		secureCookies:         os.Getenv("SHARECROP_INSECURE_COOKIES") != "true",
 		ipRateLimiter:         runtime.IPRateLimiter,
 		subjectRateLimiter:    runtime.SubjectRateLimiter,
+		registrationLimiter:   runtime.RegistrationRateLimiter,
 		accountTokens:         newAccountTokenDeliveryFromEnv(),
 		auditService:          runtime.AuditService,
 		notificationService:   runtime.NotificationService,
@@ -323,7 +336,9 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/auth/password-reset/confirm", server.confirmPasswordReset)
 	mux.HandleFunc("POST /api/account/email-verification", server.requestEmailVerification)
 	mux.HandleFunc("PATCH /api/account/password", server.changePassword)
+	mux.HandleFunc("GET /api/account/profile", server.accountProfile)
 	mux.HandleFunc("PATCH /api/account/profile", server.updateAccountProfile)
+	mux.HandleFunc("PATCH /api/account/display-name", server.updateAccountDisplayName)
 	mux.HandleFunc("DELETE /api/account", server.deactivateAccount)
 	mux.HandleFunc("POST /api/privacy-requests", server.createPrivacyRequest)
 	mux.HandleFunc("GET /api/privacy-requests", server.listPrivacyRequests)
@@ -398,6 +413,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/admin/platform-admins", server.grantPlatformAdmin)
 	mux.HandleFunc("POST /api/admin/platform-admins/{user_id}/revoke", server.revokePlatformAdmin)
 	mux.HandleFunc("GET /api/admin/audit-events", server.listAuditEvents)
+	mux.HandleFunc("POST /api/admin/credits/grants", server.grantCredits)
 	mux.HandleFunc("GET /api/admin/moderation/reports", server.listAdminModerationReports)
 	mux.HandleFunc("POST /api/admin/moderation/reports/{report_id}/triage", server.triageModerationReport)
 	mux.HandleFunc("GET /api/admin/privacy-requests", server.listAdminPrivacyRequests)
@@ -572,15 +588,18 @@ func decodeAuthRequest(r *http.Request) authRequestResult {
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		return authRequestRejected{reason: "request body is invalid"}
 	}
+	return parseAuthCredentials(request.Email, request.Password)
+}
 
-	emailResult := auth.NewEmailAddress(request.Email)
+func parseAuthCredentials(rawEmail string, rawPassword string) authRequestResult {
+	emailResult := auth.NewEmailAddress(rawEmail)
 	emailAccepted, emailMatched := emailResult.(auth.EmailAddressAccepted)
 	if !emailMatched {
 		rejected := emailResult.(auth.EmailAddressRejected)
 		return authRequestRejected{reason: rejected.Reason.Description()}
 	}
 
-	passwordResult := auth.NewPasswordSecret(request.Password)
+	passwordResult := auth.NewPasswordSecret(rawPassword)
 	passwordAccepted, passwordMatched := passwordResult.(auth.PasswordSecretAccepted)
 	if !passwordMatched {
 		rejected := passwordResult.(auth.PasswordSecretRejected)
@@ -621,6 +640,38 @@ func parseAdminUserIDs(raw string) map[string]bool {
 
 func ParseAdminUserIDsForRuntime(raw string) map[string]bool {
 	return parseAdminUserIDs(raw)
+}
+
+// ParseRegistrationRateCapacityForRuntime maps the optional
+// SHARECROP_REGISTRATION_RATE_CAPACITY value onto the registration
+// limiter's burst capacity. Blank keeps the production default. A value
+// that does not parse to a positive integer also keeps the default: the
+// default is the tighter (fail-closed) setting, so a typo can only make the
+// limiter stricter than intended, never looser. The knob exists for test
+// harnesses that mint many accounts from one client address (the browser
+// E2E suite registers a fresh account per test from 127.0.0.1).
+func ParseRegistrationRateCapacityForRuntime(raw string) int {
+	capacity, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || capacity < 1 {
+		return RegistrationRateCapacity
+	}
+	return capacity
+}
+
+// ParseRegistrationRateRefillForRuntime maps the optional
+// SHARECROP_REGISTRATION_RATE_REFILL value (tokens per second) onto the
+// registration limiter's refill rate, with the same fail-closed rule as the
+// capacity knob: blank or unparsable keeps the production default. The knob
+// exists because registration buckets persist in the rate-limit store, so a
+// test harness that raises only the capacity still inherits a drained bucket
+// from an earlier suite run against the same database; raising the refill
+// rate makes the bucket recover immediately.
+func ParseRegistrationRateRefillForRuntime(raw string) float64 {
+	refill, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || refill <= 0 {
+		return RegistrationRateRefillPerSec
+	}
+	return refill
 }
 
 // requireWorkerSubject resolves a request to an acting user subject from either
@@ -1050,16 +1101,11 @@ func parsePageOrReject(w http.ResponseWriter, r *http.Request) (core.Page, bool)
 	return accepted.value, true
 }
 
-// probeListWindow sizes a list page fetched with page.Probe() (limit+1 rows).
-// It reports how many fetched rows belong on this page and the response's
-// next_offset: 0 when this is the last page, offset+limit otherwise. A real
-// further page never yields 0 because offset is non-negative and limit is
-// positive.
+// probeListWindow sizes a list page fetched with page.Probe() (limit+1 rows),
+// delegating to core.ProbeListWindow so REST and MCP share one definition of
+// the next_offset semantics.
 func probeListWindow(fetched int, page core.Page) (visible int, nextOffset int) {
-	if fetched > page.Limit() {
-		return page.Limit(), page.Offset() + page.Limit()
-	}
-	return fetched, 0
+	return core.ProbeListWindow(fetched, page)
 }
 
 type pageParseResult interface {

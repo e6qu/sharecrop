@@ -13,12 +13,15 @@ import (
 // SubmissionComment is one message on a private thread attached to a single
 // submission, so the submission's author and the owner of the submission's task
 // can exchange clarifying messages while the submission is under review.
+// SubmissionComment carries the author's display name, resolved by the
+// store, so comment threads can name the author without a per-row user fetch.
 type SubmissionComment struct {
-	ID           core.SubmissionCommentID
-	SubmissionID core.SubmissionID
-	AuthorID     core.UserID
-	Body         task.CommentBody
-	CreatedAt    time.Time
+	ID                core.SubmissionCommentID
+	SubmissionID      core.SubmissionID
+	AuthorID          core.UserID
+	AuthorDisplayName auth.DisplayName
+	Body              task.CommentBody
+	CreatedAt         time.Time
 }
 
 type CreateSubmissionCommentStoreResult interface {

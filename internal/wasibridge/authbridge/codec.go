@@ -24,6 +24,17 @@ import (
 
 func encodeEmail(email auth.EmailAddress) string { return email.String() }
 
+func encodeDisplayName(name auth.DisplayName) string { return name.String() }
+
+func decodeDisplayName(raw string) (auth.DisplayName, error) {
+	result := auth.NewDisplayName(raw)
+	accepted, matched := result.(auth.DisplayNameAccepted)
+	if !matched {
+		return auth.DisplayName{}, fmt.Errorf("display name is invalid")
+	}
+	return accepted.Value, nil
+}
+
 func decodeEmail(raw string) (auth.EmailAddress, error) {
 	accepted, matched := auth.NewEmailAddress(raw).(auth.EmailAddressAccepted)
 	if !matched {
@@ -140,6 +151,7 @@ func decodeSubject(wire subjectWire) (auth.Subject, error) {
 type credentialRecordWire struct {
 	UserID       string `json:"user_id"`
 	Email        string `json:"email"`
+	DisplayName  string `json:"display_name"`
 	PasswordHash string `json:"password_hash"`
 	Status       string `json:"status"`
 }
@@ -175,6 +187,7 @@ func encodeCredentialRecord(record auth.CredentialRecord) credentialRecordWire {
 	return credentialRecordWire{
 		UserID:       corewire.EncodeUserID(record.UserID),
 		Email:        encodeEmail(record.Email),
+		DisplayName:  encodeDisplayName(record.DisplayName),
 		PasswordHash: encodePasswordHash(record.PasswordHash),
 		Status:       record.Status,
 	}
@@ -193,17 +206,22 @@ func decodeCredentialRecord(wire credentialRecordWire) (auth.CredentialRecord, e
 	if err != nil {
 		return auth.CredentialRecord{}, err
 	}
-	return auth.CredentialRecord{UserID: userID, Email: email, PasswordHash: passwordHash, Status: wire.Status}, nil
+	displayName, err := decodeDisplayName(wire.DisplayName)
+	if err != nil {
+		return auth.CredentialRecord{}, err
+	}
+	return auth.CredentialRecord{UserID: userID, Email: email, DisplayName: displayName, PasswordHash: passwordHash, Status: wire.Status}, nil
 }
 
 type userDirectoryEntryWire struct {
-	ID     string `json:"id"`
-	Email  string `json:"email"`
-	Status string `json:"status"`
+	ID          string `json:"id"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+	Status      string `json:"status"`
 }
 
 func encodeUserDirectoryEntry(entry auth.UserDirectoryEntry) userDirectoryEntryWire {
-	return userDirectoryEntryWire{ID: corewire.EncodeUserID(entry.ID), Email: encodeEmail(entry.Email), Status: entry.Status}
+	return userDirectoryEntryWire{ID: corewire.EncodeUserID(entry.ID), Email: encodeEmail(entry.Email), DisplayName: encodeDisplayName(entry.DisplayName), Status: entry.Status}
 }
 
 func decodeUserDirectoryEntry(wire userDirectoryEntryWire) (auth.UserDirectoryEntry, error) {
@@ -215,7 +233,11 @@ func decodeUserDirectoryEntry(wire userDirectoryEntryWire) (auth.UserDirectoryEn
 	if err != nil {
 		return auth.UserDirectoryEntry{}, err
 	}
-	return auth.UserDirectoryEntry{ID: id, Email: email, Status: wire.Status}, nil
+	displayName, err := decodeDisplayName(wire.DisplayName)
+	if err != nil {
+		return auth.UserDirectoryEntry{}, err
+	}
+	return auth.UserDirectoryEntry{ID: id, Email: email, DisplayName: displayName, Status: wire.Status}, nil
 }
 
 type refreshTokenRecordWire struct {

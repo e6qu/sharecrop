@@ -121,6 +121,14 @@ make wasi-app-guest
 scenario_parity_binary="$(mktemp -u)"
 go build -o "$scenario_parity_binary" ./cmd/sharecrop
 
+# The scenario registers fresh actors from 127.0.0.1 after the integration and
+# http_e2e suites above already drained the shared per-IP registration bucket
+# in this same database (buckets persist in the rate-limit store, so raising
+# only the capacity would not recover a drained bucket). Raise both knobs for
+# the scenario servers, exactly like the Playwright web server config does.
+export SHARECROP_REGISTRATION_RATE_CAPACITY=100000
+export SHARECROP_REGISTRATION_RATE_REFILL=100000
+
 # 1) Native in-process mux. 2) WASI guest (the production default).
 run_scenario_parity native env SHARECROP_WASI_MODE=native "$scenario_parity_binary" serve
 run_scenario_parity wasi "$scenario_parity_binary" serve

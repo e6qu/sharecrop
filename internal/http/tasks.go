@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
@@ -57,10 +58,10 @@ func (server Server) createTask(w http.ResponseWriter, r *http.Request) {
 	writeTaskResponse(w, http.StatusCreated, response)
 }
 func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserOrOrgSubject(r, agent.ScopeTasksRead)
-	actor, actorMatched := actorResult.(actorAccepted)
+	actorResult := server.resolveTaskListActor(r)
+	actor, actorMatched := actorResult.(taskListActorAccepted)
 	if !actorMatched {
-		writeActorRejection(w, actorResult)
+		writeActorRejection(w, actorResult.(sharedActorRejection).value)
 		return
 	}
 
@@ -70,6 +71,16 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		rejected := scopeResult.(taskListScopeRejected)
 		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
+	}
+
+	// A personal agent credential may read the public marketplace only:
+	// the personal scopes it holds do not extend to the owner's private,
+	// team, or organization listings over this endpoint.
+	if actor.publicScopeOnly {
+		if _, isPublic := scopeAccepted.value.(task.PublicListScope); !isPublic {
+			writeError(w, http.StatusForbidden, core.ErrorCodePermissionDenied, "an agent credential may list only scope=public tasks")
+			return
+		}
 	}
 
 	filtersResult := parseTaskListFilters(r)
@@ -92,15 +103,60 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, listed.Reason)
 	case task.TasksListed:
 		visible, nextOffset := probeListWindow(len(listed.Values), pageAccepted.value)
-		response := tasksToResponse(listed.Values[:visible])
+		response := tasksToResponse(listed.Values[:visible], actor.actor)
 		response.NextOffset = nextOffset
 		writeTasksResponse(w, http.StatusOK, response)
 	}
 }
-func tasksToResponse(values []task.ListItem) tasksResponse {
+
+// taskListActorResult resolves who is listing tasks: a user session or an
+// org credential (full parity with the other task routes), or a personal
+// agent credential holding tasks_read, which is limited to the public scope.
+type taskListActorResult interface {
+	taskListActorResult()
+}
+
+type taskListActorAccepted struct {
+	actor auth.Subject
+	// publicScopeOnly marks a personal-agent-credential caller, which may
+	// read scope=public only.
+	publicScopeOnly bool
+}
+
+// sharedActorRejection wraps the shared user/org rejection so listTasks can reuse
+// writeActorRejection's 401/403 split.
+type sharedActorRejection struct {
+	value actorResult
+}
+
+func (taskListActorAccepted) taskListActorResult() {}
+
+func (sharedActorRejection) taskListActorResult() {}
+
+func (server Server) resolveTaskListActor(r *http.Request) taskListActorResult {
+	sharedResult := server.requireUserOrOrgSubject(r, agent.ScopeTasksRead)
+	if accepted, matched := sharedResult.(actorAccepted); matched {
+		return taskListActorAccepted{actor: accepted.actor}
+	}
+	rawToken, hasBearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !hasBearer || !agent.HasSecretPrefix(rawToken) {
+		return sharedActorRejection{value: sharedResult}
+	}
+	verifyResult := server.verifyAgent(r)
+	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
+	if !verifiedMatched {
+		return sharedActorRejection{value: actorRejected{reason: verifyResult.(agent.VerifyRejected).Reason.Description()}}
+	}
+	if _, granted := verified.Credential.Scopes.Allows(agent.ScopeTasksRead).(agent.ScopeGranted); !granted {
+		return sharedActorRejection{value: actorScopeDenied{reason: "the agent credential is missing the " + agent.ScopeTasksRead.String() + " scope"}}
+	}
+	return taskListActorAccepted{actor: verified.Subject, publicScopeOnly: true}
+}
+
+func tasksToResponse(values []task.ListItem, viewer auth.Subject) tasksResponse {
 	response := tasksResponse{Tasks: make([]taskListItemResponse, 0, len(values))}
 	for valueIndex := range values {
-		response.Tasks = append(response.Tasks, taskListItemToResponse(values[valueIndex]))
+		response.Tasks = append(response.Tasks, taskListItemToResponse(values[valueIndex], viewer))
 	}
 	return response
 }
@@ -728,9 +784,14 @@ func parseReservationPathValue(r *http.Request) reservationIDResult {
 // viewer-personalization UserID, which only affects include_reserved
 // filtering, not authorization — requireListPermission checks the org id
 // match directly for an OrgSubject). scope=public/user are inherently
-// individual-viewer concepts and require a UserSubject.
+// individual-viewer concepts and require a UserSubject. An absent scope
+// defaults to public, so a bare GET /api/tasks lists the marketplace; an
+// OrgSubject still has to name scope=organization explicitly.
 func parseTaskListScope(r *http.Request, actor auth.Subject) taskListScopeResult {
 	scope := r.URL.Query().Get("scope")
+	if scope == "" {
+		scope = "public"
+	}
 	includeReserved := r.URL.Query().Get("include_reserved") == "true"
 	userActor, isUser := actor.(auth.UserSubject)
 	switch scope {
@@ -825,14 +886,31 @@ func parseTaskListFilters(r *http.Request) taskListFiltersResult {
 		filters.Sort = sortAccepted.Value
 	}
 
+	if rawCreatedAfter := query.Get("created_after"); rawCreatedAfter != "" {
+		instant, err := time.Parse(time.RFC3339, rawCreatedAfter)
+		if err != nil {
+			return taskListFiltersRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "created_after query parameter must be an RFC3339 timestamp")}
+		}
+		filters.Created = task.CreatedAfter{Instant: instant.UTC()}
+	}
+
 	return taskListFiltersAccepted{value: filters}
 }
-func taskListItemToResponse(item task.ListItem) taskListItemResponse {
+
+// taskListItemToResponse maps one list item for the given viewer. The
+// pending-review count is exposed only on tasks the viewer created; every
+// other row reports 0, so a listing never leaks another requester's review
+// queue.
+func taskListItemToResponse(item task.ListItem, viewer auth.Subject) taskListItemResponse {
 	value := item.Task
 	owner := taskOwnerResponseParts(value.Owner)
 	visibility := taskVisibilityResponseParts(value.Visibility)
 	reward := taskRewardResponseParts(value.Reward)
 	active := activeAssigneeResponseParts(item.ActiveAssignee)
+	pendingReviewCount := int64(0)
+	if viewerUser, isUser := viewer.(auth.UserSubject); isUser && value.CreatedBy == viewerUser.ID {
+		pendingReviewCount = item.PendingReviewCount
+	}
 	return taskListItemResponse{
 		ID:                     value.ID.String(),
 		OwnerKind:              owner.kind,
@@ -851,6 +929,8 @@ func taskListItemToResponse(item task.ListItem) taskListItemResponse {
 		CreatedBy:              value.CreatedBy.String(),
 		ActiveAssigneeKind:     active.kind,
 		ActiveAssigneeID:       active.id,
+		CreatorDisplayName:     item.CreatorDisplayName.String(),
+		PendingReviewCount:     pendingReviewCount,
 	}
 }
 func activeAssigneeResponseParts(active task.ActiveAssignee) activeAssigneeParts {
@@ -1043,6 +1123,7 @@ func reservationToResponse(value task.Reservation, issuedWorkerCredential string
 		State:                  value.State.String(),
 		RequestedBy:            value.RequestedBy.String(),
 		IssuedWorkerCredential: issuedWorkerCredential,
+		HolderDisplayName:      value.HolderDisplayName.String(),
 	}
 }
 func reservationAssigneeResponseParts(assignee task.Assignee) responseParts {

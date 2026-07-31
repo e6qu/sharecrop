@@ -11,9 +11,12 @@ import (
 // ---- taskResultWire: shared by create/find/change-state (single Task) ----
 
 type taskResultWire struct {
-	Variant string                  `json:"variant"`
-	Task    *taskWire               `json:"task,omitempty"`
-	Error   *domainwire.DomainError `json:"error,omitempty"`
+	Variant string    `json:"variant"`
+	Task    *taskWire `json:"task,omitempty"`
+	// CreatorDisplayName carries the detail-read enrichment of
+	// task.FindTaskStoreAccepted; the other task results leave it empty.
+	CreatorDisplayName string                  `json:"creator_display_name,omitempty"`
+	Error              *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func taskSuccessWire(variant string, value task.Task) taskResultWire {
@@ -53,7 +56,9 @@ func decodeCreateTaskResult(wire taskResultWire) (task.CreateTaskStoreResult, er
 func encodeFindTaskResult(result task.FindTaskStoreResult) taskResultWire {
 	switch typed := result.(type) {
 	case task.FindTaskStoreAccepted:
-		return taskSuccessWire("found", typed.Value)
+		wire := taskSuccessWire("found", typed.Value)
+		wire.CreatorDisplayName = typed.CreatorDisplayName.String()
+		return wire
 	case task.FindTaskStoreRejected:
 		return taskResultWire{Variant: "rejected", Error: encodeReason(typed.Reason)}
 	default:
@@ -69,7 +74,11 @@ func decodeFindTaskResult(wire taskResultWire) (task.FindTaskStoreResult, error)
 	if err != nil {
 		return nil, err
 	}
-	return task.FindTaskStoreAccepted{Value: value}, nil
+	creatorName, err := decodeTaskDisplayName(wire.CreatorDisplayName)
+	if err != nil {
+		return nil, err
+	}
+	return task.FindTaskStoreAccepted{Value: value, CreatorDisplayName: creatorName}, nil
 }
 
 func encodeChangeTaskStateResult(result task.ChangeTaskStateStoreResult) taskResultWire {

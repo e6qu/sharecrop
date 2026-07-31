@@ -34,6 +34,18 @@ func (p Page) Probe() Page {
 	return Page{limit: p.limit + 1, offset: p.offset}
 }
 
+// ProbeListWindow sizes a list page fetched with Page.Probe() (limit+1 rows).
+// It reports how many fetched rows belong on this page and the response's
+// next_offset: 0 when this is the last page, offset+limit otherwise. A real
+// further page never yields 0 because offset is non-negative and limit is
+// positive.
+func ProbeListWindow(fetched int, page Page) (visible int, nextOffset int) {
+	if fetched > page.Limit() {
+		return page.Limit(), page.Offset() + page.Limit()
+	}
+	return fetched, 0
+}
+
 type PageResult interface {
 	pageResult()
 }

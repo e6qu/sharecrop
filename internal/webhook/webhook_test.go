@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
 )
@@ -135,6 +136,7 @@ func TestRequiredScopeForKindIsTotal(t *testing.T) {
 		"submission_rejected":          agent.ScopeSubmissionsRead,
 		"submission_commented":         agent.ScopeSubmissionsRead,
 		"payout_received":              agent.ScopeLedgerRead,
+		"credit_granted":               agent.ScopeLedgerRead,
 		"tip_received":                 agent.ScopeLedgerRead,
 		"collectible_awarded":          agent.ScopeCollectiblesRead,
 	}
@@ -188,12 +190,19 @@ func TestDeliveryBodyWireShape(t *testing.T) {
 		},
 		Cursor: event.CursorFromSequence(41),
 	}
+	stored = event.WithoutEnrichment(stored)
+	actorName, actorNameOK := auth.NewDisplayName("ada").(auth.DisplayNameAccepted)
+	if !actorNameOK {
+		t.Fatalf("display name fixture rejected")
+	}
+	stored.ActorName = event.ActorNamed{DisplayName: actorName.Value}
+	stored.TaskTitle = event.TaskTitled{Title: "Label receipts"}
 
 	body, err := EncodeDeliveryBody(stored, "subscription-1")
 	if err != nil {
 		t.Fatalf("encode delivery body: %v", err)
 	}
-	want := `{"event":{"id":"0d9c1c1e-6f5a-4f4e-9e83-111111111111","kind":"task_opened","actor_kind":"user","actor_user_id":"0d9c1c1e-6f5a-4f4e-9e83-333333333333","occurred_at":"2026-01-02T03:04:05Z","cursor":"41","task_id":"0d9c1c1e-6f5a-4f4e-9e83-222222222222","submission_id":"","reservation_id":"","series_id":"","organization_id":"","collectible_id":"","metadata_json":"{\"task_id\":\"0d9c1c1e-6f5a-4f4e-9e83-222222222222\"}"},"subscription_id":"subscription-1"}`
+	want := `{"event":{"id":"0d9c1c1e-6f5a-4f4e-9e83-111111111111","kind":"task_opened","actor_kind":"user","actor_user_id":"0d9c1c1e-6f5a-4f4e-9e83-333333333333","actor_display_name":"ada","occurred_at":"2026-01-02T03:04:05Z","cursor":"41","task_id":"0d9c1c1e-6f5a-4f4e-9e83-222222222222","task_title":"Label receipts","submission_id":"","reservation_id":"","series_id":"","organization_id":"","collectible_id":"","metadata_json":"{\"task_id\":\"0d9c1c1e-6f5a-4f4e-9e83-222222222222\"}"},"subscription_id":"subscription-1"}`
 	if string(body) != want {
 		t.Fatalf("delivery body = %s, want %s", string(body), want)
 	}
@@ -205,7 +214,7 @@ func TestServiceCreateReturnsSecretOnlyOnce(t *testing.T) {
 	endpoint := NewEndpointURL("https://receiver.example.com/hooks").(EndpointURLAccepted).Value
 	kinds := NewKindFilter([]event.Kind{event.KindTaskOpened}).(KindFilterAccepted).Value
 
-	created, matched := service.Create(context.Background(), owner, endpoint, kinds).(SubscriptionCreated)
+	created, matched := service.Create(context.Background(), owner, endpoint, kinds, RecipientAudience{}).(SubscriptionCreated)
 	if !matched {
 		t.Fatalf("create rejected")
 	}
@@ -240,5 +249,52 @@ func TestServiceCreateReturnsSecretOnlyOnce(t *testing.T) {
 	}
 	if _, again := service.Revoke(context.Background(), owner, created.Value.ID).(RevokeRejected); !again {
 		t.Fatalf("second revoke was accepted")
+	}
+}
+
+func TestValidateAudienceKinds(t *testing.T) {
+	taskOpened := NewKindFilter([]event.Kind{event.KindTaskOpened}).(KindFilterAccepted).Value
+	mixed := NewKindFilter([]event.Kind{event.KindTaskOpened, event.KindTaskFunded}).(KindFilterAccepted).Value
+
+	if _, ok := ValidateAudienceKinds(NewMarketplaceAudience(), taskOpened).(AudienceKindsAccepted); !ok {
+		t.Fatalf("marketplace + task_opened was rejected")
+	}
+	if _, rejected := ValidateAudienceKinds(NewMarketplaceAudience(), mixed).(AudienceKindsRejected); !rejected {
+		t.Fatalf("marketplace + non-task_opened kinds was accepted")
+	}
+	if _, ok := ValidateAudienceKinds(RecipientAudience{}, mixed).(AudienceKindsAccepted); !ok {
+		t.Fatalf("recipient audience must accept every kind filter")
+	}
+}
+
+func TestNewMinimumCreditRewardRequiresPositive(t *testing.T) {
+	for _, amount := range []int64{0, -5} {
+		if _, rejected := NewMinimumCreditReward(amount).(MinimumCreditRewardRejected); !rejected {
+			t.Fatalf("NewMinimumCreditReward(%d) was accepted", amount)
+		}
+	}
+	accepted, matched := NewMinimumCreditReward(25).(MinimumCreditRewardAccepted)
+	if !matched || accepted.Value.Amount() != 25 {
+		t.Fatalf("NewMinimumCreditReward(25) did not round-trip")
+	}
+}
+
+func TestServiceCreateRejectsMarketplaceWithNonTaskOpenedKinds(t *testing.T) {
+	service := NewService(NewMemoryStore())
+	owner := OwnerUser{ID: core.NewUserID().(core.UserIDCreated).Value}
+	endpoint := NewEndpointURL("https://receiver.invalid/hooks").(EndpointURLAccepted).Value
+	mixed := NewKindFilter([]event.Kind{event.KindTaskFunded}).(KindFilterAccepted).Value
+
+	if _, rejected := service.Create(context.Background(), owner, endpoint, mixed, NewMarketplaceAudience()).(CreateRejected); !rejected {
+		t.Fatalf("marketplace subscription with task_funded kind was created")
+	}
+
+	taskOpened := NewKindFilter([]event.Kind{event.KindTaskOpened}).(KindFilterAccepted).Value
+	created, matched := service.Create(context.Background(), owner, endpoint, taskOpened, NewMarketplaceAudience()).(SubscriptionCreated)
+	if !matched {
+		t.Fatalf("marketplace subscription with task_opened was rejected")
+	}
+	if _, marketplace := created.Value.Audience.(MarketplaceAudience); !marketplace {
+		t.Fatalf("created subscription audience = %T, want MarketplaceAudience", created.Value.Audience)
 	}
 }

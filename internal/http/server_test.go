@@ -609,7 +609,7 @@ func testAuthService() testAuth {
 	return testAuth{}
 }
 
-func (testAuth) Register(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.RegisterResult {
+func (testAuth) Register(context.Context, auth.EmailAddress, auth.PasswordSecret, auth.DisplayNameChoice) auth.RegisterResult {
 	idResult := core.NewUserID()
 	idCreated := idResult.(core.UserIDCreated)
 	return auth.RegisterAccepted{
@@ -687,6 +687,10 @@ func (testAuth) ChangePassword(context.Context, core.UserID, auth.PasswordSecret
 }
 
 func (testAuth) UpdateProfile(context.Context, core.UserID, auth.EmailAddress) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testAuth) UpdateDisplayName(context.Context, core.UserID, auth.DisplayName) auth.AccountActionResult {
 	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -1043,6 +1047,10 @@ func (testLedgerService) ListEntries(context.Context, core.UserID, core.Page) le
 
 func (testLedgerService) ListOrganizationEntries(context.Context, core.OrganizationID, core.Page) ledger.ListEntriesResult {
 	return ledger.EntriesListed{Values: []ledger.LedgerEntry{}}
+}
+
+func (testLedgerService) GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult {
+	return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
 type testAgentService struct{}

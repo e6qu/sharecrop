@@ -12,6 +12,13 @@ import (
 
 const secretPrefix = "scrop_agent_"
 
+// HasSecretPrefix reports whether a bearer token looks like a personal agent
+// credential secret, so callers can route it to agent verification without
+// mistaking a user access token or an org credential for one.
+func HasSecretPrefix(raw string) bool {
+	return strings.HasPrefix(raw, secretPrefix)
+}
+
 // Scope is a typed capability granted to an agent credential.
 type Scope struct {
 	value string
@@ -55,6 +62,14 @@ var allScopes = []Scope{
 	ScopePlatformAdmin,
 	ScopeCredentialsManage,
 	ScopeWebhooksRead, ScopeWebhooksManage,
+}
+
+// AllScopes returns every legal scope. Totality tests (the store CHECK
+// constraint drift test, the entitlement map test) iterate this closed set.
+func AllScopes() []Scope {
+	values := make([]Scope, len(allScopes))
+	copy(values, allScopes)
+	return values
 }
 
 type ScopeResult interface {

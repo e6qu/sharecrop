@@ -20,6 +20,7 @@ func (SystemClock) Now() time.Time {
 type CredentialRecord struct {
 	UserID       core.UserID
 	Email        EmailAddress
+	DisplayName  DisplayName
 	PasswordHash PasswordHash
 	Status       string
 }
@@ -50,12 +51,13 @@ func (newRefreshFamily) refreshFamilySelection() {}
 func (continueRefreshFamily) refreshFamilySelection() {}
 
 type Store interface {
-	CreateUserCredential(context.Context, core.UserID, EmailAddress, PasswordHash) StoreUserResult
+	CreateUserCredential(context.Context, core.UserID, EmailAddress, DisplayName, PasswordHash) StoreUserResult
 	FindOrCreateExternalIdentity(context.Context, ExternalIdentity, EmailAddress) ExternalIdentityResult
 	FindCredentialByEmail(context.Context, EmailAddress) CredentialLookupResult
 	FindCredentialByUserID(context.Context, core.UserID) CredentialLookupResult
 	ListUsers(context.Context, string, core.Page) UserDirectoryResult
 	UpdateUserEmail(context.Context, core.UserID, EmailAddress) AccountMutationResult
+	UpdateDisplayName(context.Context, core.UserID, DisplayName) AccountMutationResult
 	UpdatePassword(context.Context, core.UserID, PasswordHash) AccountMutationResult
 	DeactivateUser(context.Context, core.UserID) AccountMutationResult
 	CreateGuestSubject(context.Context, core.GuestID) StoreGuestResult
@@ -176,6 +178,7 @@ type RegisterResult interface {
 
 type RegisterAccepted struct {
 	Subject      UserSubject
+	DisplayName  DisplayName
 	AccessToken  AccessToken
 	RefreshToken RefreshTokenPlain
 }
@@ -188,7 +191,14 @@ func (RegisterAccepted) registerResult() {}
 
 func (RegisterRejected) registerResult() {}
 
-func (service Service) Register(ctx context.Context, email EmailAddress, password PasswordSecret) RegisterResult {
+// Register creates a user account. The display name is either provided
+// explicitly or derived from the email's local part.
+func (service Service) Register(ctx context.Context, email EmailAddress, password PasswordSecret, name DisplayNameChoice) RegisterResult {
+	displayName := DeriveDisplayNameFromEmail(email)
+	if provided, matched := name.(ProvidedDisplayName); matched {
+		displayName = provided.Value
+	}
+
 	userResult := core.NewUserID()
 	userCreated, userMatched := userResult.(core.UserIDCreated)
 	if !userMatched {
@@ -203,7 +213,7 @@ func (service Service) Register(ctx context.Context, email EmailAddress, passwor
 		return RegisterRejected{Reason: rejected.Reason}
 	}
 
-	storeResult := service.store.CreateUserCredential(ctx, userCreated.Value, email, hashCreated.Value)
+	storeResult := service.store.CreateUserCredential(ctx, userCreated.Value, email, displayName, hashCreated.Value)
 	if rejected, matched := storeResult.(StoreUserRejected); matched {
 		return RegisterRejected{Reason: rejected.Reason}
 	}
@@ -217,6 +227,7 @@ func (service Service) Register(ctx context.Context, email EmailAddress, passwor
 
 	return RegisterAccepted{
 		Subject:      sessionAccepted.Subject,
+		DisplayName:  displayName,
 		AccessToken:  sessionAccepted.AccessToken,
 		RefreshToken: sessionAccepted.RefreshToken,
 	}
@@ -228,6 +239,7 @@ type LoginResult interface {
 
 type LoginAccepted struct {
 	Subject      UserSubject
+	DisplayName  DisplayName
 	AccessToken  AccessToken
 	RefreshToken RefreshTokenPlain
 }
@@ -264,6 +276,7 @@ func (service Service) Login(ctx context.Context, email EmailAddress, password P
 
 	return LoginAccepted{
 		Subject:      sessionAccepted.Subject,
+		DisplayName:  found.Record.DisplayName,
 		AccessToken:  sessionAccepted.AccessToken,
 		RefreshToken: sessionAccepted.RefreshToken,
 	}
@@ -393,6 +406,16 @@ func (service Service) ChangePassword(ctx context.Context, userID core.UserID, c
 
 func (service Service) UpdateProfile(ctx context.Context, userID core.UserID, email EmailAddress) AccountActionResult {
 	update := service.store.UpdateUserEmail(ctx, userID, email)
+	if _, accepted := update.(AccountMutationAccepted); !accepted {
+		return AccountActionRejected{Reason: update.(AccountMutationRejected).Reason}
+	}
+	return AccountActionAccepted{}
+}
+
+// UpdateDisplayName replaces the account's display name with an
+// already-validated value.
+func (service Service) UpdateDisplayName(ctx context.Context, userID core.UserID, name DisplayName) AccountActionResult {
+	update := service.store.UpdateDisplayName(ctx, userID, name)
 	if _, accepted := update.(AccountMutationAccepted); !accepted {
 		return AccountActionRejected{Reason: update.(AccountMutationRejected).Reason}
 	}
