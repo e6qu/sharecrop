@@ -72,6 +72,39 @@ Test gaps:
 - `tests/playwright/demo.spec.ts` and `tests/playwright/mobile.spec.ts` passed
   against the Go/WASM default demo on non-default port `29181`.
 
+Review-upgrade notes (event stream, webhooks, runner, retheme):
+
+- Domain-event emission is post-commit best-effort: a crash between a
+  committed mutation and its `Emit` loses that event/notification (the same
+  exposure the old handler-level notify had). A strict in-transaction outbox
+  is the recorded follow-up in [DO_NEXT.md](./DO_NEXT.md).
+- Idempotent fund/accept/request-changes replays re-emit their events because
+  the store results do not distinguish replay from first execution.
+- `FundTaskFromOrganization` emits with the system actor and no recipients
+  (no user identity reaches the ledger service), and `RefundTask`'s
+  `task_cancelled` event reaches the requester only (the released holder is
+  not exposed by the refund result).
+- Webhook secrets are stored as written; the dispatcher must compute HMACs.
+  At-rest encryption is open. The dial-time SSRF guard rejects non-public
+  addresses at delivery; the URL constructor only checks form.
+- The guest-side rate-limit bridge fails open on transport errors; the host
+  Postgres store now fails closed on storage errors.
+- Comment and reservation listings became newest-first (previously
+  oldest-first) when pagination landed; series detail embeds at most 100
+  tasks and the newest 20 comments, with the paginated endpoints serving the
+  rest.
+- The OpenAPI generator still emits no per-status responses, no error schema
+  (`code` does not appear there), and no parameter objects — a pre-existing
+  generator scope limit; the route/DTO inventory itself is current.
+- The Elm activity feed re-reads from the stream start on each Overview entry
+  (the cursor only advances within the visit) and caps at 50 rows; feed and
+  inbox timestamps render raw RFC3339. The decoded `unauthenticated` error
+  code is not yet wired to a forced logout (no per-request 401 handling
+  existed before either).
+- `site/demo/sharecrop-wasm-backend.wasm` and `seed-snapshot.b64` are
+  gitignored build artifacts; a stale local copy breaks the demo silently
+  until `deno task wasm:demo:build` is rerun (CI rebuilds them).
+
 Known risks:
 
 - Credit funding uses a two-section wallet, not an escrow state machine.

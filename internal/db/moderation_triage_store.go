@@ -34,23 +34,53 @@ func (store ModerationTriageStore) RecordOpen(ctx context.Context, event audit.E
 	return httpserver.ModerationTriageSaved{Value: httpserver.ModerationTriageRecord{ReportID: event.ID, State: "open", CreatedAt: event.CreatedAt, UpdatedAt: event.CreatedAt}}
 }
 
-func (store ModerationTriageStore) List(ctx context.Context, ids []core.AuditEventID) httpserver.ModerationTriageListResult {
-	values := make([]httpserver.ModerationTriageRecord, 0, len(ids))
-	for _, id := range ids {
+// List pages moderation reports newest-first with the triage state filter
+// applied in SQL, before pagination: every moderation_report_created audit
+// event joins its triage row, and a report without one counts as open. A page
+// is therefore full whenever enough matching reports exist.
+func (store ModerationTriageStore) List(ctx context.Context, filter httpserver.ModerationTriageStateFilter, page core.Page) httpserver.ModerationTriageListResult {
+	query := `
+		select audit_events.id::text,
+			coalesce(moderation_report_triage.state, 'open'),
+			coalesce(moderation_report_triage.resolution_note, ''),
+			coalesce(moderation_report_triage.updated_by_user_id::text, ''),
+			coalesce(moderation_report_triage.created_at, audit_events.created_at),
+			coalesce(moderation_report_triage.updated_at, audit_events.created_at)
+		from audit_events
+		left join moderation_report_triage
+			on moderation_report_triage.report_audit_event_id = audit_events.id
+		where audit_events.action = @action
+	`
+	arguments := NamedArgs{
+		"action": audit.ActionModerationReportCreated.String(),
+		"limit":  page.Limit(),
+		"offset": page.Offset(),
+	}
+	switch typed := filter.(type) {
+	case httpserver.AnyTriageState:
+	case httpserver.TriageStateEquals:
+		arguments["state"] = typed.State.String()
+		query += " and coalesce(moderation_report_triage.state, 'open') = @state"
+	default:
+		return httpserver.ModerationTriageListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "moderation triage state filter is invalid")}
+	}
+	query += " order by audit_events.created_at desc, audit_events.id desc limit @limit offset @offset"
+
+	rows, err := store.db.Query(ctx, query, arguments)
+	if err != nil {
+		return httpserver.ModerationTriageListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list moderation report triage failed")}
+	}
+	defer rows.Close()
+
+	values := make([]httpserver.ModerationTriageRecord, 0)
+	for rows.Next() {
 		var rawID string
 		var state string
 		var note string
 		var updatedBy string
 		var createdAt time.Time
 		var updatedAt time.Time
-		if err := store.db.QueryRow(ctx, `
-			select report_audit_event_id::text, state, resolution_note, coalesce(updated_by_user_id::text, ''), created_at, updated_at
-			from moderation_report_triage
-			where report_audit_event_id = $1
-		`, id.String()).Scan(&rawID, &state, &note, &updatedBy, &createdAt, &updatedAt); err != nil {
-			if err == ErrNoRows {
-				return httpserver.ModerationTriageListRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "moderation report triage state was not found")}
-			}
+		if err := rows.Scan(&rawID, &state, &note, &updatedBy, &createdAt, &updatedAt); err != nil {
 			return httpserver.ModerationTriageListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan moderation report triage failed")}
 		}
 		scanned := parseModerationTriage(rawID, state, note, updatedBy, createdAt, updatedAt)
@@ -60,14 +90,13 @@ func (store ModerationTriageStore) List(ctx context.Context, ids []core.AuditEve
 		}
 		values = append(values, accepted.value)
 	}
+	if err := rows.Err(); err != nil {
+		return httpserver.ModerationTriageListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read moderation report triage failed")}
+	}
 	return httpserver.ModerationTriageListed{Values: values}
 }
 
-func (store ModerationTriageStore) Update(ctx context.Context, actor core.UserID, reportID core.AuditEventID, state string, note string) httpserver.ModerationTriageMutationResult {
-	state = strings.TrimSpace(state)
-	if state != "open" && state != "resolved" && state != "dismissed" {
-		return httpserver.ModerationTriageMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "moderation triage state is invalid")}
-	}
+func (store ModerationTriageStore) Update(ctx context.Context, actor core.UserID, reportID core.AuditEventID, state httpserver.ModerationTriageState, note string) httpserver.ModerationTriageMutationResult {
 	var rawID string
 	var storedState string
 	var storedNote string
@@ -79,7 +108,7 @@ func (store ModerationTriageStore) Update(ctx context.Context, actor core.UserID
 		set state = $2, resolution_note = $3, updated_by_user_id = $4, updated_at = now()
 		where report_audit_event_id = $1
 		returning report_audit_event_id::text, state, resolution_note, coalesce(updated_by_user_id::text, ''), created_at, updated_at
-	`, reportID.String(), state, strings.TrimSpace(note), actor.String()).Scan(&rawID, &storedState, &storedNote, &updatedBy, &createdAt, &updatedAt); err != nil {
+	`, reportID.String(), state.String(), strings.TrimSpace(note), actor.String()).Scan(&rawID, &storedState, &storedNote, &updatedBy, &createdAt, &updatedAt); err != nil {
 		if err == ErrNoRows {
 			return httpserver.ModerationTriageMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "moderation report was not found")}
 		}

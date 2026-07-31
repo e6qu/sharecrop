@@ -18,26 +18,46 @@ import (
 // RecordOpen takes a full audit.Event, serialized by the shared
 // internal/wasibridge/auditwire package (also used by the audit store bridge).
 
-// ---- []core.AuditEventID ----
+// ---- httpserver.ModerationTriageState ----
 
-func encodeAuditEventIDs(ids []core.AuditEventID) []string {
-	encoded := make([]string, 0, len(ids))
-	for index := range ids {
-		encoded = append(encoded, corewire.EncodeAuditEventID(ids[index]))
+func encodeTriageState(state httpserver.ModerationTriageState) string { return state.String() }
+
+func decodeTriageState(raw string) (httpserver.ModerationTriageState, error) {
+	accepted, matched := httpserver.ParseModerationTriageState(raw).(httpserver.ModerationTriageStateAccepted)
+	if !matched {
+		return httpserver.ModerationTriageState{}, fmt.Errorf("invalid moderation triage state %q", raw)
 	}
-	return encoded
+	return accepted.Value, nil
 }
 
-func decodeAuditEventIDs(raw []string) ([]core.AuditEventID, error) {
-	ids := make([]core.AuditEventID, 0, len(raw))
-	for index := range raw {
-		id, err := corewire.DecodeAuditEventID(raw[index])
+// ---- httpserver.ModerationTriageStateFilter union ----
+
+type triageStateFilterWire struct {
+	Kind  string `json:"kind"`
+	State string `json:"state,omitempty"`
+}
+
+func encodeTriageStateFilter(filter httpserver.ModerationTriageStateFilter) triageStateFilterWire {
+	equals, matched := filter.(httpserver.TriageStateEquals)
+	if !matched {
+		return triageStateFilterWire{Kind: "unfiltered"}
+	}
+	return triageStateFilterWire{Kind: "equals", State: encodeTriageState(equals.State)}
+}
+
+func decodeTriageStateFilter(wire triageStateFilterWire) (httpserver.ModerationTriageStateFilter, error) {
+	switch wire.Kind {
+	case "unfiltered":
+		return httpserver.AnyTriageState{}, nil
+	case "equals":
+		state, err := decodeTriageState(wire.State)
 		if err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		return httpserver.TriageStateEquals{State: state}, nil
+	default:
+		return nil, fmt.Errorf("unknown moderation triage state filter kind %q", wire.Kind)
 	}
-	return ids, nil
 }
 
 // ---- httpserver.ModerationTriageRecord ----

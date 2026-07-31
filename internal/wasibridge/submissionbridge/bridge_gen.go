@@ -56,7 +56,8 @@ type createSubmissionCommentArgs struct {
 }
 
 type listSubmissionCommentsArgs struct {
-	SubmissionID string `json:"submissionid"`
+	SubmissionID string            `json:"submissionid"`
+	Page         corewire.PageWire `json:"page"`
 }
 
 // Dispatch services one store call against store: decode the arguments, call the
@@ -165,7 +166,11 @@ func Dispatch(ctx context.Context, store submission.Store, method string, args [
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeListCommentsResult(store.ListSubmissionComments(ctx, argSubmissionID)))
+		argPage, err := corewire.DecodePage(decoded.Page)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeListCommentsResult(store.ListSubmissionComments(ctx, argSubmissionID, argPage)))
 	default:
 		return nil, fmt.Errorf("submission bridge: unknown method %q", method)
 	}
@@ -307,8 +312,8 @@ func (g GuestStore) CreateSubmissionComment(ctx context.Context, argComment subm
 	return result
 }
 
-func (g GuestStore) ListSubmissionComments(ctx context.Context, argSubmissionID core.SubmissionID) submission.ListSubmissionCommentsStoreResult {
-	args, err := json.Marshal(listSubmissionCommentsArgs{SubmissionID: corewire.EncodeSubmissionID(argSubmissionID)})
+func (g GuestStore) ListSubmissionComments(ctx context.Context, argSubmissionID core.SubmissionID, argPage core.Page) submission.ListSubmissionCommentsStoreResult {
+	args, err := json.Marshal(listSubmissionCommentsArgs{SubmissionID: corewire.EncodeSubmissionID(argSubmissionID), Page: corewire.EncodePage(argPage)})
 	if err != nil {
 		return submission.ListSubmissionCommentsStoreRejected{Reason: guestError(err)}
 	}

@@ -1,14 +1,97 @@
-@import "tailwindcss";
+/* source(none) disables Tailwind's automatic repo-wide content scanning so
+   only the explicit @source globs below feed the build - without it, class
+   names merely *mentioned* in docs (e.g. slate classes discussed in
+   WHAT_WE_DID.md) leak into app.css as dead utilities. */
+@import "tailwindcss" source(none);
 
 @source "../elm/src/**/*.elm";
 @source "../static/index.html";
 
-/* Tailwind v4's preflight renders ::placeholder at 50% of the text color, which
-   lands around 2.7:1 on white and fails WCAG AA. Pin placeholders to slate-500
-   (#64748b = 4.76:1) and keep them opaque. */
+/* Farm theme tokens. The palette is the same one the pixel sprites use
+   (web/elm/src/Sharecrop/Sprites.elm): page green #b3cf86 is
+   contrast-validated for the dark heading green (#245a10, 4.79:1) and body
+   ink (#2a2118, 9.17:1); cards sit on parchment. Semantic tones derive from
+   the sprite accents (green, blue #4a90d9, orange #e8772e, red #c0392b,
+   gold #f2c14e) darkened/tinted until each text-on-soft pair clears WCAG AA
+   4.5:1 — the measured ratios live on Ui.badgeToneClass. */
+@theme {
+  --color-farm-page: #b3cf86;
+  --color-farm-surface: #f4ecd0;
+  --color-farm-surface-raised: #fbf6e3;
+  --color-farm-field: #fffdf2;
+  --color-farm-ink: #2a2118;
+  --color-farm-muted: #6b5d44;
+  --color-farm-line: #2a2118;
+  --color-farm-line-soft: #d8cba6;
+  --color-farm-cream: #fff7e0;
+  --color-farm-accent: #3a7d1e;
+  --color-farm-accent-strong: #245a10;
+  --color-farm-terminal: #1b2417;
+  --color-farm-terminal-ink: #b7f06f;
+  --color-farm-success: #1e4d0d;
+  --color-farm-success-soft: #dcebc4;
+  --color-farm-info: #1d4f80;
+  --color-farm-info-soft: #d8e7f6;
+  --color-farm-warning: #8a4310;
+  --color-farm-warning-soft: #f9e0c8;
+  --color-farm-danger: #8f2318;
+  --color-farm-danger-soft: #f6d9d4;
+  --color-farm-reward: #6b4a08;
+  --color-farm-reward-soft: #f7e7b4;
+  --font-display: "Press Start 2P", ui-monospace, "Courier New", monospace;
+  --font-pixel: "VT323", ui-monospace, "Courier New", monospace;
+  --shadow-pixel: 4px 4px 0 rgba(42, 33, 24, 0.85);
+  --shadow-pixel-sm: 3px 3px 0 rgba(42, 33, 24, 0.85);
+}
+
+/* Self-hosted pixel fonts (SIL OFL 1.1, see /static/fonts/OFL.txt). The URLs
+   are absolute for the app shell (stylesheet at /static/app.css);
+   tools/copy_static_to_demo.ts rewrites them to be relative for the demo
+   copy, which serves the same files from site/demo/fonts/. */
+@font-face {
+  font-family: "Press Start 2P";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/press-start-2p-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "VT323";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/vt323-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @layer base {
+  /* Tailwind v4's preflight renders ::placeholder at 50% of the text color,
+     which fails WCAG AA. Pin placeholders to the opaque muted ink, which
+     measures 6.29:1 on the #fffdf2 field background. */
   ::placeholder {
-    color: #64748b;
+    color: #6b5d44;
     opacity: 1;
+  }
+
+  /* Hard 3px borders replace Tailwind's focus:border-* indicators, so the
+     theme needs one global keyboard-focus outline (WCAG 2.4.7). The strong
+     accent reads on parchment (7.6:1) and the page green (4.8:1). Text
+     fields always match :focus-visible when focused, so inputs, selects,
+     and textareas are covered too. */
+  :focus-visible {
+    outline: 3px solid var(--color-farm-accent-strong);
+    outline-offset: 2px;
+  }
+
+  /* Keep the CSS-grid sprites and the bitmap display font crisp if the page
+     is ever scaled. */
+  html {
+    image-rendering: pixelated;
   }
 }

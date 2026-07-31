@@ -109,3 +109,59 @@ func TestMarkReadResultRoundTrip(t *testing.T) {
 		t.Errorf("mark-read rejection not preserved: %T", rejected)
 	}
 }
+
+func TestStateFilterRoundTrip(t *testing.T) {
+	anyState, err := decodeStateFilter(encodeStateFilter(notification.AnyState{}))
+	if err != nil {
+		t.Fatalf("decode anyState filter: %v", err)
+	}
+	if _, matched := anyState.(notification.AnyState); !matched {
+		t.Errorf("anyState filter = %T", anyState)
+	}
+
+	unread, err := decodeStateFilter(encodeStateFilter(notification.UnreadOnly{}))
+	if err != nil {
+		t.Fatalf("decode unread filter: %v", err)
+	}
+	if _, matched := unread.(notification.UnreadOnly); !matched {
+		t.Errorf("unread filter = %T", unread)
+	}
+
+	if _, err := decodeStateFilter("something_else"); err == nil {
+		t.Errorf("unknown state filter was decoded")
+	}
+}
+
+func TestCountResultRoundTrip(t *testing.T) {
+	counted, err := decodeCountResult(encodeCountResult(notification.CountUnreadCounted{Count: 7}))
+	if err != nil {
+		t.Fatalf("decode counted: %v", err)
+	}
+	if typed, matched := counted.(notification.CountUnreadCounted); !matched || typed.Count != 7 {
+		t.Fatalf("counted result = %+v", counted)
+	}
+
+	rejected, err := decodeCountResult(encodeCountResult(notification.CountStoreRejected{
+		Reason: core.NewDomainError(core.ErrorCodeInvalidState, "count failed"),
+	}))
+	if err != nil {
+		t.Fatalf("decode rejected: %v", err)
+	}
+	if typed, matched := rejected.(notification.CountStoreRejected); !matched || typed.Reason.Code() != core.ErrorCodeInvalidState {
+		t.Errorf("count rejection not preserved: %T", rejected)
+	}
+}
+
+func TestDecodeNotificationRejectsUnknownKindAndState(t *testing.T) {
+	wire := encodeNotification(sampleNotification(t))
+	wire.Kind = "mystery_kind"
+	if _, err := decodeNotification(wire); err == nil {
+		t.Errorf("unknown kind was decoded")
+	}
+
+	wire = encodeNotification(sampleNotification(t))
+	wire.State = "mystery_state"
+	if _, err := decodeNotification(wire); err == nil {
+		t.Errorf("unknown state was decoded")
+	}
+}

@@ -32,6 +32,7 @@ type collectibleResponse struct {
 
 type collectiblesResponse struct {
 	Collectibles []collectibleResponse `json:"collectibles"`
+	NextOffset   int                   `json:"next_offset"`
 }
 
 type catalogEntryResponse struct {
@@ -75,13 +76,13 @@ func (server Server) mintCollectible(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
 	var request mintCollectibleRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 
@@ -119,7 +120,7 @@ func (server Server) mintCollectible(w http.ResponseWriter, r *http.Request) {
 func (server Server) collectibleCatalog(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	if _, matched := actorResult.(userSubjectAccepted); !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
@@ -147,12 +148,12 @@ func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
 
 	var request awardCollectibleRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	entry, found := assets.CatalogBySlug(request.Slug)
 	if !found {
-		writeError(w, http.StatusBadRequest, "unknown default collectible")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "unknown default collectible")
 		return
 	}
 	recipientKind := request.RecipientKind
@@ -160,11 +161,11 @@ func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
 		recipientKind = assets.CollectibleOwnerKindUser
 	}
 	if !assets.ValidCollectibleOwnerKind(recipientKind) {
-		writeError(w, http.StatusBadRequest, "recipient kind must be user, team, or organization")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "recipient kind must be user, team, or organization")
 		return
 	}
 	if strings.TrimSpace(request.RecipientID) == "" {
-		writeError(w, http.StatusBadRequest, "recipient id is required")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "recipient id is required")
 		return
 	}
 	nameResult := assets.NewCollectibleName(entry.Name)
@@ -180,9 +181,7 @@ func (server Server) awardCollectible(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, result.(assets.MintRejected).Reason)
 		return
 	}
-	if !server.recordAudit(w, r.Context(), actor.subject.ID, audit.ActionAdminCollectibleAwarded, audit.Subject{Kind: "collectible", ID: minted.Value.ID.String()}, audit.EmptyMetadata()) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionAdminCollectibleAwarded, audit.Subject{Kind: "collectible", ID: minted.Value.ID.String()}, audit.EmptyMetadata())
 	writeJSON(w, http.StatusCreated, collectibleToResponse(minted.Value))
 }
 
@@ -192,10 +191,10 @@ func (server Server) transferCollectible(w http.ResponseWriter, r *http.Request)
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
-	collectibleIDResult := core.ParseCollectibleID(r.PathValue("id"))
+	collectibleIDResult := core.ParseCollectibleID(r.PathValue("collectible_id"))
 	collectibleID, idMatched := collectibleIDResult.(core.CollectibleIDCreated)
 	if !idMatched {
 		writeDomainError(w, collectibleIDResult.(core.CollectibleIDRejected).Reason)
@@ -203,7 +202,7 @@ func (server Server) transferCollectible(w http.ResponseWriter, r *http.Request)
 	}
 	var request transferCollectibleRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	recipientResult := core.ParseUserID(request.RecipientID)
@@ -226,7 +225,7 @@ func (server Server) listCollectibles(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
@@ -234,15 +233,16 @@ func (server Server) listCollectibles(w http.ResponseWriter, r *http.Request) {
 	if !pageOK {
 		return
 	}
-	result := server.assetService.ListCollectibles(r.Context(), actor.subject.ID, page)
+	result := server.assetService.ListCollectibles(r.Context(), actor.subject.ID, page.Probe())
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
 		writeDomainError(w, result.(assets.ListRejected).Reason)
 		return
 	}
 
-	response := collectiblesResponse{Collectibles: make([]collectibleResponse, 0, len(listed.Values))}
-	for index := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := collectiblesResponse{Collectibles: make([]collectibleResponse, 0, visible), NextOffset: nextOffset}
+	for index := range listed.Values[:visible] {
 		response.Collectibles = append(response.Collectibles, collectibleToResponse(listed.Values[index]))
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -253,10 +253,13 @@ func (server Server) fundCollectibleReward(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	if !server.allowBySubject(w, actor.ID.String()) {
+		return
+	}
 
 	var request collectibleRewardRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	collectibleIDResult := core.ParseCollectibleID(request.CollectibleID)
@@ -298,13 +301,13 @@ func (server Server) collectibleRewardActor(w http.ResponseWriter, r *http.Reque
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return actorSubject{}, core.TaskID{}, false
 	}
 	taskIDResult := parseTaskPathValue(r)
 	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
 	if !taskIDMatched {
-		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, taskIDResult.(taskIDRejected).reason)
 		return actorSubject{}, core.TaskID{}, false
 	}
 	return actorSubject{ID: actor.subject.ID}, taskIDAccepted.value, true
@@ -324,14 +327,14 @@ func (server Server) listOrganizationCollectibles(w http.ResponseWriter, r *http
 	organizationIDResult := parseOrganizationPathValue(r)
 	organizationID, organizationMatched := organizationIDResult.(organizationIDAccepted)
 	if !organizationMatched {
-		writeError(w, http.StatusBadRequest, organizationIDResult.(organizationIDRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, organizationIDResult.(organizationIDRejected).reason)
 		return
 	}
 	server.listOwnerCollectibles(w, r, assets.CollectibleOwnerKindOrganization, organizationID.value.String())
 }
 
 func (server Server) listTeamCollectibles(w http.ResponseWriter, r *http.Request) {
-	teamIDResult := core.ParseTeamID(r.PathValue("id"))
+	teamIDResult := core.ParseTeamID(r.PathValue("team_id"))
 	teamID, teamMatched := teamIDResult.(core.TeamIDCreated)
 	if !teamMatched {
 		writeDomainError(w, teamIDResult.(core.TeamIDRejected).Reason)
@@ -344,16 +347,16 @@ func (server Server) awardOrganizationCollectible(w http.ResponseWriter, r *http
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 	organizationIDResult := parseOrganizationPathValue(r)
 	organizationID, organizationMatched := organizationIDResult.(organizationIDAccepted)
 	if !organizationMatched {
-		writeError(w, http.StatusBadRequest, organizationIDResult.(organizationIDRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, organizationIDResult.(organizationIDRejected).reason)
 		return
 	}
-	collectibleIDResult := core.ParseCollectibleID(r.PathValue("id"))
+	collectibleIDResult := core.ParseCollectibleID(r.PathValue("collectible_id"))
 	collectibleID, collectibleMatched := collectibleIDResult.(core.CollectibleIDCreated)
 	if !collectibleMatched {
 		writeDomainError(w, collectibleIDResult.(core.CollectibleIDRejected).Reason)
@@ -368,7 +371,7 @@ func (server Server) awardOrganizationCollectible(w http.ResponseWriter, r *http
 
 	var request awardOrganizationCollectibleRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "request body is invalid")
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
 		return
 	}
 	recipientResult := core.ParseUserID(request.RecipientID)
@@ -390,7 +393,7 @@ func (server Server) awardOrganizationCollectible(w http.ResponseWriter, r *http
 func (server Server) listOwnerCollectibles(w http.ResponseWriter, r *http.Request, ownerKind string, ownerID string) {
 	actorResult := server.requireUserSubject(r)
 	if _, matched := actorResult.(userSubjectAccepted); !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
@@ -398,14 +401,15 @@ func (server Server) listOwnerCollectibles(w http.ResponseWriter, r *http.Reques
 	if !pageOK {
 		return
 	}
-	result := server.assetService.ListByOwner(r.Context(), ownerKind, ownerID, page)
+	result := server.assetService.ListByOwner(r.Context(), ownerKind, ownerID, page.Probe())
 	listed, matched := result.(assets.CollectiblesListed)
 	if !matched {
 		writeDomainError(w, result.(assets.ListRejected).Reason)
 		return
 	}
-	response := collectiblesResponse{Collectibles: make([]collectibleResponse, 0, len(listed.Values))}
-	for index := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := collectiblesResponse{Collectibles: make([]collectibleResponse, 0, visible), NextOffset: nextOffset}
+	for index := range listed.Values[:visible] {
 		response.Collectibles = append(response.Collectibles, collectibleToResponse(listed.Values[index]))
 	}
 	writeJSON(w, http.StatusOK, response)

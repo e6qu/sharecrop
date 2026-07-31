@@ -48,7 +48,7 @@ func TestSeedOnSQLite(t *testing.T) {
 		t.Fatalf("page rejected")
 	}
 	listed, matched := db.NewNotificationStoreFromHandle(db.NewSQLite(handle)).
-		List(ctx, result.AdminUserID, page.Value).(notification.ListStoreAccepted)
+		List(ctx, result.AdminUserID, notification.AnyState{}, page.Value).(notification.ListStoreAccepted)
 	if !matched {
 		t.Fatalf("list admin notifications rejected")
 	}

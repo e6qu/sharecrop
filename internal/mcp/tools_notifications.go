@@ -7,15 +7,22 @@ import (
 )
 
 const (
-	toolListNotifications    = "sharecrop.list_notifications"
-	toolMarkNotificationRead = "sharecrop.mark_notification_read"
+	toolListNotifications          = "sharecrop.list_notifications"
+	toolGetUnreadNotificationCount = "sharecrop.get_unread_notification_count"
+	toolMarkNotificationRead       = "sharecrop.mark_notification_read"
 )
 
 func notificationsToolDefinitions() []toolDefinition {
 	return []toolDefinition{
 		{
 			Name:        toolListNotifications,
-			Description: "List the agent's user's notifications.",
+			Description: "List the agent's user's notifications. Pass state \"unread\" to list only unread notifications.",
+			Scope:       agent.ScopeNotificationsRead,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"state":{"type":"string","enum":["unread"]},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}}}`),
+		},
+		{
+			Name:        toolGetUnreadNotificationCount,
+			Description: "Report how many unread notifications the agent's user has.",
 			Scope:       agent.ScopeNotificationsRead,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
 		},

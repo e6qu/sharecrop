@@ -74,7 +74,8 @@ type privacyRequestResponse struct {
 func (privacyRequestResponse) writableResponse() {}
 
 type privacyRequestsResponse struct {
-	Requests []privacyRequestResponse `json:"requests"`
+	Requests   []privacyRequestResponse `json:"requests"`
+	NextOffset int                      `json:"next_offset"`
 }
 
 func (privacyRequestsResponse) writableResponse() {}
@@ -114,7 +115,8 @@ type moderationReportResponse struct {
 func (moderationReportResponse) writableResponse() {}
 
 type moderationReportsResponse struct {
-	Reports []moderationReportResponse `json:"reports"`
+	Reports    []moderationReportResponse `json:"reports"`
+	NextOffset int                        `json:"next_offset"`
 }
 
 func (moderationReportsResponse) writableResponse() {}
@@ -137,7 +139,8 @@ type platformAdminResponse struct {
 func (platformAdminResponse) writableResponse() {}
 
 type platformAdminsResponse struct {
-	Admins []platformAdminResponse `json:"admins"`
+	Admins     []platformAdminResponse `json:"admins"`
+	NextOffset int                     `json:"next_offset"`
 }
 
 func (platformAdminsResponse) writableResponse() {}
@@ -164,13 +167,19 @@ type savedQueueViewResponse struct {
 func (savedQueueViewResponse) writableResponse() {}
 
 type savedQueueViewsResponse struct {
-	Views []savedQueueViewResponse `json:"views"`
+	Views      []savedQueueViewResponse `json:"views"`
+	NextOffset int                      `json:"next_offset"`
 }
 
 func (savedQueueViewsResponse) writableResponse() {}
 
 type errorResponse struct {
 	Error string `json:"error"`
+	// Code is the machine-readable error code (core.ErrorCode wire value):
+	// one of invalid_id, invalid_enum, invalid_state, invalid_argument,
+	// not_found, permission_denied, conflict, unauthenticated, rate_limited,
+	// or unavailable.
+	Code string `json:"code"`
 }
 
 type organizationRequest struct {
@@ -235,6 +244,9 @@ type taskRequest struct {
 	ResponseSchemaJSON string                   `json:"response_schema_json"`
 	Payload            taskPayloadRequest       `json:"payload"`
 	Attachments        []attachmentRequest      `json:"attachments"`
+	// ExpiresAt is an optional RFC3339 instant after which an open task
+	// expires. Empty or absent means no expiration.
+	ExpiresAt string `json:"expires_at"`
 }
 
 type taskRewardRequest struct {
@@ -268,6 +280,7 @@ type organizationResponse struct {
 
 type organizationsResponse struct {
 	Organizations []organizationResponse `json:"organizations"`
+	NextOffset    int                    `json:"next_offset"`
 }
 
 type organizationMemberResponse struct {
@@ -279,7 +292,8 @@ type organizationMemberResponse struct {
 }
 
 type organizationMembersResponse struct {
-	Members []organizationMemberResponse `json:"members"`
+	Members    []organizationMemberResponse `json:"members"`
+	NextOffset int                          `json:"next_offset"`
 }
 
 type teamResponse struct {
@@ -292,7 +306,8 @@ type teamResponse struct {
 }
 
 type teamsResponse struct {
-	Teams []teamResponse `json:"teams"`
+	Teams      []teamResponse `json:"teams"`
+	NextOffset int            `json:"next_offset"`
 }
 
 type userDirectoryEntryResponse struct {
@@ -302,7 +317,8 @@ type userDirectoryEntryResponse struct {
 }
 
 type usersResponse struct {
-	Users []userDirectoryEntryResponse `json:"users"`
+	Users      []userDirectoryEntryResponse `json:"users"`
+	NextOffset int                          `json:"next_offset"`
 }
 
 type taskResponse struct {
@@ -342,6 +358,9 @@ type taskResponse struct {
 	AvailabilityKind        string               `json:"availability_kind"`
 	ViewerAction            string               `json:"viewer_action"`
 	ReviewerAction          string               `json:"reviewer_action"`
+	// ExpiresAt is the task's expiration instant in RFC3339, or empty when
+	// the task has no expiration policy.
+	ExpiresAt string `json:"expires_at"`
 }
 
 type attachmentResponse struct {
@@ -372,7 +391,8 @@ type taskListItemResponse struct {
 }
 
 type tasksResponse struct {
-	Tasks []taskListItemResponse `json:"tasks"`
+	Tasks      []taskListItemResponse `json:"tasks"`
+	NextOffset int                    `json:"next_offset"`
 }
 
 type reservationResponse struct {
@@ -392,6 +412,7 @@ type reservationResponse struct {
 
 type reservationsResponse struct {
 	Reservations []reservationResponse `json:"reservations"`
+	NextOffset   int                   `json:"next_offset"`
 }
 
 type submissionValidationErrorResponse struct {
@@ -422,6 +443,7 @@ type submissionResponse struct {
 
 type submissionsResponse struct {
 	Submissions []submissionResponse `json:"submissions"`
+	NextOffset  int                  `json:"next_offset"`
 }
 
 type notificationResponse struct {
@@ -438,6 +460,11 @@ type notificationResponse struct {
 
 type notificationsResponse struct {
 	Notifications []notificationResponse `json:"notifications"`
+	NextOffset    int                    `json:"next_offset"`
+}
+
+type notificationUnreadCountResponse struct {
+	UnreadCount int64 `json:"unread_count"`
 }
 
 type submissionCreatedResponse struct {
@@ -467,7 +494,8 @@ type acceptSubmissionRequest struct {
 }
 
 type requestChangesRequest struct {
-	ReviewNote string `json:"review_note"`
+	IdempotencyKey string `json:"idempotency_key"`
+	ReviewNote     string `json:"review_note"`
 }
 
 type rejectSubmissionRequest struct {
@@ -475,7 +503,9 @@ type rejectSubmissionRequest struct {
 	ReviewNote          string `json:"review_note"`
 	PartialCreditAmount int64  `json:"partial_credit_amount"`
 	TipAmount           int64  `json:"tip_amount"`
-	BanImplementor      bool   `json:"ban_implementor"`
+	// BanSelection is the BanSelection contract enum: "none" or
+	// "ban_implementor". Absent or empty means "none".
+	BanSelection string `json:"ban_selection"`
 }
 
 type writableResponse interface {
@@ -495,7 +525,8 @@ type ledgerEntryResponse struct {
 }
 
 type ledgerListResponse struct {
-	Entries []ledgerEntryResponse `json:"entries"`
+	Entries    []ledgerEntryResponse `json:"entries"`
+	NextOffset int                   `json:"next_offset"`
 }
 
 type taskFundResponse struct {

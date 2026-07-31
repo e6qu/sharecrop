@@ -31,9 +31,7 @@ func (server Server) fundTaskFromOrganization(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if !server.recordAudit(w, r.Context(), actor.ID, audit.ActionTaskFunded, audit.Subject{Kind: "task", ID: funded.Fund.TaskID.String()}, audit.EmptyMetadata()) {
-		return
-	}
+	server.recordAuditBestEffort(r.Context(), actor.ID, audit.ActionTaskFunded, audit.Subject{Kind: "task", ID: funded.Fund.TaskID.String()}, audit.EmptyMetadata())
 	writeJSON(w, http.StatusCreated, fundToResponse(funded.Fund))
 }
 
@@ -63,15 +61,16 @@ func (server Server) organizationCreditsLedger(w http.ResponseWriter, r *http.Re
 	if !pageOK {
 		return
 	}
-	result := server.ledgerService.ListOrganizationEntries(r.Context(), organizationID, page)
+	result := server.ledgerService.ListOrganizationEntries(r.Context(), organizationID, page.Probe())
 	listed, matched := result.(ledger.EntriesListed)
 	if !matched {
 		writeDomainError(w, result.(ledger.ListEntriesRejected).Reason)
 		return
 	}
 
-	response := ledgerListResponse{Entries: make([]ledgerEntryResponse, 0, len(listed.Values))}
-	for index := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := ledgerListResponse{Entries: make([]ledgerEntryResponse, 0, visible), NextOffset: nextOffset}
+	for index := range listed.Values[:visible] {
 		response.Entries = append(response.Entries, ledgerEntryToResponse(listed.Values[index]))
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -81,14 +80,14 @@ func (server Server) requireOrganizationBilling(w http.ResponseWriter, r *http.R
 	actorResult := server.requireUserSubject(r)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return core.OrganizationID{}, false
 	}
 
 	organizationIDResult := parseOrganizationPathValue(r)
 	organizationIDAccepted, organizationIDMatched := organizationIDResult.(organizationIDAccepted)
 	if !organizationIDMatched {
-		writeError(w, http.StatusBadRequest, organizationIDResult.(organizationIDRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, organizationIDResult.(organizationIDRejected).reason)
 		return core.OrganizationID{}, false
 	}
 

@@ -12,7 +12,7 @@ func (server Server) creditsBalance(w http.ResponseWriter, r *http.Request) {
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -31,7 +31,7 @@ func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -39,7 +39,7 @@ func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
 	if !pageOK {
 		return
 	}
-	result := server.ledgerService.ListEntries(r.Context(), actor.subject.ID, page)
+	result := server.ledgerService.ListEntries(r.Context(), actor.subject.ID, page.Probe())
 	listed, matched := result.(ledger.EntriesListed)
 	if !matched {
 		rejected := result.(ledger.ListEntriesRejected)
@@ -47,8 +47,9 @@ func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := ledgerListResponse{Entries: make([]ledgerEntryResponse, 0, len(listed.Values))}
-	for index := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := ledgerListResponse{Entries: make([]ledgerEntryResponse, 0, visible), NextOffset: nextOffset}
+	for index := range listed.Values[:visible] {
 		response.Entries = append(response.Entries, ledgerEntryToResponse(listed.Values[index]))
 	}
 	writeJSON(w, http.StatusOK, response)

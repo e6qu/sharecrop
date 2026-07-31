@@ -5,17 +5,106 @@ module Sharecrop.Generated.Error exposing (..)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 
+type ErrorCode
+    = ErrorCodeInvalidID
+    | ErrorCodeInvalidEnum
+    | ErrorCodeInvalidState
+    | ErrorCodeInvalidArgument
+    | ErrorCodeNotFound
+    | ErrorCodePermissionDenied
+    | ErrorCodeConflict
+    | ErrorCodeUnauthenticated
+    | ErrorCodeRateLimited
+    | ErrorCodeUnavailable
+
+errorCodeDecoder : Decoder ErrorCode
+errorCodeDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "invalid_id" ->
+                        Decode.succeed ErrorCodeInvalidID
+
+                    "invalid_enum" ->
+                        Decode.succeed ErrorCodeInvalidEnum
+
+                    "invalid_state" ->
+                        Decode.succeed ErrorCodeInvalidState
+
+                    "invalid_argument" ->
+                        Decode.succeed ErrorCodeInvalidArgument
+
+                    "not_found" ->
+                        Decode.succeed ErrorCodeNotFound
+
+                    "permission_denied" ->
+                        Decode.succeed ErrorCodePermissionDenied
+
+                    "conflict" ->
+                        Decode.succeed ErrorCodeConflict
+
+                    "unauthenticated" ->
+                        Decode.succeed ErrorCodeUnauthenticated
+
+                    "rate_limited" ->
+                        Decode.succeed ErrorCodeRateLimited
+
+                    "unavailable" ->
+                        Decode.succeed ErrorCodeUnavailable
+
+                    _ ->
+                        Decode.fail "invalid ErrorCode"
+            )
+
+errorCodeEncoder : ErrorCode -> Encode.Value
+errorCodeEncoder errorCode =
+    case errorCode of
+        ErrorCodeInvalidID ->
+            Encode.string "invalid_id"
+
+        ErrorCodeInvalidEnum ->
+            Encode.string "invalid_enum"
+
+        ErrorCodeInvalidState ->
+            Encode.string "invalid_state"
+
+        ErrorCodeInvalidArgument ->
+            Encode.string "invalid_argument"
+
+        ErrorCodeNotFound ->
+            Encode.string "not_found"
+
+        ErrorCodePermissionDenied ->
+            Encode.string "permission_denied"
+
+        ErrorCodeConflict ->
+            Encode.string "conflict"
+
+        ErrorCodeUnauthenticated ->
+            Encode.string "unauthenticated"
+
+        ErrorCodeRateLimited ->
+            Encode.string "rate_limited"
+
+        ErrorCodeUnavailable ->
+            Encode.string "unavailable"
+
+
 type alias ErrorResponse =
     { error : String
+    , code : ErrorCode
     }
 
 errorResponseDecoder : Decoder ErrorResponse
 errorResponseDecoder =
-    Decode.map ErrorResponse
+    Decode.map2 ErrorResponse
         (Decode.field "error" Decode.string)
+        (Decode.field "code" errorCodeDecoder)
 
 errorResponseEncoder : ErrorResponse -> Encode.Value
 errorResponseEncoder errorResponse =
     Encode.object
         [ ( "error", Encode.string errorResponse.error )
+        , ( "code", errorCodeEncoder errorResponse.code )
         ]

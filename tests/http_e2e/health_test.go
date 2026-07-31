@@ -216,7 +216,7 @@ func (healthTaskService) AddSeriesComment(context.Context, auth.UserSubject, cor
 	return task.SeriesCommentRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID) task.SeriesCommentsResult {
+func (healthTaskService) ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID, core.Page) task.SeriesCommentsResult {
 	return task.SeriesCommentsListed{Values: nil}
 }
 
@@ -224,7 +224,7 @@ func (healthTaskService) AddTaskComment(context.Context, auth.UserSubject, core.
 	return task.TaskCommentRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) ListTaskComments(context.Context, auth.UserSubject, core.TaskID) task.TaskCommentsResult {
+func (healthTaskService) ListTaskComments(context.Context, auth.UserSubject, core.TaskID, core.Page) task.TaskCommentsResult {
 	return task.TaskCommentsListed{Values: nil}
 }
 
@@ -264,7 +264,7 @@ func (healthTaskService) CancelReservation(context.Context, auth.Subject, core.T
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) ListReservations(context.Context, auth.Subject, core.TaskID) task.ReservationsListResult {
+func (healthTaskService) ListReservations(context.Context, auth.Subject, core.TaskID, core.Page) task.ReservationsListResult {
 	return task.ReservationsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -292,7 +292,7 @@ func (healthSubmissionService) AddSubmissionComment(context.Context, auth.UserSu
 	return submission.SubmissionCommentRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthSubmissionService) ListSubmissionComments(context.Context, auth.Subject, core.SubmissionID) submission.SubmissionCommentsResult {
+func (healthSubmissionService) ListSubmissionComments(context.Context, auth.Subject, core.SubmissionID, core.Page) submission.SubmissionCommentsResult {
 	return submission.SubmissionCommentsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -318,7 +318,7 @@ func (healthLedgerService) ReviewAcceptSubmission(context.Context, core.UserID, 
 	return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthLedgerService) RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, submission.ReviewNote) ledger.RequestChangesResult {
+func (healthLedgerService) RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult {
 	return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 

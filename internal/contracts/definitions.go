@@ -15,6 +15,7 @@ func Modules() []Module {
 		collectibleModule(),
 		adminModule(),
 		notificationModule(),
+		eventsModule(),
 		privacyModule(),
 		moderationModule(),
 		savedQueueViewsModule(),
@@ -70,6 +71,7 @@ func moderationModule() Module {
 				Name: NewElmTypeName("ModerationReportsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("reports"), JSONName: NewJSONFieldName("reports"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("ModerationReportResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 		},
@@ -96,6 +98,7 @@ func savedQueueViewsModule() Module {
 				Name: NewElmTypeName("SavedQueueViewsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("views"), JSONName: NewJSONFieldName("views"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SavedQueueViewResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 		},
@@ -131,6 +134,7 @@ func privacyModule() Module {
 				Name: NewElmTypeName("PrivacyRequestsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("requests"), JSONName: NewJSONFieldName("requests"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("PrivacyRequestResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -147,13 +151,36 @@ func notificationModule() Module {
 	return Module{
 		Name: NewModuleName("Sharecrop.Generated.Notification"),
 		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("NotificationKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("NotificationKindSubmissionCreated"), Tag: "submission_created"},
+					{Name: NewElmTypeName("NotificationKindSubmissionAccepted"), Tag: "submission_accepted"},
+					{Name: NewElmTypeName("NotificationKindSubmissionChangesRequested"), Tag: "submission_changes_requested"},
+					{Name: NewElmTypeName("NotificationKindSubmissionRejected"), Tag: "submission_rejected"},
+					{Name: NewElmTypeName("NotificationKindSubmissionCommented"), Tag: "submission_commented"},
+					{Name: NewElmTypeName("NotificationKindTaskFunded"), Tag: "task_funded"},
+					{Name: NewElmTypeName("NotificationKindTaskCancelled"), Tag: "task_cancelled"},
+					{Name: NewElmTypeName("NotificationKindTaskExpired"), Tag: "task_expired"},
+					{Name: NewElmTypeName("NotificationKindTaskCommented"), Tag: "task_commented"},
+					{Name: NewElmTypeName("NotificationKindSeriesCommented"), Tag: "series_commented"},
+					{Name: NewElmTypeName("NotificationKindReservationRequested"), Tag: "reservation_requested"},
+					{Name: NewElmTypeName("NotificationKindReservationApproved"), Tag: "reservation_approved"},
+					{Name: NewElmTypeName("NotificationKindReservationDeclined"), Tag: "reservation_declined"},
+					{Name: NewElmTypeName("NotificationKindReservationCancelled"), Tag: "reservation_cancelled"},
+					{Name: NewElmTypeName("NotificationKindReservationExpired"), Tag: "reservation_expired"},
+					{Name: NewElmTypeName("NotificationKindPayoutReceived"), Tag: "payout_received"},
+					{Name: NewElmTypeName("NotificationKindTipReceived"), Tag: "tip_received"},
+					{Name: NewElmTypeName("NotificationKindCollectibleAwarded"), Tag: "collectible_awarded"},
+				},
+			},
 			Product{
 				Name: NewElmTypeName("NotificationResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("recipientUserID"), JSONName: NewJSONFieldName("recipient_user_id"), Type: StringRef{}},
 					{Name: NewElmValueName("actorUserID"), JSONName: NewJSONFieldName("actor_user_id"), Type: StringRef{}},
-					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: StringRef{}},
+					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: NamedRef{Name: NewElmTypeName("NotificationKind")}},
 					{Name: NewElmValueName("subjectKind"), JSONName: NewJSONFieldName("subject_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("subjectID"), JSONName: NewJSONFieldName("subject_id"), Type: StringRef{}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: StringRef{}},
@@ -165,6 +192,149 @@ func notificationModule() Module {
 				Name: NewElmTypeName("NotificationsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("notifications"), JSONName: NewJSONFieldName("notifications"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("NotificationResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("NotificationUnreadCountResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("unreadCount"), JSONName: NewJSONFieldName("unread_count"), Type: IntRef{}},
+				},
+			},
+		},
+	}
+}
+
+// eventsModule carries the live event feed AND the webhook management wire
+// types in one module: webhook responses reference DomainEventKind, and
+// generated Elm modules don't import each other, so splitting them would
+// force a duplicated kind enum that could drift (the same reason org
+// credentials live inside the agent module).
+func eventsModule() Module {
+	return Module{
+		Name: NewModuleName("Sharecrop.Generated.Events"),
+		Definitions: []Definition{
+			Enum{
+				Name: NewElmTypeName("DomainEventKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("DomainEventKindTaskOpened"), Tag: "task_opened"},
+					{Name: NewElmTypeName("DomainEventKindTaskFunded"), Tag: "task_funded"},
+					{Name: NewElmTypeName("DomainEventKindTaskCancelled"), Tag: "task_cancelled"},
+					{Name: NewElmTypeName("DomainEventKindTaskExpired"), Tag: "task_expired"},
+					{Name: NewElmTypeName("DomainEventKindTaskCommented"), Tag: "task_commented"},
+					{Name: NewElmTypeName("DomainEventKindSeriesCommented"), Tag: "series_commented"},
+					{Name: NewElmTypeName("DomainEventKindReservationRequested"), Tag: "reservation_requested"},
+					{Name: NewElmTypeName("DomainEventKindReservationApproved"), Tag: "reservation_approved"},
+					{Name: NewElmTypeName("DomainEventKindReservationDeclined"), Tag: "reservation_declined"},
+					{Name: NewElmTypeName("DomainEventKindReservationCancelled"), Tag: "reservation_cancelled"},
+					{Name: NewElmTypeName("DomainEventKindReservationExpired"), Tag: "reservation_expired"},
+					{Name: NewElmTypeName("DomainEventKindSubmissionCreated"), Tag: "submission_created"},
+					{Name: NewElmTypeName("DomainEventKindSubmissionAccepted"), Tag: "submission_accepted"},
+					{Name: NewElmTypeName("DomainEventKindSubmissionChangesRequested"), Tag: "submission_changes_requested"},
+					{Name: NewElmTypeName("DomainEventKindSubmissionRejected"), Tag: "submission_rejected"},
+					{Name: NewElmTypeName("DomainEventKindSubmissionCommented"), Tag: "submission_commented"},
+					{Name: NewElmTypeName("DomainEventKindPayoutReceived"), Tag: "payout_received"},
+					{Name: NewElmTypeName("DomainEventKindTipReceived"), Tag: "tip_received"},
+					{Name: NewElmTypeName("DomainEventKindCollectibleAwarded"), Tag: "collectible_awarded"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("EventActorKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("EventActorKindUser"), Tag: "user"},
+					{Name: NewElmTypeName("EventActorKindSystem"), Tag: "system"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("EventResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: NamedRef{Name: NewElmTypeName("DomainEventKind")}},
+					{Name: NewElmValueName("actorKind"), JSONName: NewJSONFieldName("actor_kind"), Type: NamedRef{Name: NewElmTypeName("EventActorKind")}},
+					{Name: NewElmValueName("actorUserID"), JSONName: NewJSONFieldName("actor_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("occurredAt"), JSONName: NewJSONFieldName("occurred_at"), Type: StringRef{}},
+					{Name: NewElmValueName("cursor"), JSONName: NewJSONFieldName("cursor"), Type: StringRef{}},
+					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
+					{Name: NewElmValueName("submissionID"), JSONName: NewJSONFieldName("submission_id"), Type: StringRef{}},
+					{Name: NewElmValueName("reservationID"), JSONName: NewJSONFieldName("reservation_id"), Type: StringRef{}},
+					{Name: NewElmValueName("seriesID"), JSONName: NewJSONFieldName("series_id"), Type: StringRef{}},
+					{Name: NewElmValueName("organizationID"), JSONName: NewJSONFieldName("organization_id"), Type: StringRef{}},
+					{Name: NewElmValueName("collectibleID"), JSONName: NewJSONFieldName("collectible_id"), Type: StringRef{}},
+					{Name: NewElmValueName("metadataJSON"), JSONName: NewJSONFieldName("metadata_json"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("EventListResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("events"), JSONName: NewJSONFieldName("events"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("EventResponse")}}},
+					{Name: NewElmValueName("nextCursor"), JSONName: NewJSONFieldName("next_cursor"), Type: StringRef{}},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("WebhookSubscriptionState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("WebhookSubscriptionStateActive"), Tag: "active"},
+					{Name: NewElmTypeName("WebhookSubscriptionStateRevoked"), Tag: "revoked"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("WebhookDeliveryState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("WebhookDeliveryStatePending"), Tag: "pending"},
+					{Name: NewElmTypeName("WebhookDeliveryStateDelivered"), Tag: "delivered"},
+					{Name: NewElmTypeName("WebhookDeliveryStateDead"), Tag: "dead"},
+				},
+			},
+			Enum{
+				Name: NewElmTypeName("WebhookOwnerKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("WebhookOwnerKindUser"), Tag: "user"},
+					{Name: NewElmTypeName("WebhookOwnerKindOrganization"), Tag: "organization"},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("WebhookSubscriptionResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("ownerKind"), JSONName: NewJSONFieldName("owner_kind"), Type: NamedRef{Name: NewElmTypeName("WebhookOwnerKind")}},
+					{Name: NewElmValueName("ownerUserID"), JSONName: NewJSONFieldName("owner_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("ownerOrganizationID"), JSONName: NewJSONFieldName("owner_organization_id"), Type: StringRef{}},
+					{Name: NewElmValueName("url"), JSONName: NewJSONFieldName("url"), Type: StringRef{}},
+					{Name: NewElmValueName("kinds"), JSONName: NewJSONFieldName("kinds"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("DomainEventKind")}}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("WebhookSubscriptionState")}},
+					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("WebhookSubscriptionCreatedResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("subscription"), JSONName: NewJSONFieldName("subscription"), Type: NamedRef{Name: NewElmTypeName("WebhookSubscriptionResponse")}},
+					{Name: NewElmValueName("secret"), JSONName: NewJSONFieldName("secret"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("WebhookSubscriptionsResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("subscriptions"), JSONName: NewJSONFieldName("subscriptions"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("WebhookSubscriptionResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("WebhookDeliveryResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("eventCursor"), JSONName: NewJSONFieldName("event_cursor"), Type: StringRef{}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("WebhookDeliveryState")}},
+					{Name: NewElmValueName("attemptCount"), JSONName: NewJSONFieldName("attempt_count"), Type: IntRef{}},
+					{Name: NewElmValueName("nextAttemptAt"), JSONName: NewJSONFieldName("next_attempt_at"), Type: StringRef{}},
+					{Name: NewElmValueName("lastStatus"), JSONName: NewJSONFieldName("last_status"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("WebhookDeliveriesResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("deliveries"), JSONName: NewJSONFieldName("deliveries"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("WebhookDeliveryResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 		},
@@ -204,6 +374,7 @@ func adminModule() Module {
 				Name: NewElmTypeName("AuditEventsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("events"), JSONName: NewJSONFieldName("events"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("AuditEventResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -218,6 +389,7 @@ func adminModule() Module {
 				Name: NewElmTypeName("PlatformAdminsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("admins"), JSONName: NewJSONFieldName("admins"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("PlatformAdminResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 		},
@@ -271,6 +443,7 @@ func collectibleModule() Module {
 				Name: NewElmTypeName("CollectiblesResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("collectibles"), JSONName: NewJSONFieldName("collectibles"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("CollectibleResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -322,6 +495,7 @@ func taskSeriesModule() Module {
 				Name: NewElmTypeName("TaskSeriesListResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("series"), JSONName: NewJSONFieldName("series"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskSeriesResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 		},
@@ -354,10 +528,29 @@ func errorModule() Module {
 	return Module{
 		Name: NewModuleName("Sharecrop.Generated.Error"),
 		Definitions: []Definition{
+			// ErrorCode mirrors internal/core/domain_error.go: the nine domain
+			// codes plus "unavailable", which handlers write for 5xx
+			// infrastructure failures.
+			Enum{
+				Name: NewElmTypeName("ErrorCode"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("ErrorCodeInvalidID"), Tag: "invalid_id"},
+					{Name: NewElmTypeName("ErrorCodeInvalidEnum"), Tag: "invalid_enum"},
+					{Name: NewElmTypeName("ErrorCodeInvalidState"), Tag: "invalid_state"},
+					{Name: NewElmTypeName("ErrorCodeInvalidArgument"), Tag: "invalid_argument"},
+					{Name: NewElmTypeName("ErrorCodeNotFound"), Tag: "not_found"},
+					{Name: NewElmTypeName("ErrorCodePermissionDenied"), Tag: "permission_denied"},
+					{Name: NewElmTypeName("ErrorCodeConflict"), Tag: "conflict"},
+					{Name: NewElmTypeName("ErrorCodeUnauthenticated"), Tag: "unauthenticated"},
+					{Name: NewElmTypeName("ErrorCodeRateLimited"), Tag: "rate_limited"},
+					{Name: NewElmTypeName("ErrorCodeUnavailable"), Tag: "unavailable"},
+				},
+			},
 			Product{
 				Name: NewElmTypeName("ErrorResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("error"), JSONName: NewJSONFieldName("error"), Type: StringRef{}},
+					{Name: NewElmValueName("code"), JSONName: NewJSONFieldName("code"), Type: NamedRef{Name: NewElmTypeName("ErrorCode")}},
 				},
 			},
 		},
@@ -424,6 +617,7 @@ func organizationModule() Module {
 				Name: NewElmTypeName("OrganizationsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("organizations"), JSONName: NewJSONFieldName("organizations"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("OrganizationResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -440,6 +634,7 @@ func organizationModule() Module {
 				Name: NewElmTypeName("OrganizationMembersResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("members"), JSONName: NewJSONFieldName("members"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("OrganizationMemberResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 		},
@@ -465,6 +660,7 @@ func teamModule() Module {
 				Name: NewElmTypeName("TeamsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("teams"), JSONName: NewJSONFieldName("teams"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TeamResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -621,6 +817,7 @@ func taskModule() Module {
 					{Name: NewElmValueName("payloadJSON"), JSONName: NewJSONFieldName("payload_json"), Type: StringRef{}},
 					{Name: NewElmValueName("attachments"), JSONName: NewJSONFieldName("attachments"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskAttachmentResponse")}}},
 					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
+					{Name: NewElmValueName("expiresAt"), JSONName: NewJSONFieldName("expires_at"), Type: StringRef{}},
 				},
 			},
 			Product{
@@ -637,6 +834,7 @@ func taskModule() Module {
 				Name: NewElmTypeName("TasksResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("tasks"), JSONName: NewJSONFieldName("tasks"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskListItemResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -662,6 +860,7 @@ func taskModule() Module {
 				Name: NewElmTypeName("TaskReservationsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("reservations"), JSONName: NewJSONFieldName("reservations"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskReservationResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 		},
@@ -727,6 +926,7 @@ func submissionModule() Module {
 				Name: NewElmTypeName("SubmissionsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("submissions"), JSONName: NewJSONFieldName("submissions"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -743,6 +943,7 @@ func submissionModule() Module {
 				Name: NewElmTypeName("SubmissionCommentsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("comments"), JSONName: NewJSONFieldName("comments"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionCommentResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -760,6 +961,16 @@ func ledgerModule() Module {
 	return Module{
 		Name: NewModuleName("Sharecrop.Generated.Ledger"),
 		Definitions: []Definition{
+			// BanSelection is the reject-review choice about the submitting
+			// worker: "none" leaves the worker free to submit again;
+			// "ban_implementor" blocks the worker from this task.
+			Enum{
+				Name: NewElmTypeName("BanSelection"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("BanSelectionNone"), Tag: "none"},
+					{Name: NewElmTypeName("BanSelectionBanImplementor"), Tag: "ban_implementor"},
+				},
+			},
 			Enum{
 				Name: NewElmTypeName("LedgerEntryKind"),
 				Variants: []Variant{
@@ -791,6 +1002,7 @@ func ledgerModule() Module {
 				Name: NewElmTypeName("LedgerResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("entries"), JSONName: NewJSONFieldName("entries"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("LedgerEntryResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -855,6 +1067,8 @@ func agentModule() Module {
 					{Name: NewElmTypeName("AgentScopePrivacyManage"), Tag: "privacy_manage"},
 					{Name: NewElmTypeName("AgentScopePlatformAdmin"), Tag: "platform_admin"},
 					{Name: NewElmTypeName("AgentScopeCredentialsManage"), Tag: "credentials_manage"},
+					{Name: NewElmTypeName("AgentScopeWebhooksRead"), Tag: "webhooks_read"},
+					{Name: NewElmTypeName("AgentScopeWebhooksManage"), Tag: "webhooks_manage"},
 				},
 			},
 			Enum{
@@ -879,6 +1093,7 @@ func agentModule() Module {
 				Name: NewElmTypeName("AgentCredentialsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("credentials"), JSONName: NewJSONFieldName("credentials"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("AgentCredentialResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -908,6 +1123,7 @@ func agentModule() Module {
 				Name: NewElmTypeName("OrgCredentialsResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("credentials"), JSONName: NewJSONFieldName("credentials"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("OrgCredentialResponse")}}},
+					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
 				},
 			},
 			Product{

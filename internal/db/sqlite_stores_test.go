@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/audit"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
+	"github.com/e6qu/sharecrop/internal/task"
 )
 
 func requirePageForTest(t *testing.T, limit, offset int) core.Page {
@@ -209,7 +211,7 @@ func TestSavedQueueViewUpsertOnSQLite(t *testing.T) {
 		t.Fatalf("second upsert (on conflict) rejected")
 	}
 
-	listed, ok := store.List(ctx, user, "team_work").(httpserver.SavedQueueViewsListed)
+	listed, ok := store.List(ctx, user, "team_work", core.DefaultPage()).(httpserver.SavedQueueViewsListed)
 	if !ok {
 		t.Fatalf("list rejected")
 	}
@@ -218,5 +220,194 @@ func TestSavedQueueViewUpsertOnSQLite(t *testing.T) {
 	}
 	if listed.Values[0].Query != "state:closed" {
 		t.Fatalf("query = %q, want updated to state:closed", listed.Values[0].Query)
+	}
+}
+
+// TestCreateTaskWithCollectibleEscrowOnSQLite proves task creation with reward
+// collectibles is all-or-nothing on the demo (SQLite) engine, which shares the
+// single TaskStore implementation: escrowing a collectible the creator does
+// not own rejects the create and leaves no task row behind, while an owned
+// collectible is escrowed inside the same create transaction.
+func TestCreateTaskWithCollectibleEscrowOnSQLite(t *testing.T) {
+	ctx := context.Background()
+	sqlHandle := openSQLiteWithSchema(t)
+	handle := NewSQLite(sqlHandle)
+	store := NewTaskStoreFromHandle(handle)
+
+	creator := newUserIDForTest(t)
+	stranger := newUserIDForTest(t)
+
+	seedCollectible := func(t *testing.T, owner core.UserID) core.CollectibleID {
+		t.Helper()
+		created, matched := core.NewCollectibleID().(core.CollectibleIDCreated)
+		if !matched {
+			t.Fatalf("collectible id rejected")
+		}
+		if _, err := sqlHandle.ExecContext(ctx, `
+			insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id, owner_kind, art)
+			values (?, 'Golden Hoe', 'badge', 'minted', 'transferable_between_users', ?, 'user', '')
+		`, created.Value.String(), owner.String()); err != nil {
+			t.Fatalf("seed collectible: %v", err)
+		}
+		return created.Value
+	}
+
+	countValue := func(t *testing.T, query string, argument string) int {
+		t.Helper()
+		var count int
+		if err := handle.QueryRow(ctx, query, argument).Scan(&count); err != nil {
+			t.Fatalf("count query: %v", err)
+		}
+		return count
+	}
+
+	newCollectibleCreateCommand := func(t *testing.T, collectibleID core.CollectibleID) task.CreateCommand {
+		t.Helper()
+		reference, referenceMatched := task.NewReferenceURL("").(task.ReferenceURLAccepted)
+		if !referenceMatched {
+			t.Fatalf("reference rejected")
+		}
+		title, titleMatched := task.NewTitle("Escrow at create").(task.TitleAccepted)
+		if !titleMatched {
+			t.Fatalf("title rejected")
+		}
+		description, descriptionMatched := task.NewDescription("Escrow a reward collectible inside the create transaction.").(task.DescriptionAccepted)
+		if !descriptionMatched {
+			t.Fatalf("description rejected")
+		}
+		schema, schemaMatched := task.NewResponseSchemaSource(`{"kind":"freeform"}`).(task.ResponseSchemaSourceAccepted)
+		if !schemaMatched {
+			t.Fatalf("schema rejected")
+		}
+		count, countMatched := task.NewCollectibleRewardCount(1).(task.CollectibleRewardCountAccepted)
+		if !countMatched {
+			t.Fatalf("collectible reward count rejected")
+		}
+		return task.CreateCommand{
+			Actor:              auth.UserSubject{ID: creator},
+			Owner:              task.UserOwner{UserID: creator},
+			Title:              title.Value,
+			Description:        description.Value,
+			Type:               task.TaskTypeGeneral,
+			Reference:          reference.Value,
+			Reward:             task.CollectibleRewardSpec{Count: count.Value},
+			Participation:      task.ParticipationPolicyOpen,
+			AssigneeScope:      task.AssigneeScopeUser,
+			ReservationTTL:     task.DefaultReservationTTL(),
+			Visibility:         task.PublicVisibility{},
+			Placement:          task.StandalonePlacement{},
+			ResponseSchema:     schema.Value,
+			Payload:            task.NoDataPayload{},
+			FundCollectibleIDs: []core.CollectibleID{collectibleID},
+		}
+	}
+
+	newTaskID := func(t *testing.T) core.TaskID {
+		t.Helper()
+		created, matched := core.NewTaskID().(core.TaskIDCreated)
+		if !matched {
+			t.Fatalf("task id rejected")
+		}
+		return created.Value
+	}
+	newSeriesID := func(t *testing.T) core.TaskSeriesID {
+		t.Helper()
+		created, matched := core.NewTaskSeriesID().(core.TaskSeriesIDCreated)
+		if !matched {
+			t.Fatalf("series id rejected")
+		}
+		return created.Value
+	}
+
+	t.Run("a collectible the creator does not own rolls the whole create back", func(t *testing.T) {
+		unowned := seedCollectible(t, stranger)
+		taskID := newTaskID(t)
+		result := store.CreateTask(ctx, newSeriesID(t), taskID, newCollectibleCreateCommand(t, unowned))
+		if _, rejected := result.(task.CreateTaskStoreRejected); !rejected {
+			t.Fatalf("create task result = %T, want rejected", result)
+		}
+		if got := countValue(t, "select count(*) from tasks where id = $1", taskID.String()); got != 0 {
+			t.Fatalf("task rows after rejected create = %d, want 0", got)
+		}
+		if got := countValue(t, "select count(*) from task_fund_collectibles where task_id = $1", taskID.String()); got != 0 {
+			t.Fatalf("escrow rows after rejected create = %d, want 0", got)
+		}
+		var state string
+		if err := handle.QueryRow(ctx, "select state from collectibles where id = $1", unowned.String()).Scan(&state); err != nil {
+			t.Fatalf("read collectible state: %v", err)
+		}
+		if state != "minted" {
+			t.Fatalf("collectible state after rejected create = %q, want minted", state)
+		}
+	})
+
+	t.Run("an owned collectible is escrowed inside the create transaction", func(t *testing.T) {
+		owned := seedCollectible(t, creator)
+		taskID := newTaskID(t)
+		result := store.CreateTask(ctx, newSeriesID(t), taskID, newCollectibleCreateCommand(t, owned))
+		if _, accepted := result.(task.CreateTaskStoreAccepted); !accepted {
+			t.Fatalf("create task result = %#v, want accepted", result)
+		}
+		if got := countValue(t, "select count(*) from tasks where id = $1", taskID.String()); got != 1 {
+			t.Fatalf("task rows after create = %d, want 1", got)
+		}
+		if got := countValue(t, "select count(*) from task_fund_collectibles where task_id = $1", taskID.String()); got != 1 {
+			t.Fatalf("escrow rows after create = %d, want 1", got)
+		}
+		var state string
+		if err := handle.QueryRow(ctx, "select state from collectibles where id = $1", owned.String()).Scan(&state); err != nil {
+			t.Fatalf("read collectible state: %v", err)
+		}
+		if state != "escrowed" {
+			t.Fatalf("collectible state after create = %q, want escrowed", state)
+		}
+	})
+}
+
+// TestTaskCommentsPaginationOnSQLite pins the bounded comment listing: pages
+// are newest-first and limit/offset windows do not overlap.
+func TestTaskCommentsPaginationOnSQLite(t *testing.T) {
+	ctx := context.Background()
+	sqlHandle := openSQLiteWithSchema(t)
+	store := NewTaskStoreFromHandle(NewSQLite(sqlHandle))
+
+	taskID, matched := core.NewTaskID().(core.TaskIDCreated)
+	if !matched {
+		t.Fatalf("task id rejected")
+	}
+	author := newUserIDForTest(t)
+	commentIDs := make([]string, 0, 3)
+	for index := 0; index < 3; index++ {
+		created, idMatched := core.NewTaskCommentID().(core.TaskCommentIDCreated)
+		if !idMatched {
+			t.Fatalf("comment id rejected")
+		}
+		createdAt := time.Date(2026, 1, 2, 3, index, 0, 0, time.UTC).Format(time.RFC3339Nano)
+		if _, err := sqlHandle.ExecContext(ctx, `
+			insert into task_comments (id, task_id, author_user_id, body, created_at)
+			values (?, ?, ?, ?, ?)
+		`, created.Value.String(), taskID.Value.String(), author.String(), "comment", createdAt); err != nil {
+			t.Fatalf("seed comment: %v", err)
+		}
+		commentIDs = append(commentIDs, created.Value.String())
+	}
+
+	firstPage, ok := store.ListTaskComments(ctx, taskID.Value, requirePageForTest(t, 2, 0)).(task.ListTaskCommentsStoreAccepted)
+	if !ok {
+		t.Fatalf("first page rejected")
+	}
+	if len(firstPage.Values) != 2 {
+		t.Fatalf("first page = %d comments, want 2", len(firstPage.Values))
+	}
+	if firstPage.Values[0].ID.String() != commentIDs[2] || firstPage.Values[1].ID.String() != commentIDs[1] {
+		t.Fatalf("first page is not newest-first: %s, %s", firstPage.Values[0].ID, firstPage.Values[1].ID)
+	}
+
+	secondPage, ok := store.ListTaskComments(ctx, taskID.Value, requirePageForTest(t, 2, 2)).(task.ListTaskCommentsStoreAccepted)
+	if !ok {
+		t.Fatalf("second page rejected")
+	}
+	if len(secondPage.Values) != 1 || secondPage.Values[0].ID.String() != commentIDs[0] {
+		t.Fatalf("second page = %#v, want the single oldest comment", secondPage.Values)
 	}
 }

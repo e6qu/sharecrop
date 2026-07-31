@@ -18,28 +18,25 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/app"
-	"github.com/e6qu/sharecrop/internal/assets"
-	"github.com/e6qu/sharecrop/internal/audit"
+	"github.com/e6qu/sharecrop/internal/appgraph"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/contracts"
 	"github.com/e6qu/sharecrop/internal/db"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
-	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/mcp"
-	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/openapi"
-	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/orgcred"
-	"github.com/e6qu/sharecrop/internal/submission"
-	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/wasibridge/gen"
 	"github.com/e6qu/sharecrop/internal/wasibridge/httpbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 	"github.com/e6qu/sharecrop/internal/wasibridge/storehost"
 	"github.com/e6qu/sharecrop/internal/wasiguest"
+	"github.com/e6qu/sharecrop/internal/webhook"
 	"github.com/e6qu/sharecrop/web"
 )
 
@@ -275,8 +272,32 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 		return 1
 	}
 
-	agentService := agent.NewService(db.NewAgentStore(pool))
-	orgCredentialService := orgcred.NewService(db.NewOrgCredentialStore(pool))
+	tokenSecretResult := auth.NewAccessTokenSecret(cfg.AccessTokenSecret())
+	tokenSecret, tokenSecretMatched := tokenSecretResult.(auth.AccessTokenSecretAccepted)
+	if !tokenSecretMatched {
+		rejected := tokenSecretResult.(auth.AccessTokenSecretRejected)
+		logger.Error("load access token secret", "reason", rejected.Reason.Description())
+		return 2
+	}
+	graphResult := appgraph.Build(tokenSecret.Value, appgraph.Stores{
+		Auth:          db.NewAuthStore(pool),
+		Event:         db.NewEventStore(pool),
+		Notification:  db.NewNotificationStore(pool),
+		Organization:  db.NewOrgStore(pool),
+		Task:          db.NewTaskStore(pool),
+		Submission:    db.NewSubmissionStore(pool),
+		Ledger:        db.NewLedgerStore(pool),
+		Agent:         db.NewAgentStore(pool),
+		OrgCredential: db.NewOrgCredentialStore(pool),
+		Assets:        db.NewCollectibleStore(pool),
+		Audit:         db.NewAuditStore(pool),
+	})
+	built, graphMatched := graphResult.(appgraph.GraphBuilt)
+	if !graphMatched {
+		logger.Error("build service graph", "reason", graphResult.(appgraph.BuildRejected).Reason.Description())
+		return 2
+	}
+	graph := built.Value
 
 	var subject auth.Subject
 	var callerCredential mcp.CallerCredential
@@ -287,7 +308,7 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 			logger.Error("organization credential", "reason", secretResult.(orgcred.SecretPlainRejected).Reason.Description())
 			return 2
 		}
-		verifyResult := orgCredentialService.Verify(ctx, secret.Value)
+		verifyResult := graph.OrgCredentialService.Verify(ctx, secret.Value)
 		verified, verifiedMatched := verifyResult.(orgcred.CredentialVerified)
 		if !verifiedMatched {
 			logger.Error("verify organization credential", "reason", verifyResult.(orgcred.VerifyRejected).Reason.Description())
@@ -302,7 +323,7 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 			logger.Error("agent credential", "reason", "SHARECROP_AGENT_TOKEN is required and must be a valid agent or organization credential")
 			return 2
 		}
-		verifyResult := agentService.Verify(ctx, secret.Value)
+		verifyResult := graph.AgentService.Verify(ctx, secret.Value)
 		verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
 		if !verifiedMatched {
 			logger.Error("verify agent credential", "reason", verifyResult.(agent.VerifyRejected).Reason.Description())
@@ -312,34 +333,11 @@ func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *
 		callerCredential = mcp.CallerCredential{Scopes: verified.Credential.Scopes, TaskID: verified.Credential.TaskID}
 	}
 
-	tokenSecretResult := auth.NewAccessTokenSecret(cfg.AccessTokenSecret())
-	tokenSecret, tokenSecretMatched := tokenSecretResult.(auth.AccessTokenSecretAccepted)
-	if !tokenSecretMatched {
-		rejected := tokenSecretResult.(auth.AccessTokenSecretRejected)
-		logger.Error("load access token secret", "reason", rejected.Reason.Description())
-		return 2
-	}
-	authServiceResult := auth.NewService(db.NewAuthStore(pool), tokenSecret.Value, auth.SystemClock{})
-	authService, authServiceMatched := authServiceResult.(auth.ServiceCreated)
-	if !authServiceMatched {
-		rejected := authServiceResult.(auth.ServiceRejected)
-		logger.Error("create auth service", "reason", rejected.Reason.Description())
-		return 2
-	}
-
-	organizationService := org.NewService(db.NewOrgStore(pool))
-	taskStore := db.NewTaskStore(pool)
-	taskService := task.NewService(taskStore, organizationService, agentService)
-	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService)
-	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
-	assetService := assets.NewService(db.NewCollectibleStore(pool))
-	notificationService := notification.NewService(db.NewNotificationStore(pool))
 	bootstrapAdmins := httpserver.ParseAdminUserIDsForRuntime(os.Getenv("SHARECROP_ADMIN_USER_IDS"))
 	platformAdmins := db.NewPlatformAdminStore(pool, bootstrapAdmins)
 	moderationTriage := db.NewModerationTriageStore(pool)
 	privacyService := db.NewPrivacyStore(pool)
-	auditService := audit.NewService(db.NewAuditStore(pool))
-	mcpServer := httpserver.NewMCPServer(taskService, submissionService, ledgerService, organizationService, orgCredentialService, assetService, notificationService, authService.Value, platformAdmins, moderationTriage, privacyService, auditService)
+	mcpServer := httpserver.NewMCPServer(graph.TaskService, graph.SubmissionService, graph.LedgerService, graph.OrganizationService, graph.OrgCredentialService, graph.AssetService, graph.NotificationService, graph.AuthService, platformAdmins, moderationTriage, privacyService, graph.AuditService, webhook.NewService(db.NewWebhookStore(pool)))
 
 	logger.Info("starting sharecrop mcp stdio transport")
 	if err := mcp.ServeStdio(ctx, mcpServer, subject, callerCredential, os.Stdin, stdout); err != nil {
@@ -375,32 +373,36 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		return 1
 	}
 
-	authServiceResult := auth.NewService(db.NewAuthStore(pool), tokenSecret.Value, auth.SystemClock{})
-	authService, authServiceMatched := authServiceResult.(auth.ServiceCreated)
-	if !authServiceMatched {
-		rejected := authServiceResult.(auth.ServiceRejected)
-		logger.Error("create auth service", "reason", rejected.Reason.Description())
+	eventStore := db.NewEventStore(pool)
+	graphResult := appgraph.Build(tokenSecret.Value, appgraph.Stores{
+		Auth:          db.NewAuthStore(pool),
+		Event:         eventStore,
+		Notification:  db.NewNotificationStore(pool),
+		Organization:  db.NewOrgStore(pool),
+		Task:          db.NewTaskStore(pool),
+		Submission:    db.NewSubmissionStore(pool),
+		Ledger:        db.NewLedgerStore(pool),
+		Agent:         db.NewAgentStore(pool),
+		OrgCredential: db.NewOrgCredentialStore(pool),
+		Assets:        db.NewCollectibleStore(pool),
+		Audit:         db.NewAuditStore(pool),
+	})
+	built, graphMatched := graphResult.(appgraph.GraphBuilt)
+	if !graphMatched {
+		logger.Error("build service graph", "reason", graphResult.(appgraph.BuildRejected).Reason.Description())
 		return 2
 	}
-
-	tokenVerifier := auth.NewAccessTokenVerifier(tokenSecret.Value, auth.SystemClock{})
-	organizationService := org.NewService(db.NewOrgStore(pool))
-	taskStore := db.NewTaskStore(pool)
-	agentService := agent.NewService(db.NewAgentStore(pool))
-	orgCredentialService := orgcred.NewService(db.NewOrgCredentialStore(pool))
-	taskService := task.NewService(taskStore, organizationService, agentService)
-	submissionService := submission.NewService(db.NewSubmissionStore(pool), taskStore, organizationService)
-	ledgerService := ledger.NewService(db.NewLedgerStore(pool))
-	assetService := assets.NewService(db.NewCollectibleStore(pool))
-	notificationService := notification.NewService(db.NewNotificationStore(pool))
+	graph := built.Value
 	bootstrapAdmins := httpserver.ParseAdminUserIDsForRuntime(os.Getenv("SHARECROP_ADMIN_USER_IDS"))
 
-	nativeHandler := httpserver.NewWithRuntimeState(staticFiles, authService.Value, tokenVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, httpserver.RuntimeState{
+	nativeHandler := httpserver.NewWithRuntimeState(staticFiles, graph.AuthService, graph.TokenVerifier, graph.OrganizationService, graph.TaskService, graph.SubmissionService, graph.LedgerService, graph.AgentService, graph.OrgCredentialService, graph.AssetService, httpserver.RuntimeState{
 		IPRateLimiter:       db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
 		SubjectRateLimiter:  db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
 		MCPSessions:         httpserver.NewPersistedMCPHTTPSessionStore(db.NewMCPSessionStore(pool)),
-		AuditService:        audit.NewService(db.NewAuditStore(pool)),
-		NotificationService: notificationService,
+		AuditService:        graph.AuditService,
+		NotificationService: graph.NotificationService,
+		EventStore:          eventStore,
+		WebhookStore:        db.NewWebhookStore(pool),
 		SavedQueueViews:     db.NewSavedQueueViewStore(pool),
 		PrivacyService:      db.NewPrivacyStore(pool),
 		PlatformAdmins:      db.NewPlatformAdminStore(pool, bootstrapAdmins),
@@ -431,7 +433,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		logger.Warn("no app guest embedded; serving the native in-process mux (build with `make build` for WASI hosting)")
 	default:
 		guestBuildStart := time.Now()
-		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestWASM, cfg, pool, staticFiles, nativeHandler, authService.Value, shauthConfigured())
+		wasiHandler, closeGuest, err := serveThroughWASIGuest(ctx, guestWASM, cfg, pool, staticFiles, nativeHandler, graph.AuthService, shauthConfigured())
 		if err != nil {
 			logger.Error("build wasi guest host", "error", err)
 			return 1
@@ -449,35 +451,59 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress(),
-		Handler:           handler,
+		Handler:           wrapHTTPProtocol(handler, cfg.HTTPProtocol()),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	// The lifecycle runner is built after the handler (native or guest) so it
+	// shares the same pool and event recorder, and started before the
+	// listener so sweeps run for the server's whole life. It runs in both
+	// native and WASI-hosted modes — the sweeps are host-side either way.
+	lifecycle := buildLifecycleRunner(logger, pool, graph.EventRecorder)
+	lifecycle.Start(ctx)
+
 	errs := make(chan error, 1)
 	go func() {
-		logger.Info("starting sharecrop", "address", cfg.HTTPAddress())
+		logger.Info("starting sharecrop", "address", cfg.HTTPAddress(), "http_protocol", cfg.HTTPProtocol().String())
 		errs <- server.ListenAndServe()
 	}()
 
 	stopCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Teardown ordering: the runner is stopped explicitly BEFORE returning,
+	// so its in-flight sweeps finish while the guest pool and pgx pool are
+	// still alive — the deferred closeGuest/pool.Close run only after these
+	// returns.
 	select {
 	case <-stopCtx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
+			lifecycle.Stop()
 			logger.Error("shutdown server", "error", err)
 			return 1
 		}
+		lifecycle.Stop()
 		return 0
 	case err := <-errs:
+		lifecycle.Stop()
 		if errors.Is(err, http.ErrServerClosed) {
 			return 0
 		}
 		logger.Error("serve", "error", err)
 		return 1
 	}
+}
+
+// wrapHTTPProtocol applies the configured listener protocol: h2c wraps the
+// handler so cleartext HTTP/2 is accepted alongside HTTP/1.1; h1 leaves the
+// handler untouched.
+func wrapHTTPProtocol(handler http.Handler, protocol app.HTTPProtocol) http.Handler {
+	if protocol == app.HTTPProtocolH2C {
+		return h2c.NewHandler(handler, &http2.Server{})
+	}
+	return handler
 }
 
 // serveThroughWASIGuest builds the handler for the WASI cutover: a pool of the

@@ -1,6 +1,7 @@
 module Sharecrop.Types exposing (..)
 
 import Browser
+import Browser.Events
 import Dict
 import Browser.Navigation as Nav
 import File
@@ -9,6 +10,7 @@ import Sharecrop.Generated.Admin as Admin
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
+import Sharecrop.Generated.Events as Events
 import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Moderation as Moderation
 import Sharecrop.Generated.Notification as Notification
@@ -83,6 +85,12 @@ type alias UserDirectoryEntry =
     }
 
 
+type alias UserDirectoryPage =
+    { users : List UserDirectoryEntry
+    , nextOffset : Int
+    }
+
+
 type alias QueueView =
     { name : String
     , query : String
@@ -120,6 +128,18 @@ type alias LoggedInModel =
     , balance : Maybe Wallet
     , entries : List Ledger.LedgerEntryResponse
     , ledgerOffset : Int
+    , ledgerNextOffset : Int
+    , unreadCount : Int
+    , inboxUnreadOnly : Bool
+    , activityEvents : List Events.EventResponse
+    , activityCursor : String
+    , webhookSubscriptions : List Events.WebhookSubscriptionResponse
+    , webhookURL : String
+    , webhookKinds : List Events.DomainEventKind
+    , webhookMessage : Maybe Note
+    , newWebhookSecret : Maybe Events.WebhookSubscriptionCreatedResponse
+    , activeWebhookDeliveriesID : Maybe String
+    , webhookDeliveries : List Events.WebhookDeliveryResponse
     , createTitle : String
     , createTitleInvalid : Bool
     , createDescription : String
@@ -138,6 +158,7 @@ type alias LoggedInModel =
     , createAssigneeScope : Task.TaskAssigneeScope
     , createParticipationPolicy : String
     , createReservationHours : String
+    , createExpiresAt : String
     , createAttachments : List SelectedAttachment
     , createMessage : Maybe Note
     , fundTaskId : String
@@ -148,6 +169,7 @@ type alias LoggedInModel =
     , tasks : List Task.TaskListItemResponse
     , taskStateFilter : List String
     , taskListOffset : Int
+    , taskListNextOffset : Int
     , taskListQuery : String
     , taskListTypeFilter : String
     , taskListSort : String
@@ -160,6 +182,7 @@ type alias LoggedInModel =
     , discoveryTasks : List Task.TaskListItemResponse
     , discoveryIncludeReserved : Bool
     , discoveryOffset : Int
+    , discoveryNextOffset : Int
     , discoveryQuery : String
     , detail : Maybe PublicTaskDetail
     , detailError : Maybe String
@@ -181,7 +204,7 @@ type alias LoggedInModel =
     , reviewPartialCredit : String
     , reviewTip : String
     , reviewTipCollectibleId : String
-    , reviewBan : Bool
+    , reviewBan : Ledger.BanSelection
     , reviewMessage : Maybe Note
     , collectibles : List Collectible.CollectibleResponse
     , collectibleName : String
@@ -203,6 +226,7 @@ type alias LoggedInModel =
     , orgBalance : Maybe Wallet
     , orgLedger : List Ledger.LedgerEntryResponse
     , orgLedgerOffset : Int
+    , orgLedgerNextOffset : Int
     , orgAuditEvents : List Admin.AuditEventResponse
     , orgAuditMessage : Maybe Note
     , orgTeams : List Team.TeamResponse
@@ -216,6 +240,7 @@ type alias LoggedInModel =
     , orgTaskTypeFilter : String
     , orgTaskSort : String
     , orgTaskOffset : Int
+    , orgTaskNextOffset : Int
     , orgTaskMessage : Maybe Note
     , orgTaskSavedViewName : String
     , orgTaskSavedViews : List QueueView
@@ -236,6 +261,7 @@ type alias LoggedInModel =
     , userWork : List Task.TaskListItemResponse
     , userSubmissions : List Submission.SubmissionResponse
     , userSubmissionsOffset : Int
+    , userSubmissionsNextOffset : Int
     , pendingRevisionTaskID : Maybe String
     , pendingRevisionResponse : String
     , seriesDetail : Maybe SeriesDetailData
@@ -256,6 +282,7 @@ type alias LoggedInModel =
     , teamWorkTypeFilter : String
     , teamWorkSort : String
     , teamWorkOffset : Int
+    , teamWorkNextOffset : Int
     , teamWorkMessage : Maybe Note
     , teamWorkSavedViewName : String
     , teamWorkSavedViews : List QueueView
@@ -290,24 +317,32 @@ type alias LoggedInModel =
     , userDirectory : List UserDirectoryEntry
     , userDirectoryQuery : String
     , userDirectoryOffset : Int
+    , userDirectoryNextOffset : Int
     , organizationQuery : String
     , organizationOffset : Int
+    , organizationNextOffset : Int
     , standaloneTeamQuery : String
     , standaloneTeamOffset : Int
+    , standaloneTeamNextOffset : Int
     , orgTeamQuery : String
     , orgTeamOffset : Int
+    , orgTeamNextOffset : Int
     , operations : Maybe Admin.OperationsResponse
     , auditEvents : List Admin.AuditEventResponse
     , auditEventsOffset : Int
+    , auditEventsNextOffset : Int
     , platformAdmins : List Admin.PlatformAdminResponse
     , platformAdminsOffset : Int
+    , platformAdminsNextOffset : Int
     , adminSelectedUserId : String
     , adminModerationReports : List Moderation.ModerationReportResponse
     , adminModerationStateFilter : String
     , adminModerationOffset : Int
+    , adminModerationNextOffset : Int
     , adminModerationResolutionNote : String
     , adminPrivacyRequests : List Privacy.PrivacyRequestResponse
     , adminPrivacyOffset : Int
+    , adminPrivacyNextOffset : Int
     , adminPrivacyResolutionNote : String
     , adminRetentionRedactedFieldCount : Maybe Int
     , auditActionFilter : String
@@ -316,6 +351,7 @@ type alias LoggedInModel =
     , adminMessage : Maybe Note
     , notifications : List Notification.NotificationResponse
     , notificationsOffset : Int
+    , notificationsNextOffset : Int
     , inboxMessage : Maybe Note
     }
 
@@ -344,6 +380,7 @@ type alias TaskDetail =
     , seriesID : String
     , taskType : String
     , referenceURL : String
+    , expiresAt : String
     }
 
 
@@ -416,6 +453,7 @@ type Msg
     | CreateAssigneeScopeChosen Task.TaskAssigneeScope
     | CreateParticipationChanged String
     | CreateReservationHoursChanged String
+    | CreateExpiresAtChanged String
     | PickCreateAttachmentClicked
     | CreateAttachmentFileChosen File.File
     | CreateAttachmentSelected String String Int String
@@ -532,7 +570,7 @@ type Msg
     | OrgAuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
     | OrgTeamsReceived (Result Http.Error Team.TeamsResponse)
     | StandaloneTeamsReceived (Result Http.Error Team.TeamsResponse)
-    | UserDirectoryReceived (Result Http.Error (List UserDirectoryEntry))
+    | UserDirectoryReceived (Result Http.Error UserDirectoryPage)
     | UserDirectoryQueryChanged String
     | SearchUserDirectoryClicked
     | PreviousUserDirectoryPageClicked
@@ -693,6 +731,20 @@ type Msg
     | NextNotificationsPageClicked
     | MarkNotificationReadClicked String
     | NotificationReadReceived (Result Http.Error Notification.NotificationResponse)
+    | UnreadCountReceived (Result Http.Error Notification.NotificationUnreadCountResponse)
+    | InboxUnreadOnlyToggled Bool
+    | PollTick Time.Posix
+    | VisibilityChanged Browser.Events.Visibility
+    | ActivityEventsReceived (Result Http.Error Events.EventListResponse)
+    | WebhooksReceived (Result Http.Error Events.WebhookSubscriptionsResponse)
+    | WebhookURLChanged String
+    | ToggleWebhookKind Events.DomainEventKind
+    | CreateWebhookClicked
+    | WebhookCreated (Result Http.Error Events.WebhookSubscriptionCreatedResponse)
+    | RevokeWebhookClicked String
+    | WebhookRevoked (Result Http.Error Events.WebhookSubscriptionResponse)
+    | OpenWebhookDeliveries String
+    | WebhookDeliveriesReceived (Result Http.Error Events.WebhookDeliveriesResponse)
 
 
 pageToPath : Page -> String

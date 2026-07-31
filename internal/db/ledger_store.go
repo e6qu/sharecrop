@@ -28,14 +28,14 @@ func (store LedgerStore) FundTask(ctx context.Context, command ledger.FundStoreC
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if existing := findFundForKey(ctx, tx, command.IdempotencyKey.String(), command.TaskID); existing != nil {
-		return existing
-	}
-
 	accountResult := lockUserAccount(ctx, tx, command.FunderUserID)
 	account, matched := accountResult.(accountLocked)
 	if !matched {
 		return ledger.FundRejected{Reason: accountResult.(accountLockRejected).reason}
+	}
+
+	if existing := findFundForKey(ctx, tx, command.IdempotencyKey.String(), command.TaskID, account.id); existing != nil {
+		return existing
 	}
 
 	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.FunderUserID, "fund")
@@ -57,14 +57,14 @@ func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command l
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if existing := findFundForKey(ctx, tx, command.IdempotencyKey.String(), command.TaskID); existing != nil {
-		return existing
-	}
-
 	accountResult := lockOrganizationAccount(ctx, tx, command.OrganizationID)
 	account, matched := accountResult.(accountLocked)
 	if !matched {
 		return ledger.FundRejected{Reason: accountResult.(accountLockRejected).reason}
+	}
+
+	if existing := findFundForKey(ctx, tx, command.IdempotencyKey.String(), command.TaskID, account.id); existing != nil {
+		return existing
 	}
 
 	taskResult := lockTaskOwnedByOrganization(ctx, tx, command.TaskID, command.OrganizationID)
@@ -175,11 +175,16 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	}
 	tipOutcome := combineTips(tip.outcome, collectibleTip.outcome)
 
+	workerID, workerProblem := parseReviewWorker(rawWorkerID)
+	if workerProblem != nil {
+		return ledger.AcceptRejected{Reason: *workerProblem}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit accept submission transaction failed")}
 	}
 
-	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: tipOutcome}
+	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: outcome, Tip: tipOutcome}
 }
 
 func combinePayouts(first ledger.PayoutOutcome, second ledger.PayoutOutcome) ledger.PayoutOutcome {
@@ -224,17 +229,29 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 
 	var submissionState string
 	var rawWorkerID string
+	var changesKey string
+	var storedNote string
 	scanErr := tx.QueryRow(ctx, `
-		select state, user_id::text
+		select state, user_id::text, coalesce(changes_idempotency_key, ''), coalesce(review_note, '')
 		from submissions
 		where id = $1 and task_id = $2
 		for update
-	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &rawWorkerID)
+	`, command.SubmissionID.String(), command.TaskID.String()).Scan(&submissionState, &rawWorkerID, &changesKey, &storedNote)
 	if errors.Is(scanErr, ErrNoRows) {
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "submission was not found for the task")}
 	}
 	if scanErr != nil {
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read submission failed")}
+	}
+	workerID, workerProblem := parseReviewWorker(rawWorkerID)
+	if workerProblem != nil {
+		return ledger.RequestChangesRejected{Reason: *workerProblem}
+	}
+	if submissionState == "changes_requested" {
+		if changesKey == command.IdempotencyKey.String() {
+			return ledger.ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, ReviewNote: storedNote}
+		}
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "changes were already requested with a different idempotency key")}
 	}
 	if submissionState != "submitted" {
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only submitted work can receive requested changes")}
@@ -242,9 +259,9 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 
 	if _, err := tx.Exec(ctx, `
 		update submissions
-		set state = 'changes_requested', review_note = $2, reviewed_by_user_id = $3, review_recorded_at = now(), state_recorded_at = now()
+		set state = 'changes_requested', review_note = $2, reviewed_by_user_id = $3, review_recorded_at = now(), changes_idempotency_key = $4, state_recorded_at = now()
 		where id = $1
-	`, command.SubmissionID.String(), command.ReviewNote.String(), command.RequesterUserID.String()); err != nil {
+	`, command.SubmissionID.String(), command.ReviewNote.String(), command.RequesterUserID.String(), command.IdempotencyKey.String()); err != nil {
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "request submission changes failed")}
 	}
 
@@ -260,7 +277,7 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit request changes transaction failed")}
 	}
 
-	return ledger.ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, ReviewNote: command.ReviewNote.String()}
+	return ledger.ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, ReviewNote: command.ReviewNote.String()}
 }
 
 func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.RejectStoreCommand) ledger.RejectResult {
@@ -294,9 +311,13 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 	if scanErr != nil {
 		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read submission failed")}
 	}
+	workerID, workerProblem := parseReviewWorker(rawWorkerID)
+	if workerProblem != nil {
+		return ledger.RejectRejected{Reason: *workerProblem}
+	}
 	if submissionState == "rejected" {
 		if reviewKey == command.IdempotencyKey.String() {
-			return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
+			return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 		}
 		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "submission was already rejected with a different idempotency key")}
 	}
@@ -354,7 +375,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit reject submission transaction failed")}
 	}
 
-	return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: payout.outcome, Tip: tip.outcome}
+	return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: payout.outcome, Tip: tip.outcome}
 }
 
 func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundStoreCommand) ledger.RefundResult {
@@ -368,8 +389,13 @@ func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundSt
 		return ledger.RefundRejected{Reason: *reason}
 	}
 
+	// Idempotency keys are unique per account, not globally, so the reuse
+	// checks are scoped: first to this task's entries (catches reusing this
+	// task's fund/payout key for its refund), then to the funder's account
+	// once the fund row names it (catches reusing the funder's key from
+	// another task).
 	var keyExists bool
-	if err := tx.QueryRow(ctx, "select exists(select 1 from ledger_entries where idempotency_key = $1)", command.IdempotencyKey.String()).Scan(&keyExists); err != nil {
+	if err := tx.QueryRow(ctx, "select exists(select 1 from ledger_entries where idempotency_key = $1 and task_id = $2)", command.IdempotencyKey.String(), command.TaskID.String()).Scan(&keyExists); err != nil {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check refund idempotency failed")}
 	}
 
@@ -381,6 +407,11 @@ func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundSt
 	}
 	if scanErr != nil {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task fund failed")}
+	}
+	if !keyExists {
+		if err := tx.QueryRow(ctx, "select exists(select 1 from ledger_entries where idempotency_key = $1 and account_id = $2)", command.IdempotencyKey.String(), rawFunderAccountID).Scan(&keyExists); err != nil {
+			return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check refund idempotency failed")}
+		}
 	}
 	if keyExists {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}

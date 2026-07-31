@@ -37,6 +37,8 @@ var (
 	ScopePrivacyManage       = Scope{value: "privacy_manage"}
 	ScopePlatformAdmin       = Scope{value: "platform_admin"}
 	ScopeCredentialsManage   = Scope{value: "credentials_manage"}
+	ScopeWebhooksRead        = Scope{value: "webhooks_read"}
+	ScopeWebhooksManage      = Scope{value: "webhooks_manage"}
 )
 
 // allScopes lists every legal scope, used by ParseScope so adding a new
@@ -52,6 +54,7 @@ var allScopes = []Scope{
 	ScopePrivacyRead, ScopePrivacyManage,
 	ScopePlatformAdmin,
 	ScopeCredentialsManage,
+	ScopeWebhooksRead, ScopeWebhooksManage,
 }
 
 type ScopeResult interface {

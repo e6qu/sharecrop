@@ -64,15 +64,18 @@ seriesCommentResponseEncoder seriesCommentResponse =
 
 type alias TaskSeriesListResponse =
     { series : List TaskSeriesResponse
+    , nextOffset : Int
     }
 
 taskSeriesListResponseDecoder : Decoder TaskSeriesListResponse
 taskSeriesListResponseDecoder =
-    Decode.map TaskSeriesListResponse
+    Decode.map2 TaskSeriesListResponse
         (Decode.field "series" (Decode.list taskSeriesResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 taskSeriesListResponseEncoder : TaskSeriesListResponse -> Encode.Value
 taskSeriesListResponseEncoder taskSeriesListResponse =
     Encode.object
         [ ( "series", Encode.list taskSeriesResponseEncoder taskSeriesListResponse.series )
+        , ( "next_offset", Encode.int taskSeriesListResponse.nextOffset )
         ]

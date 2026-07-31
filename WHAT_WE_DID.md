@@ -6741,3 +6741,45 @@ refresh-token rejection, and direct-entry fail-closed behavior. The suite also
 rendered distinct light and dark pages. Sharecrop's CI checkout and local
 contract runner pinned the same Shauth commit, eliminating a stale provider
 contract mismatch.
+
+# Review-driven platform upgrade (events, webhooks, runner, farm UI)
+
+A full design review of the API, backend, background machinery, exposed
+services, and UI produced one large upgrade branch.
+
+Backend: added the append-only domain event stream (`internal/event`,
+`domain_events`/`domain_event_recipients`) with emission in the service layer,
+which closed the S1 gap where MCP mutations produced no notifications or audit
+trail side effects; sealed the notification kind enum at 18 kinds and added the
+unread filter and unread-count endpoints; derived outbound webhooks from the
+event stream (owned subscriptions, HMAC-signed deliveries, bounded retries to a
+dead state, SKIP LOCKED claims, dial-time SSRF guard) with REST, MCP, and
+browser management; added the per-user cursor event feed and its SSE variant;
+and added the host-side lifecycle runner (reservation expiry, task expiration
+with idempotent escrow refunds, privacy retention under the seeded system
+actor, rate-limit bucket eviction, MCP session sweep, webhook pump). The task
+`expired` state became reachable through the new `expires_at` policy. The
+service graph moved into `internal/appgraph`, shared by serve, mcp-stdio, the
+WASI guest, and the runner.
+
+API quality: error bodies and MCP tool failures carry machine-readable codes;
+org credentials are scope-gated on REST as on MCP; ledger idempotency keys
+became per-account with task-scoped refund guards; request-changes gained a
+required, replayable idempotency key; task creation escrows reward
+collectibles in one transaction; every list paginates and reports
+`next_offset`; the moderation list filters in SQL; `ban_implementor` became the
+`ban_selection` enum; wildcard path parameters were normalized (fixing a
+route/handler mismatch that always rejected the organization collectibles
+list); rate limits cover creation and minting endpoints; the Postgres rate
+limiter no longer panics and fails closed. MCP `create_task`,
+`accept_submission`, and `list_tasks` reached full REST parity, and credits
+tools activated the previously dead `ledger_read` scope.
+`SHARECROP_HTTP_PROTOCOL=h2c` opts the listener into HTTP/2 cleartext.
+
+UI: promoted the demo-only pixel/farm design system into the shipped app as
+real Tailwind tokens with self-hosted OFL fonts, hard-edged parchment
+components, sprite-backed empty states, a brand row, measured AA contrast, and
+a global focus outline; added the unread badge, 15-second polling with
+visibility refresh, the Overview activity feed, webhook management on the
+Agents page, the task expiration field, and `next_offset`-driven pagers; the
+demo's `arcade.css` shrank to a stub because app and demo share one theme.

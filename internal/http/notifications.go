@@ -1,8 +1,6 @@
 package httpserver
 
 import (
-	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -14,11 +12,20 @@ func (notificationsResponse) writableResponse() {}
 
 func (notificationResponse) writableResponse() {}
 
+func (notificationUnreadCountResponse) writableResponse() {}
+
 func (server Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
+		return
+	}
+
+	filterResult := parseNotificationStateFilter(r.URL.Query().Get("state"))
+	filter, filterMatched := filterResult.(stateFilterAccepted)
+	if !filterMatched {
+		writeDomainError(w, filterResult.(stateFilterRejected).reason)
 		return
 	}
 
@@ -26,32 +33,50 @@ func (server Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	if !pageOK {
 		return
 	}
-	result := server.notificationService.List(r.Context(), actor.subject.ID, page)
+	result := server.notificationService.List(r.Context(), actor.subject.ID, filter.value, page.Probe())
 	listed, listedMatched := result.(notification.NotificationsListed)
 	if !listedMatched {
 		writeDomainError(w, result.(notification.ListRejected).Reason)
 		return
 	}
 
-	response := notificationsResponse{Notifications: make([]notificationResponse, 0, len(listed.Values))}
-	for _, value := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := notificationsResponse{Notifications: make([]notificationResponse, 0, visible), NextOffset: nextOffset}
+	for _, value := range listed.Values[:visible] {
 		response.Notifications = append(response.Notifications, notificationToResponse(value))
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (server Server) unreadNotificationCount(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
+		return
+	}
+
+	result := server.notificationService.CountUnread(r.Context(), actor.subject.ID)
+	counted, countedMatched := result.(notification.UnreadCounted)
+	if !countedMatched {
+		writeDomainError(w, result.(notification.CountRejected).Reason)
+		return
+	}
+	writeJSON(w, http.StatusOK, notificationUnreadCountResponse{UnreadCount: counted.Count})
 }
 
 func (server Server) markNotificationRead(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
 	idResult := core.ParseNotificationID(r.PathValue("notification_id"))
 	idAccepted, idMatched := idResult.(core.NotificationIDCreated)
 	if !idMatched {
-		writeError(w, http.StatusBadRequest, idResult.(core.NotificationIDRejected).Reason.Description())
+		writeDomainError(w, idResult.(core.NotificationIDRejected).Reason)
 		return
 	}
 
@@ -64,18 +89,33 @@ func (server Server) markNotificationRead(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, notificationToResponse(read.Value))
 }
 
-func (server Server) notify(w http.ResponseWriter, ctx context.Context, recipient core.UserID, actor core.UserID, kind notification.Kind, subject notification.Subject, metadata notification.Metadata) bool {
-	result := server.notificationService.Notify(ctx, recipient, actor, kind, subject, metadata)
-	switch typed := result.(type) {
-	case notification.NotificationCreated:
-		return true
-	case notification.NotificationSkipped:
-		return true
-	case notification.NotifyRejected:
-		writeDomainError(w, typed.Reason)
-		return false
+type stateFilterParseResult interface {
+	stateFilterParseResult()
+}
+
+type stateFilterAccepted struct {
+	value notification.StateFilter
+}
+
+type stateFilterRejected struct {
+	reason core.DomainError
+}
+
+func (stateFilterAccepted) stateFilterParseResult() {}
+
+func (stateFilterRejected) stateFilterParseResult() {}
+
+// parseNotificationStateFilter maps the optional ?state= query parameter onto
+// the listing filter: absent means the whole inbox, "unread" narrows to
+// unread rows, and everything else is an enum error.
+func parseNotificationStateFilter(raw string) stateFilterParseResult {
+	switch raw {
+	case "":
+		return stateFilterAccepted{value: notification.AnyState{}}
+	case notification.StateUnread.String():
+		return stateFilterAccepted{value: notification.UnreadOnly{}}
 	default:
-		panic("unhandled notification result")
+		return stateFilterRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "notification state filter is invalid")}
 	}
 }
 
@@ -91,18 +131,4 @@ func notificationToResponse(value notification.Notification) notificationRespons
 		MetadataJSON:    value.Metadata.JSON,
 		CreatedAt:       value.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
-}
-
-func notificationSubjectForSubmission(submissionID core.SubmissionID) notification.Subject {
-	return notification.Subject{Kind: "submission", ID: submissionID.String()}
-}
-
-func taskNotificationMetadata(taskID core.TaskID) notification.Metadata {
-	encoded, err := json.Marshal(struct {
-		TaskID string `json:"task_id"`
-	}{TaskID: taskID.String()})
-	if err != nil {
-		panic("encode notification metadata: " + err.Error())
-	}
-	return notification.Metadata{JSON: string(encoded)}
 }

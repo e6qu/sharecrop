@@ -74,38 +74,30 @@ func (services mcpServices) CreateModerationReport(ctx context.Context, actor co
 }
 
 func (services mcpServices) ListAdminModerationReports(ctx context.Context, stateFilter string, page core.Page) mcp.ModerationReportsListResult {
-	filters := audit.NoListFilters()
-	filters.Action = audit.ActionEquals{Value: audit.ActionModerationReportCreated}
-	result := services.auditService.List(ctx, filters, page)
-	listed, listedMatched := result.(audit.EventsListed)
-	if !listedMatched {
-		return mcp.ModerationReportsListRejected{Reason: result.(audit.ListRejected).Reason}
+	filter := ModerationTriageStateFilter(AnyTriageState{})
+	if stateFilter != "" {
+		stateResult := ParseModerationTriageState(stateFilter)
+		state, stateMatched := stateResult.(ModerationTriageStateAccepted)
+		if !stateMatched {
+			return mcp.ModerationReportsListRejected{Reason: stateResult.(ModerationTriageStateRejected).Reason}
+		}
+		filter = TriageStateEquals{State: state.Value}
 	}
-	reportIDs := make([]core.AuditEventID, 0, len(listed.Values))
-	for _, event := range listed.Values {
-		reportIDs = append(reportIDs, event.ID)
-	}
-	triageResult := services.moderationTriage.List(ctx, reportIDs)
+	triageResult := services.moderationTriage.List(ctx, filter, page)
 	triageListed, triageMatched := triageResult.(ModerationTriageListed)
 	if !triageMatched {
 		return mcp.ModerationReportsListRejected{Reason: triageResult.(ModerationTriageListRejected).Reason}
 	}
-	triageByID := map[string]ModerationTriageRecord{}
-	for _, record := range triageListed.Values {
-		triageByID[record.ReportID.String()] = record
-	}
-	reports := make([]mcp.ModerationReport, 0, len(listed.Values))
-	for _, event := range listed.Values {
-		triage, ok := triageByID[event.ID.String()]
-		if !ok {
-			return mcp.ModerationReportsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "moderation report triage state is missing")}
+	reports := make([]mcp.ModerationReport, 0, len(triageListed.Values))
+	for _, triage := range triageListed.Values {
+		eventResult := services.auditService.Get(ctx, triage.ReportID)
+		found, foundMatched := eventResult.(audit.EventFound)
+		if !foundMatched {
+			return mcp.ModerationReportsListRejected{Reason: eventResult.(audit.GetRejected).Reason}
 		}
-		report, ok := moderationReportFromEventAndTriage(event, triage)
+		report, ok := moderationReportFromEventAndTriage(found.Value, triage)
 		if !ok {
 			return mcp.ModerationReportsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "moderation report could not be converted")}
-		}
-		if stateFilter != "" && report.State != stateFilter {
-			continue
 		}
 		reports = append(reports, report)
 	}
@@ -113,7 +105,12 @@ func (services mcpServices) ListAdminModerationReports(ctx context.Context, stat
 }
 
 func (services mcpServices) TriageModerationReport(ctx context.Context, actor core.UserID, reportID core.AuditEventID, state string, note string) mcp.ModerationReportResult {
-	result := services.moderationTriage.Update(ctx, actor, reportID, state, note)
+	stateResult := ParseModerationTriageState(state)
+	parsedState, stateMatched := stateResult.(ModerationTriageStateAccepted)
+	if !stateMatched {
+		return mcp.ModerationReportRejected{Reason: stateResult.(ModerationTriageStateRejected).Reason}
+	}
+	result := services.moderationTriage.Update(ctx, actor, reportID, parsedState.Value, note)
 	saved, matched := result.(ModerationTriageSaved)
 	if !matched {
 		return mcp.ModerationReportRejected{Reason: result.(ModerationTriageMutationRejected).Reason}

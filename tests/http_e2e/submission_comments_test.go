@@ -34,7 +34,9 @@ func TestSubmissionCommentThread(t *testing.T) {
 	defer ownerComment.Body.Close()
 	assertStatus(t, ownerComment, http.StatusCreated)
 
-	// Both parties read the same thread back, in order.
+	// Both parties read the same thread back. Bounded comment listings are
+	// newest-first (the sqlite pagination test pins the same order), so the
+	// owner's later reply comes before the worker's first comment.
 	for _, party := range []struct {
 		name        string
 		accessToken string
@@ -57,8 +59,8 @@ func TestSubmissionCommentThread(t *testing.T) {
 		if len(comments.Comments) != 2 {
 			t.Fatalf("%s sees %d comments, want 2", party.name, len(comments.Comments))
 		}
-		if !strings.Contains(comments.Comments[0].Body, "edge case") || !strings.Contains(comments.Comments[1].Body, "input range") {
-			t.Fatalf("%s comment thread = %+v, want both posted comments in order", party.name, comments.Comments)
+		if !strings.Contains(comments.Comments[0].Body, "input range") || !strings.Contains(comments.Comments[1].Body, "edge case") {
+			t.Fatalf("%s comment thread = %+v, want both posted comments newest-first", party.name, comments.Comments)
 		}
 	}
 

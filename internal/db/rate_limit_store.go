@@ -2,9 +2,10 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/core"
+	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -32,11 +33,23 @@ func NewRateLimiterFromHandle(handle Beginner, prefix string, capacity int, refi
 	}
 }
 
+// Allow reports whether the key is under its rate budget. On a storage
+// failure it DENIES (fails closed): rate limiting is a protection control,
+// and a storage outage must not silently disable it. The in-memory limiter
+// (internal/http) cannot fail, so the shared bool signature stays honest for
+// both implementations.
 func (limiter RateLimiter) Allow(key string) bool {
-	ctx := context.Background()
+	allowed, err := limiter.allow(context.Background(), key)
+	if err != nil {
+		return false
+	}
+	return allowed
+}
+
+func (limiter RateLimiter) allow(ctx context.Context, key string) (bool, error) {
 	tx, err := limiter.db.Begin(ctx)
 	if err != nil {
-		panic(fmt.Sprintf("begin rate limit transaction failed: %v", err))
+		return false, err
 	}
 	defer func() {
 		rollbackErr := tx.Rollback(ctx)
@@ -59,7 +72,7 @@ func (limiter RateLimiter) Allow(key string) bool {
 		values ($1, $2, $3)
 		on conflict (key) do nothing
 	`, bucketKey, limiter.capacity, now); err != nil {
-		panic(fmt.Sprintf("seed rate limit bucket failed: %v", err))
+		return false, err
 	}
 
 	var tokens float64
@@ -71,7 +84,7 @@ func (limiter RateLimiter) Allow(key string) bool {
 		for update
 	`, bucketKey).Scan(&tokens, &updatedAt)
 	if err != nil {
-		panic(fmt.Sprintf("read rate limit bucket failed: %v", err))
+		return false, err
 	}
 	tokens += now.Sub(updatedAt).Seconds() * limiter.refillPerSec
 	if tokens > limiter.capacity {
@@ -80,26 +93,31 @@ func (limiter RateLimiter) Allow(key string) bool {
 
 	if tokens < 1 {
 		if err := limiter.storeBucket(ctx, tx, bucketKey, tokens, now); err != nil {
-			panic(fmt.Sprintf("store rate limit bucket failed: %v", err))
+			return false, err
 		}
 		if err := tx.Commit(ctx); err != nil {
-			panic(fmt.Sprintf("commit rate limit transaction failed: %v", err))
+			return false, err
 		}
-		return false
+		return false, nil
 	}
 
 	if err := limiter.storeBucket(ctx, tx, bucketKey, tokens-1, now); err != nil {
-		panic(fmt.Sprintf("store rate limit bucket failed: %v", err))
+		return false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		panic(fmt.Sprintf("commit rate limit transaction failed: %v", err))
+		return false, err
 	}
-	return true
+	return true, nil
 }
 
-func (limiter RateLimiter) ActiveBuckets() int {
+// ActiveBuckets counts this limiter's live buckets after evicting the stale
+// ones, reporting a storage failure as the rejection variant instead of
+// panicking.
+func (limiter RateLimiter) ActiveBuckets() httpserver.ActiveBucketsResult {
 	ctx := context.Background()
-	limiter.evictExpired(ctx)
+	if err := limiter.EvictExpired(ctx); err != nil {
+		return httpserver.ActiveBucketsUnavailable{Reason: core.NewDomainError(core.ErrorCodeUnavailable, "evict rate limit buckets failed")}
+	}
 	var count int
 	err := limiter.db.QueryRow(ctx, `
 		select count(*)
@@ -107,9 +125,9 @@ func (limiter RateLimiter) ActiveBuckets() int {
 		where key like $1
 	`, limiter.prefix+":%").Scan(&count)
 	if err != nil {
-		panic(fmt.Sprintf("count rate limit buckets failed: %v", err))
+		return httpserver.ActiveBucketsUnavailable{Reason: core.NewDomainError(core.ErrorCodeUnavailable, "count rate limit buckets failed")}
 	}
-	return count
+	return httpserver.ActiveBucketsCounted{Count: count}
 }
 
 func (limiter RateLimiter) StorageKind() string {
@@ -126,14 +144,16 @@ func (limiter RateLimiter) storeBucket(ctx context.Context, tx Tx, key string, t
 	return err
 }
 
-func (limiter RateLimiter) evictExpired(ctx context.Context) {
+// EvictExpired removes this limiter's buckets that have been idle long enough
+// to be full again, so keys cannot accumulate without bound. The lifecycle
+// runner calls it on a fixed cadence; ActiveBuckets also runs it before
+// counting.
+func (limiter RateLimiter) EvictExpired(ctx context.Context) error {
 	_, err := limiter.db.Exec(ctx, `
 		delete from rate_limit_buckets
 		where key like $1 and updated_at < $2
 	`, limiter.prefix+":%", limiter.now().UTC().Add(-limiter.fullAfter))
-	if err != nil {
-		panic(fmt.Sprintf("evict rate limit buckets failed: %v", err))
-	}
+	return err
 }
 
 func (limiter RateLimiter) bucketKey(key string) string {

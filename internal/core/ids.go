@@ -74,6 +74,22 @@ type NotificationID struct {
 	value id.ID
 }
 
+type PrivacyRequestID struct {
+	value id.ID
+}
+
+type DomainEventID struct {
+	value id.ID
+}
+
+type WebhookSubscriptionID struct {
+	value id.ID
+}
+
+type WebhookDeliveryID struct {
+	value id.ID
+}
+
 type UserIDResult interface {
 	userIDResult()
 }
@@ -902,5 +918,161 @@ func notificationIDFromIDResult(result id.IDResult) NotificationIDResult {
 		return NotificationIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
 	default:
 		return NotificationIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type PrivacyRequestIDResult interface {
+	privacyRequestIDResult()
+}
+
+type PrivacyRequestIDCreated struct {
+	Value PrivacyRequestID
+}
+
+type PrivacyRequestIDRejected struct {
+	Reason DomainError
+}
+
+func (PrivacyRequestIDCreated) privacyRequestIDResult() {}
+
+func (PrivacyRequestIDRejected) privacyRequestIDResult() {}
+
+func NewPrivacyRequestID() PrivacyRequestIDResult {
+	return privacyRequestIDFromIDResult(id.New())
+}
+
+func ParsePrivacyRequestID(raw string) PrivacyRequestIDResult {
+	return privacyRequestIDFromIDResult(id.Parse(raw))
+}
+
+func (id PrivacyRequestID) String() string {
+	return id.value.String()
+}
+
+func privacyRequestIDFromIDResult(result id.IDResult) PrivacyRequestIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return PrivacyRequestIDCreated{Value: PrivacyRequestID{value: typed.Value}}
+	case id.IDRejected:
+		return PrivacyRequestIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return PrivacyRequestIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type DomainEventIDResult interface {
+	domainEventIDResult()
+}
+
+type DomainEventIDCreated struct {
+	Value DomainEventID
+}
+
+type DomainEventIDRejected struct {
+	Reason DomainError
+}
+
+func (DomainEventIDCreated) domainEventIDResult() {}
+
+func (DomainEventIDRejected) domainEventIDResult() {}
+
+func NewDomainEventID() DomainEventIDResult {
+	return domainEventIDFromIDResult(id.New())
+}
+
+func ParseDomainEventID(raw string) DomainEventIDResult {
+	return domainEventIDFromIDResult(id.Parse(raw))
+}
+
+func (id DomainEventID) String() string {
+	return id.value.String()
+}
+
+func domainEventIDFromIDResult(result id.IDResult) DomainEventIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return DomainEventIDCreated{Value: DomainEventID{value: typed.Value}}
+	case id.IDRejected:
+		return DomainEventIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return DomainEventIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type WebhookSubscriptionIDResult interface {
+	webhookSubscriptionIDResult()
+}
+
+type WebhookSubscriptionIDCreated struct {
+	Value WebhookSubscriptionID
+}
+
+type WebhookSubscriptionIDRejected struct {
+	Reason DomainError
+}
+
+func (WebhookSubscriptionIDCreated) webhookSubscriptionIDResult() {}
+
+func (WebhookSubscriptionIDRejected) webhookSubscriptionIDResult() {}
+
+func NewWebhookSubscriptionID() WebhookSubscriptionIDResult {
+	return webhookSubscriptionIDFromIDResult(id.New())
+}
+
+func ParseWebhookSubscriptionID(raw string) WebhookSubscriptionIDResult {
+	return webhookSubscriptionIDFromIDResult(id.Parse(raw))
+}
+
+func (id WebhookSubscriptionID) String() string {
+	return id.value.String()
+}
+
+func webhookSubscriptionIDFromIDResult(result id.IDResult) WebhookSubscriptionIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return WebhookSubscriptionIDCreated{Value: WebhookSubscriptionID{value: typed.Value}}
+	case id.IDRejected:
+		return WebhookSubscriptionIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return WebhookSubscriptionIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
+	}
+}
+
+type WebhookDeliveryIDResult interface {
+	webhookDeliveryIDResult()
+}
+
+type WebhookDeliveryIDCreated struct {
+	Value WebhookDeliveryID
+}
+
+type WebhookDeliveryIDRejected struct {
+	Reason DomainError
+}
+
+func (WebhookDeliveryIDCreated) webhookDeliveryIDResult() {}
+
+func (WebhookDeliveryIDRejected) webhookDeliveryIDResult() {}
+
+func NewWebhookDeliveryID() WebhookDeliveryIDResult {
+	return webhookDeliveryIDFromIDResult(id.New())
+}
+
+func ParseWebhookDeliveryID(raw string) WebhookDeliveryIDResult {
+	return webhookDeliveryIDFromIDResult(id.Parse(raw))
+}
+
+func (id WebhookDeliveryID) String() string {
+	return id.value.String()
+}
+
+func webhookDeliveryIDFromIDResult(result id.IDResult) WebhookDeliveryIDResult {
+	switch typed := result.(type) {
+	case id.IDCreated:
+		return WebhookDeliveryIDCreated{Value: WebhookDeliveryID{value: typed.Value}}
+	case id.IDRejected:
+		return WebhookDeliveryIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, typed.Description)}
+	default:
+		return WebhookDeliveryIDRejected{Reason: NewDomainError(ErrorCodeInvalidID, "unknown id result")}
 	}
 }

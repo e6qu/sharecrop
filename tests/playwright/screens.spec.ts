@@ -1,4 +1,9 @@
-import { expect, type Page, test } from "@playwright/test";
+import {
+  type APIRequestContext,
+  expect,
+  type Page,
+  test,
+} from "@playwright/test";
 import { Buffer } from "node:buffer";
 import {
   type AuthBody,
@@ -16,6 +21,43 @@ interface SubmissionCreatedBody {
   submission: {
     id: string;
   };
+}
+
+type OpenTaskWithSubmission = {
+  task: TaskBody;
+  submitted: SubmissionCreatedBody;
+};
+
+// Shared owner-creates → opens → worker-submits setup for review-flow specs.
+async function openTaskWithSubmission(
+  request: APIRequestContext,
+  owner: Awaited<ReturnType<typeof registerViaApi>>,
+  worker: Awaited<ReturnType<typeof registerViaApi>>,
+  title: string,
+  answer: string,
+): Promise<OpenTaskWithSubmission> {
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "public", 0),
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+  const task = (await taskResponse.json()) as TaskBody;
+  const openResponse = await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+  expect(openResponse.ok()).toBeTruthy();
+  const submissionResponse = await request.post(
+    `/api/tasks/${task.id}/submissions`,
+    {
+      headers: { Authorization: `Bearer ${worker.body.access_token}` },
+      data: { response_json: JSON.stringify({ answer }) },
+    },
+  );
+  const submissionBody = await submissionResponse.text();
+  expect(submissionResponse.ok(), submissionBody).toBeTruthy();
+  const submitted = JSON.parse(submissionBody) as SubmissionCreatedBody;
+  return { task, submitted };
 }
 
 async function registerViaApi(
@@ -708,9 +750,9 @@ test("a task's reward shows as its own badge in the task list", async ({ page, r
   const row = page.getByTestId("task-row").filter({ hasText: title });
   await expect(row).toHaveCount(1);
   await expect(row).toContainText("20 credits");
-  // The reward renders as its own icon-prefixed badge (a rounded pill),
-  // distinct from the plain trailing text it used to be.
-  const rewardBadge = row.locator("span.rounded-full", {
+  // The reward renders as its own icon-prefixed badge (the reward-toned
+  // square token), distinct from the plain trailing text it used to be.
+  const rewardBadge = row.locator("span.bg-farm-reward-soft", {
     hasText: "20 credits",
   });
   await expect(rewardBadge).toHaveCount(1);
@@ -797,33 +839,22 @@ test("workers see requested revisions in their submission inbox", async ({ page,
   const owner = await registerViaApi(request, "revision-owner");
   const worker = await registerViaApi(request, "revision-worker");
   const title = `Revision inbox ${crypto.randomUUID()}`;
-  const taskResponse = await request.post("/api/tasks", {
-    headers: { Authorization: `Bearer ${owner.body.access_token}` },
-    data: taskRequest(title, owner.body.subject_id, "public", 0),
-  });
-  expect(taskResponse.ok()).toBeTruthy();
-  const task = (await taskResponse.json()) as TaskBody;
-  const openResponse = await request.post(`/api/tasks/${task.id}/open`, {
-    headers: { Authorization: `Bearer ${owner.body.access_token}` },
-    data: {},
-  });
-  expect(openResponse.ok()).toBeTruthy();
-  const submissionResponse = await request.post(
-    `/api/tasks/${task.id}/submissions`,
-    {
-      headers: { Authorization: `Bearer ${worker.body.access_token}` },
-      data: { response_json: '{"answer":"revise me"}' },
-    },
+  const { task, submitted } = await openTaskWithSubmission(
+    request,
+    owner,
+    worker,
+    title,
+    "revise me",
   );
-  const submissionBody = await submissionResponse.text();
-  expect(submissionResponse.ok(), submissionBody).toBeTruthy();
-  const submitted = JSON.parse(submissionBody) as SubmissionCreatedBody;
   const reviewNote = `Please revise ${crypto.randomUUID()}`;
   const requestChangesResponse = await request.post(
     `/api/tasks/${task.id}/submissions/${submitted.submission.id}/request-changes`,
     {
       headers: { Authorization: `Bearer ${owner.body.access_token}` },
-      data: { review_note: reviewNote },
+      data: {
+        idempotency_key: `test-request-changes:${submitted.submission.id}`,
+        review_note: reviewNote,
+      },
     },
   );
   expect(requestChangesResponse.ok()).toBeTruthy();
@@ -1263,17 +1294,19 @@ test("submitting the create-task form with missing fields highlights them, and t
 
   // Neither field is flagged before a submit attempt.
   await expect(page.getByTestId("create-title")).not.toHaveClass(
-    /border-red-400/,
+    /border-farm-danger/,
   );
   await expect(page.getByTestId("create-description")).not.toHaveClass(
-    /border-red-400/,
+    /border-farm-danger/,
   );
 
   // Both empty: submitting flags both fields, each with its own message.
   await page.getByTestId("create-task").click();
-  await expect(page.getByTestId("create-title")).toHaveClass(/border-red-400/);
+  await expect(page.getByTestId("create-title")).toHaveClass(
+    /border-farm-danger/,
+  );
   await expect(page.getByTestId("create-description")).toHaveClass(
-    /border-red-400/,
+    /border-farm-danger/,
   );
   await expect(page.getByText("Title is required")).toBeVisible();
   await expect(page.getByText("Description is required")).toBeVisible();
@@ -1281,10 +1314,10 @@ test("submitting the create-task form with missing fields highlights them, and t
   // Filling in the title alone clears just that field's flag.
   await page.getByTestId("create-title").fill("A real title");
   await expect(page.getByTestId("create-title")).not.toHaveClass(
-    /border-red-400/,
+    /border-farm-danger/,
   );
   await expect(page.getByTestId("create-description")).toHaveClass(
-    /border-red-400/,
+    /border-farm-danger/,
   );
 
   // Filling in the description and submitting succeeds.
@@ -1564,4 +1597,188 @@ test("a bundle task refunds credits and collectible in one shot via the UI", asy
   });
   const owned = (await holdings.json()) as { collectibles: { id: string }[] };
   expect(owned.collectibles.find((c) => c.id === medal.id)).toBeTruthy();
+});
+
+test("owners request changes on a submission through the browser", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "request-changes-owner");
+  const worker = await registerViaApi(request, "request-changes-worker");
+  const title = `Request changes ${crypto.randomUUID()}`;
+  const { task } = await openTaskWithSubmission(
+    request,
+    owner,
+    worker,
+    title,
+    "needs work",
+  );
+
+  // The owner reviews through the UI: the request-changes REST call now
+  // requires an idempotency key, which the client mints per submission.
+  await loginViaUi(page, owner.email);
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await page.goto(`/#/tasks/${task.id}`);
+  const reviewNote = `Add totals ${crypto.randomUUID()}`;
+  await page.getByTestId("review-note").fill(reviewNote);
+  await page.getByTestId("request-changes").click();
+  await expect(page.getByTestId("review-message")).toContainText(
+    "Review saved.",
+  );
+  // The refreshed submission row carries the requested-changes review note.
+  await expect(page.getByTestId("submission-review-note")).toContainText(
+    reviewNote,
+  );
+});
+
+test("another actor's submission raises the unread badge and the inbox unread filter narrows", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "badge-owner");
+  const worker = await registerViaApi(request, "badge-worker");
+  const title = `Badge task ${crypto.randomUUID()}`;
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "public", 0),
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+  const task = (await taskResponse.json()) as TaskBody;
+  await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+  // Worker submits: this notifies the owner (submission_created, unread).
+  const submissionResponse = await request.post(
+    `/api/tasks/${task.id}/submissions`,
+    {
+      headers: { Authorization: `Bearer ${worker.body.access_token}` },
+      data: { response_json: '{"answer":"badge"}' },
+    },
+  );
+  expect(submissionResponse.ok()).toBeTruthy();
+
+  // The unread count loads with the post-login fetch (poll ticks refresh it
+  // afterwards); the badge sits on the Account menu trigger.
+  await loginViaUi(page, owner.email);
+  await expect(page.getByTestId("nav-unread-count")).toHaveText("1");
+
+  // The Inbox entry inside the opened menu carries its own pill.
+  await page.getByTestId("nav-account-menu").click();
+  await expect(page.getByTestId("nav-inbox-unread-count")).toHaveText("1");
+  await page.getByTestId("nav-inbox").click();
+
+  // Unread-only narrows to unread rows; marking read empties the filtered
+  // list and clears the badge without waiting for a poll tick.
+  await page.getByTestId("inbox-unread-only").check();
+  const unreadRow = page.getByTestId("notification-row").filter({
+    hasText: "submission_created",
+  });
+  await expect(unreadRow).toHaveCount(1);
+  await unreadRow.getByTestId("notification-mark-read").click();
+  await expect(page.getByTestId("notification-state")).toHaveText("read");
+  await expect(page.getByTestId("nav-unread-count")).toHaveCount(0);
+
+  // Re-applying the unread-only filter now finds nothing.
+  await page.getByTestId("inbox-unread-only").uncheck();
+  await page.getByTestId("inbox-unread-only").check();
+  await expect(page.getByTestId("inbox-empty")).toContainText(
+    "No unread notifications.",
+  );
+});
+
+test("the overview activity card lists recent events with subject links", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "activity-owner");
+  const title = `Activity task ${crypto.randomUUID()}`;
+  const taskResponse = await request.post("/api/tasks", {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: taskRequest(title, owner.body.subject_id, "public", 0),
+  });
+  expect(taskResponse.ok()).toBeTruthy();
+  const task = (await taskResponse.json()) as TaskBody;
+  const openResponse = await request.post(`/api/tasks/${task.id}/open`, {
+    headers: { Authorization: `Bearer ${owner.body.access_token}` },
+    data: {},
+  });
+  expect(openResponse.ok()).toBeTruthy();
+
+  await loginViaUi(page, owner.email);
+  const activityRow = page
+    .getByTestId("overview-activity")
+    .getByTestId("activity-row")
+    .filter({ hasText: "Task opened" });
+  await expect(activityRow).toHaveCount(1);
+  await activityRow.getByTestId("activity-task-link").click();
+  await expect(page.getByTestId("detail-title")).toContainText(title);
+});
+
+test("users create, inspect, and revoke webhook subscriptions on the Agents page", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "webhook-owner");
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByTestId("nav-agents").click();
+  await expect(page.getByTestId("webhook-list-empty")).toBeVisible();
+
+  // Create: URL plus a couple of kinds across groups.
+  await page.getByTestId("webhook-url").fill(
+    "https://receiver.example.com/hooks/sharecrop",
+  );
+  await page.getByTestId("webhook-kind-task_opened").check();
+  await page.getByTestId("webhook-kind-submission_created").check();
+  await page.getByTestId("webhook-create").click();
+
+  // The signing secret is revealed exactly once, with a warning.
+  await expect(page.getByTestId("webhook-secret")).toContainText(
+    "scrop_whsec_",
+  );
+  await expect(page.getByTestId("webhook-secret-panel")).toContainText(
+    "Store this secret now — it is not shown again.",
+  );
+
+  // The subscription is listed with its kinds and active state.
+  const row = page.getByTestId("webhook-row");
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText(
+    "https://receiver.example.com/hooks/sharecrop",
+  );
+  await expect(row).toContainText("Task opened");
+  await expect(row).toContainText("Submission received");
+  await expect(row).toContainText("active");
+
+  // Deliveries start empty (nothing has fired yet).
+  await row.getByTestId("webhook-deliveries").click();
+  await expect(page.getByTestId("webhook-deliveries-empty")).toBeVisible();
+
+  // Revoke flips the row's state and removes the revoke button.
+  await row.getByTestId("webhook-revoke").click();
+  await expect(page.getByTestId("webhook-message")).toContainText(
+    "Webhook revoked",
+  );
+  await expect(row).toContainText("revoked");
+  await expect(row.getByTestId("webhook-revoke")).toHaveCount(0);
+});
+
+test("task creators set an expiration and the detail page shows it", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "expires-owner");
+  await loginViaUi(page, owner.email);
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
+  const title = `Expiring task ${crypto.randomUUID()}`;
+  await page.getByTestId("create-title").fill(title);
+  await page.getByTestId("create-description").fill("Expires next year.");
+  await page.getByTestId("create-advanced-options").click();
+  await page.getByTestId("create-expires-at").fill("2027-06-01T12:00:00Z");
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("detail-title")).toContainText(title);
+  await expect(page.getByTestId("detail-expires")).toContainText(
+    "Expires 2027-06-01T12:00:00Z",
+  );
+
+  // A malformed expiration surfaces the server's validation error instead of
+  // silently creating the task.
+  await page.getByTestId("nav-tasks").click();
+  await page.getByTestId("new-task-button").click();
+  await page.getByTestId("create-title").fill(
+    `Bad expiry ${crypto.randomUUID()}`,
+  );
+  await page.getByTestId("create-description").fill("Bad expiry input.");
+  await page.getByTestId("create-advanced-options").click();
+  await page.getByTestId("create-expires-at").fill("tomorrow");
+  await page.getByTestId("create-task").click();
+  await expect(page.getByTestId("create-message")).toBeVisible();
+  await expect(page.getByTestId("detail-title")).toHaveCount(0);
 });

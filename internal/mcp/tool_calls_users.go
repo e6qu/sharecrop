@@ -54,7 +54,7 @@ func (server Server) callListUsers(ctx context.Context, subject auth.UserSubject
 	result := server.services.ListUsers(ctx, args.Query, core.DefaultPage())
 	listed, matched := result.(auth.UsersListed)
 	if !matched {
-		return toolFailed{message: result.(auth.UserDirectoryRejected).Reason.Description()}
+		return toolFailed{code: result.(auth.UserDirectoryRejected).Reason.Code(), message: result.(auth.UserDirectoryRejected).Reason.Description()}
 	}
 	entries := make([]userDirectoryEntrySummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -71,7 +71,7 @@ func (server Server) callGetUserProfile(ctx context.Context, subject auth.UserSu
 	result := server.services.GetUserProfile(ctx, subject, userID, core.DefaultPage())
 	listed, matched := result.(task.TasksListed)
 	if !matched {
-		return toolFailed{message: result.(task.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
 	tasks := make([]taskSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -88,7 +88,7 @@ func (server Server) callGetUserWork(ctx context.Context, subject auth.UserSubje
 	result := server.services.GetUserWork(ctx, subject, userID, core.DefaultPage())
 	listed, matched := result.(task.TasksListed)
 	if !matched {
-		return toolFailed{message: result.(task.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
 	summaries := make([]taskSummary, 0, len(listed.Values))
 	for index := range listed.Values {
@@ -105,7 +105,7 @@ func (server Server) callGetUserSubmissions(ctx context.Context, subject auth.Us
 	result := server.services.GetUserSubmissions(ctx, subject, userID, core.DefaultPage())
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
-		return toolFailed{message: result.(submission.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(submission.ListRejected).Reason.Code(), message: result.(submission.ListRejected).Reason.Description()}
 	}
 	summaries := make([]submissionSummary, 0, len(listed.Values))
 	for index := range listed.Values {

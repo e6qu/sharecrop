@@ -32,6 +32,22 @@ func (ListStoreAccepted) listStoreResult() {}
 
 func (ListStoreRejected) listStoreResult() {}
 
+type CountStoreResult interface {
+	countStoreResult()
+}
+
+type CountUnreadCounted struct {
+	Count int64
+}
+
+type CountStoreRejected struct {
+	Reason core.DomainError
+}
+
+func (CountUnreadCounted) countStoreResult() {}
+
+func (CountStoreRejected) countStoreResult() {}
+
 type MarkReadStoreResult interface {
 	markReadStoreResult()
 }

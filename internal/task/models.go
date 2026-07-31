@@ -22,6 +22,7 @@ type Task struct {
 	ResponseSchema ResponseSchemaSource
 	Payload        DataPayload
 	Attachments    []attachment.Attachment
+	Expiration     ExpirationPolicy
 	CreatedBy      core.UserID
 }
 
@@ -496,6 +497,15 @@ func UnpublishState(current State) StateTransitionResult {
 		return StateTransitionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only an open task can be moved back to draft")}
 	}
 	return StateTransitionAccepted{Value: StateDraft}
+}
+
+// ExpireState is the lifecycle-runner transition: only an open task whose
+// expiration instant has passed is moved to expired.
+func ExpireState(current State) StateTransitionResult {
+	if current != StateOpen {
+		return StateTransitionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "only open tasks can expire")}
+	}
+	return StateTransitionAccepted{Value: StateExpired}
 }
 
 type Visibility interface {

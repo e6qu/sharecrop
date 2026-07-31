@@ -23,13 +23,14 @@ func (store TaskStore) CreateTaskComment(ctx context.Context, comment task.TaskC
 	return task.CreateTaskCommentStoreAccepted{Value: comment}
 }
 
-func (store TaskStore) ListTaskComments(ctx context.Context, taskID core.TaskID) task.ListTaskCommentsStoreResult {
+func (store TaskStore) ListTaskComments(ctx context.Context, taskID core.TaskID, page core.Page) task.ListTaskCommentsStoreResult {
 	rows, err := store.db.Query(ctx, `
 		select id::text, task_id::text, author_user_id::text, body, created_at
 		from task_comments
 		where task_id = $1
-		order by created_at, id
-	`, taskID.String())
+		order by created_at desc, id desc
+		limit $2 offset $3
+	`, taskID.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return task.ListTaskCommentsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list task comments failed")}
 	}

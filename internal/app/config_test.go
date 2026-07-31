@@ -37,6 +37,46 @@ func TestParseConfigLoadsExplicitValues(t *testing.T) {
 	}
 }
 
+func TestParseConfigHTTPProtocol(t *testing.T) {
+	base := EnvValues{
+		HTTPAddress:       ":18080",
+		DatabaseURL:       "postgres://example",
+		MigrationsDir:     "migrations",
+		AccessTokenSecret: "01234567890123456789012345678901",
+	}
+
+	for name, values := range map[string]struct {
+		raw  string
+		want HTTPProtocol
+	}{
+		"unset": {raw: "", want: HTTPProtocolH1},
+		"h1":    {raw: "h1", want: HTTPProtocolH1},
+		"h2c":   {raw: "h2c", want: HTTPProtocolH2C},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := base
+			env.HTTPProtocol = values.raw
+			loaded, matched := ParseConfig(env).(ConfigLoaded)
+			if !matched {
+				t.Fatalf("protocol %q rejected", values.raw)
+			}
+			if loaded.Value.HTTPProtocol() != values.want {
+				t.Fatalf("protocol = %q, want %q", loaded.Value.HTTPProtocol().String(), values.want.String())
+			}
+		})
+	}
+
+	env := base
+	env.HTTPProtocol = "h3"
+	rejected, matched := ParseConfig(env).(ConfigRejected)
+	if !matched {
+		t.Fatalf("invalid protocol accepted")
+	}
+	if rejected.Reason != "SHARECROP_HTTP_PROTOCOL must be one of \"h1\" or \"h2c\" (or unset for h1)" {
+		t.Fatalf("reason = %q", rejected.Reason)
+	}
+}
+
 func TestParseMigrationConfigRequiresOnlyDatabaseAndMigrations(t *testing.T) {
 	result := ParseMigrationConfig(MigrationEnvValues{
 		DatabaseURL:   "postgres://example",

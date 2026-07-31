@@ -140,13 +140,14 @@ func (store TaskStore) CreateSeriesComment(ctx context.Context, comment task.Ser
 	return task.CreateSeriesCommentStoreAccepted{Value: comment}
 }
 
-func (store TaskStore) ListSeriesComments(ctx context.Context, seriesID core.TaskSeriesID) task.ListSeriesCommentsStoreResult {
+func (store TaskStore) ListSeriesComments(ctx context.Context, seriesID core.TaskSeriesID, page core.Page) task.ListSeriesCommentsStoreResult {
 	rows, err := store.db.Query(ctx, `
 		select id::text, series_id::text, author_user_id::text, body, created_at
 		from series_comments
 		where series_id = $1
-		order by created_at, id
-	`, seriesID.String())
+		order by created_at desc, id desc
+		limit $2 offset $3
+	`, seriesID.String(), page.Limit(), page.Offset())
 	if err != nil {
 		return task.ListSeriesCommentsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list series comments failed")}
 	}

@@ -28,14 +28,75 @@ var (
 	KindSubmissionChangesRequested = Kind{value: "submission_changes_requested"}
 	KindSubmissionRejected         = Kind{value: "submission_rejected"}
 	KindSubmissionCommented        = Kind{value: "submission_commented"}
+	KindTaskFunded                 = Kind{value: "task_funded"}
+	KindTaskCancelled              = Kind{value: "task_cancelled"}
+	KindTaskExpired                = Kind{value: "task_expired"}
+	KindTaskCommented              = Kind{value: "task_commented"}
+	KindSeriesCommented            = Kind{value: "series_commented"}
+	KindReservationRequested       = Kind{value: "reservation_requested"}
+	KindReservationApproved        = Kind{value: "reservation_approved"}
+	KindReservationDeclined        = Kind{value: "reservation_declined"}
+	KindReservationCancelled       = Kind{value: "reservation_cancelled"}
+	KindReservationExpired         = Kind{value: "reservation_expired"}
+	KindPayoutReceived             = Kind{value: "payout_received"}
+	KindTipReceived                = Kind{value: "tip_received"}
+	KindCollectibleAwarded         = Kind{value: "collectible_awarded"}
 )
 
-func KindFromString(raw string) Kind {
-	return Kind{value: raw}
+// AllKinds returns every notification kind. Totality tests (and the generated
+// NotificationKind contract enum) iterate this closed set.
+func AllKinds() []Kind {
+	return []Kind{
+		KindSubmissionCreated,
+		KindSubmissionAccepted,
+		KindSubmissionChangesRequested,
+		KindSubmissionRejected,
+		KindSubmissionCommented,
+		KindTaskFunded,
+		KindTaskCancelled,
+		KindTaskExpired,
+		KindTaskCommented,
+		KindSeriesCommented,
+		KindReservationRequested,
+		KindReservationApproved,
+		KindReservationDeclined,
+		KindReservationCancelled,
+		KindReservationExpired,
+		KindPayoutReceived,
+		KindTipReceived,
+		KindCollectibleAwarded,
+	}
 }
 
 func (kind Kind) String() string {
 	return kind.value
+}
+
+type KindResult interface {
+	kindResult()
+}
+
+type KindParsed struct {
+	Value Kind
+}
+
+type KindRejected struct {
+	Reason core.DomainError
+}
+
+func (KindParsed) kindResult() {}
+
+func (KindRejected) kindResult() {}
+
+// ParseKind converts a raw boundary string into a sealed Kind, rejecting
+// strings outside the closed kind set.
+func ParseKind(raw string) KindResult {
+	for _, kind := range AllKinds() {
+		if kind.value == raw {
+			return KindParsed{Value: kind}
+		}
+	}
+	return KindRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "unknown notification kind")}
 }
 
 type State struct {
@@ -47,13 +108,51 @@ var (
 	StateRead   = State{value: "read"}
 )
 
-func StateFromString(raw string) State {
-	return State{value: raw}
-}
-
 func (state State) String() string {
 	return state.value
 }
+
+type StateResult interface {
+	stateResult()
+}
+
+type StateParsed struct {
+	Value State
+}
+
+type StateRejected struct {
+	Reason core.DomainError
+}
+
+func (StateParsed) stateResult() {}
+
+func (StateRejected) stateResult() {}
+
+// ParseState converts a raw boundary string into a sealed State.
+func ParseState(raw string) StateResult {
+	switch raw {
+	case StateUnread.value:
+		return StateParsed{Value: StateUnread}
+	case StateRead.value:
+		return StateParsed{Value: StateRead}
+	default:
+		return StateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "unknown notification state")}
+	}
+}
+
+// StateFilter narrows a notification listing by state. AnyState lists the
+// whole inbox; UnreadOnly lists only unread rows.
+type StateFilter interface {
+	stateFilter()
+}
+
+type AnyState struct{}
+
+type UnreadOnly struct{}
+
+func (AnyState) stateFilter() {}
+
+func (UnreadOnly) stateFilter() {}
 
 type Subject struct {
 	Kind string
@@ -70,7 +169,8 @@ func EmptyMetadata() Metadata {
 
 type Store interface {
 	Create(context.Context, Notification) CreateStoreResult
-	List(context.Context, core.UserID, core.Page) ListStoreResult
+	List(context.Context, core.UserID, StateFilter, core.Page) ListStoreResult
+	CountUnread(context.Context, core.UserID) CountStoreResult
 	MarkRead(context.Context, core.UserID, core.NotificationID) MarkReadStoreResult
 }
 
@@ -145,13 +245,40 @@ func (NotificationsListed) listResult() {}
 
 func (ListRejected) listResult() {}
 
-func (service Service) List(ctx context.Context, recipient core.UserID, page core.Page) ListResult {
-	result := service.store.List(ctx, recipient, page)
+func (service Service) List(ctx context.Context, recipient core.UserID, filter StateFilter, page core.Page) ListResult {
+	result := service.store.List(ctx, recipient, filter, page)
 	listed, matched := result.(ListStoreAccepted)
 	if !matched {
 		return ListRejected{Reason: result.(ListStoreRejected).Reason}
 	}
 	return NotificationsListed{Values: listed.Values}
+}
+
+type CountResult interface {
+	countResult()
+}
+
+type UnreadCounted struct {
+	Count int64
+}
+
+type CountRejected struct {
+	Reason core.DomainError
+}
+
+func (UnreadCounted) countResult() {}
+
+func (CountRejected) countResult() {}
+
+// CountUnread reports how many unread notifications the recipient has, for
+// the inbox badge.
+func (service Service) CountUnread(ctx context.Context, recipient core.UserID) CountResult {
+	result := service.store.CountUnread(ctx, recipient)
+	counted, matched := result.(CountUnreadCounted)
+	if !matched {
+		return CountRejected{Reason: result.(CountStoreRejected).Reason}
+	}
+	return UnreadCounted{Count: counted.Count}
 }
 
 type MarkReadResult interface {

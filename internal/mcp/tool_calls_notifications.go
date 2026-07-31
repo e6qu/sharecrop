@@ -45,16 +45,49 @@ func notificationToSummary(value notification.Notification) notificationSummary 
 }
 
 func (server Server) callListNotifications(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
-	result := server.services.ListNotifications(ctx, subject.ID, core.DefaultPage())
+	var args struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	filter := notification.StateFilter(notification.AnyState{})
+	switch args.State {
+	case "":
+	case notification.StateUnread.String():
+		filter = notification.UnreadOnly{}
+	default:
+		return toolProtocolError{code: codeInvalidParams, message: "state must be omitted or \"unread\""}
+	}
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListNotifications(ctx, subject.ID, filter, page)
 	listed, matched := result.(notification.NotificationsListed)
 	if !matched {
-		return toolFailed{message: result.(notification.ListRejected).Reason.Description()}
+		return toolFailed{code: result.(notification.ListRejected).Reason.Code(), message: result.(notification.ListRejected).Reason.Description()}
 	}
 	summaries := make([]notificationSummary, 0, len(listed.Values))
 	for index := range listed.Values {
 		summaries = append(summaries, notificationToSummary(listed.Values[index]))
 	}
 	return marshalPayload(notificationsPayload{Notifications: summaries})
+}
+
+type unreadNotificationCountPayload struct {
+	UnreadCount int64 `json:"unread_count"`
+}
+
+func (unreadNotificationCountPayload) payloadValue() {}
+
+func (server Server) callGetUnreadNotificationCount(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	result := server.services.CountUnreadNotifications(ctx, subject.ID)
+	counted, matched := result.(notification.UnreadCounted)
+	if !matched {
+		return toolFailed{code: result.(notification.CountRejected).Reason.Code(), message: result.(notification.CountRejected).Reason.Description()}
+	}
+	return marshalPayload(unreadNotificationCountPayload{UnreadCount: counted.Count})
 }
 
 func (server Server) callMarkNotificationRead(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -72,7 +105,7 @@ func (server Server) callMarkNotificationRead(ctx context.Context, subject auth.
 	result := server.services.MarkNotificationRead(ctx, subject.ID, id.Value)
 	read, matched := result.(notification.NotificationRead)
 	if !matched {
-		return toolFailed{message: result.(notification.MarkReadRejected).Reason.Description()}
+		return toolFailed{code: result.(notification.MarkReadRejected).Reason.Code(), message: result.(notification.MarkReadRejected).Reason.Description()}
 	}
 	return marshalPayload(notificationToSummary(read.Value))
 }

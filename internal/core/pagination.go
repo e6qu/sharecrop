@@ -25,6 +25,15 @@ func DefaultPage() Page {
 	return Page{limit: pageDefaultLimit, offset: pageDefaultOffset}
 }
 
+// Probe returns a page that fetches one row beyond this page's limit, so a
+// list handler can detect whether a further page exists without a second
+// query. The probe limit deliberately bypasses the public maximum: it is an
+// internal fetch size, never a client-supplied limit. Callers truncate the
+// fetched rows back to Limit() and report the extra row through next_offset.
+func (p Page) Probe() Page {
+	return Page{limit: p.limit + 1, offset: p.offset}
+}
+
 type PageResult interface {
 	pageResult()
 }

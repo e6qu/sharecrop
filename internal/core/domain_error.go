@@ -17,6 +17,13 @@ var (
 	ErrorCodeNotFound         = ErrorCode{value: "not_found"}
 	ErrorCodePermissionDenied = ErrorCode{value: "permission_denied"}
 	ErrorCodeConflict         = ErrorCode{value: "conflict"}
+	ErrorCodeUnauthenticated  = ErrorCode{value: "unauthenticated"}
+	ErrorCodeRateLimited      = ErrorCode{value: "rate_limited"}
+	// ErrorCodeUnavailable marks a server-side failure (upstream provider,
+	// storage, or session infrastructure) rather than a caller mistake. It is
+	// written by HTTP handlers for 5xx responses; domain constructors do not
+	// produce it.
+	ErrorCodeUnavailable = ErrorCode{value: "unavailable"}
 )
 
 func NewDomainError(code ErrorCode, description string) DomainError {

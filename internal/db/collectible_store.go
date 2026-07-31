@@ -115,19 +115,9 @@ func (store CollectibleStore) FundCollectibleReward(ctx context.Context, command
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	collectibleResult := lockCollectible(ctx, tx, command.CollectibleID)
-	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
-	if !collectibleMatched {
-		return assets.FundRewardRejected{Reason: collectibleResult.(collectibleParseRejected).reason}
-	}
-	if collectible.value.OwnerKind != assets.CollectibleOwnerKindUser || collectible.value.OwnerID != command.FunderUserID.String() {
-		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "only the collectible owner can fund a task with it")}
-	}
-	if collectible.value.State != assets.CollectibleStateMinted {
-		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to escrow")}
-	}
-	if denied, matched := assets.AllowsRewardPayout(collectible.value.Policy).(assets.RewardDenied); matched {
-		return assets.FundRewardRejected{Reason: denied.Reason}
+	collectible, escrowableReason := requireEscrowableCollectible(ctx, tx, command.CollectibleID, command.FunderUserID)
+	if escrowableReason != nil {
+		return assets.FundRewardRejected{Reason: *escrowableReason}
 	}
 
 	taskResult := lockTaskOwnedBy(ctx, tx, command.TaskID, command.FunderUserID, "fund")
@@ -156,26 +146,67 @@ func (store CollectibleStore) FundCollectibleReward(ctx context.Context, command
 		}
 	}
 
-	if _, err := tx.Exec(ctx, "update collectibles set state = 'escrowed', state_recorded_at = now() where id = $1", command.CollectibleID.String()); err != nil {
-		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "escrow collectible failed")}
-	}
-	if _, err := tx.Exec(ctx, `
-		insert into task_fund_collectibles (task_id, collectible_id)
-		values ($1, $2)
-	`, command.TaskID.String(), command.CollectibleID.String()); err != nil {
-		if isUniqueViolation(err) {
-			return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "collectible is already escrowed on this task")}
-		}
-		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert collectible reward failed")}
+	if holdReason := holdCollectibleForTask(ctx, tx, command.TaskID, command.CollectibleID); holdReason != nil {
+		return assets.FundRewardRejected{Reason: *holdReason}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return assets.FundRewardRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit fund collectible reward transaction failed")}
 	}
 
-	awarded := collectible.value
+	awarded := collectible
 	awarded.State = assets.CollectibleStateEscrowed
 	return assets.RewardFunded{Value: awarded}
+}
+
+// requireEscrowableCollectible locks a collectible and validates that funder
+// can escrow it as a task reward: funder must own it as a user, it must be
+// available (minted), and its transfer policy must allow reward payout. It is
+// shared by the post-create funding path (FundCollectibleReward) and the
+// create-with-escrow path (TaskStore.CreateTask), so both enforce the same
+// per-collectible rules inside their transactions.
+func requireEscrowableCollectible(ctx context.Context, tx Tx, collectibleID core.CollectibleID, funder core.UserID) (assets.Collectible, *core.DomainError) {
+	collectibleResult := lockCollectible(ctx, tx, collectibleID)
+	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
+	if !collectibleMatched {
+		reason := collectibleResult.(collectibleParseRejected).reason
+		return assets.Collectible{}, &reason
+	}
+	if collectible.value.OwnerKind != assets.CollectibleOwnerKindUser || collectible.value.OwnerID != funder.String() {
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "only the collectible owner can fund a task with it")
+		return assets.Collectible{}, &reason
+	}
+	if collectible.value.State != assets.CollectibleStateMinted {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to escrow")
+		return assets.Collectible{}, &reason
+	}
+	if denied, matched := assets.AllowsRewardPayout(collectible.value.Policy).(assets.RewardDenied); matched {
+		reason := denied.Reason
+		return assets.Collectible{}, &reason
+	}
+	return collectible.value, nil
+}
+
+// holdCollectibleForTask moves a validated collectible into escrow and records
+// the task's hold on it. Shared by FundCollectibleReward and
+// TaskStore.CreateTask (see requireEscrowableCollectible).
+func holdCollectibleForTask(ctx context.Context, tx Tx, taskID core.TaskID, collectibleID core.CollectibleID) *core.DomainError {
+	if _, err := tx.Exec(ctx, "update collectibles set state = 'escrowed', state_recorded_at = now() where id = $1", collectibleID.String()); err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "escrow collectible failed")
+		return &reason
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into task_fund_collectibles (task_id, collectible_id)
+		values ($1, $2)
+	`, taskID.String(), collectibleID.String()); err != nil {
+		if isUniqueViolation(err) {
+			reason := core.NewDomainError(core.ErrorCodeConflict, "collectible is already escrowed on this task")
+			return &reason
+		}
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "insert collectible reward failed")
+		return &reason
+	}
+	return nil
 }
 
 func (store CollectibleStore) RefundCollectibleReward(ctx context.Context, command assets.RefundRewardStoreCommand) assets.RefundRewardResult {

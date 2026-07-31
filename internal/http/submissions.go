@@ -1,13 +1,14 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
-	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -17,7 +18,7 @@ func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *htt
 	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
 	if !taskIDMatched {
 		rejected := taskIDResult.(taskIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
@@ -25,7 +26,7 @@ func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *htt
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -33,16 +34,18 @@ func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *htt
 	requestAccepted, requestMatched := requestResult.(submissionRequestAccepted)
 	if !requestMatched {
 		rejected := requestResult.(submissionRequestRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
 	server.submitResponse(w, r, requestAccepted.command)
 }
 func (server Server) submitResponse(w http.ResponseWriter, r *http.Request, command submission.SubmitCommand) {
+	// The Get gates task visibility for the submitter before the mutation; the
+	// owner's inbox notification is fanned out by the submission service's
+	// event emission.
 	taskResult := server.taskService.Get(r.Context(), auth.UserSubject{ID: command.SubmitterID}, command.TaskID)
-	taskFound, taskMatched := taskResult.(task.TaskGot)
-	if !taskMatched {
+	if _, taskMatched := taskResult.(task.TaskGot); !taskMatched {
 		rejected := taskResult.(task.GetRejected)
 		writeDomainError(w, rejected.Reason)
 		return
@@ -53,10 +56,6 @@ func (server Server) submitResponse(w http.ResponseWriter, r *http.Request, comm
 	if !matched {
 		rejected := result.(submission.SubmitRejected)
 		writeDomainError(w, rejected.Reason)
-		return
-	}
-
-	if !server.notify(w, r.Context(), taskFound.Value.CreatedBy, command.SubmitterID, notification.KindSubmissionCreated, notificationSubjectForSubmission(created.Value.ID), taskNotificationMetadata(command.TaskID)) {
 		return
 	}
 
@@ -73,7 +72,7 @@ func (server Server) findSubmissionReceipt(w http.ResponseWriter, r *http.Reques
 	tokenAccepted, tokenMatched := tokenResult.(submission.ReceiptTokenPlainAccepted)
 	if !tokenMatched {
 		rejected := tokenResult.(submission.ReceiptTokenPlainRejected)
-		writeError(w, http.StatusBadRequest, rejected.Reason.Description())
+		writeDomainError(w, rejected.Reason)
 		return
 	}
 
@@ -92,7 +91,7 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
 
@@ -100,7 +99,7 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
 	if !taskIDMatched {
 		rejected := taskIDResult.(taskIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
@@ -108,7 +107,7 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 	if !pageOK {
 		return
 	}
-	result := server.submissionService.ListForTask(r.Context(), actor.subject, taskIDAccepted.value, page)
+	result := server.submissionService.ListForTask(r.Context(), actor.subject, taskIDAccepted.value, page.Probe())
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		rejected := result.(submission.ListRejected)
@@ -116,26 +115,24 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	response := submissionsResponse{Submissions: make([]submissionResponse, 0, len(listed.Values))}
-	for _, value := range listed.Values {
-		if !server.recordSensitiveFieldAccess(w, r, actor.subject.ID, value) {
-			return
-		}
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	server.recordSensitiveFieldAccessForList(r.Context(), actor.subject.ID, listed.Values[:visible])
+	response := submissionsResponse{Submissions: make([]submissionResponse, 0, visible), NextOffset: nextOffset}
+	for _, value := range listed.Values[:visible] {
 		response.Submissions = append(response.Submissions, submissionToResponse(value))
 	}
 	writeSubmissionsResponse(w, http.StatusOK, response)
 }
 
-func (server Server) recordSensitiveFieldAccess(w http.ResponseWriter, r *http.Request, actor core.UserID, value submission.Submission) bool {
-	if len(value.SensitiveFields) == 0 {
-		return true
-	}
-	result := server.privacyService.RecordSensitiveFieldAccess(r.Context(), actor, value)
+// recordSensitiveFieldAccessForList records one batched access-audit event for
+// a rendered submission list, before the response is built. The recording is
+// post-read derived bookkeeping, so a failure is logged and never aborts the
+// list response mid-render.
+func (server Server) recordSensitiveFieldAccessForList(ctx context.Context, actor core.UserID, values []submission.Submission) {
+	result := server.privacyService.RecordSensitiveFieldAccessBatch(ctx, actor, values)
 	if rejected, matched := result.(PrivacyRequestMutationRejected); matched {
-		writeDomainError(w, rejected.Reason)
-		return false
+		slog.Error("record sensitive-field access batch failed, serving list without the access audit event", "actor", actor.String(), "error", rejected.Reason.Description())
 	}
-	return true
 }
 func decodeAuthenticatedSubmissionRequest(r *http.Request, actor auth.UserSubject, taskID core.TaskID) submissionRequestResult {
 	var request submissionRequest

@@ -27,7 +27,10 @@ type taskWire struct {
 	ResponseSchema string                `json:"response_schema"`
 	Payload        dataPayloadWire       `json:"payload"`
 	Attachments    []attachmentwire.Wire `json:"attachments,omitempty"`
-	CreatedBy      string                `json:"created_by"`
+	// ExpiresAt carries the ExpirationPolicy sum: the RFC3339 instant for
+	// ExpiresAt, or the empty string for NoExpiration.
+	ExpiresAt string `json:"expires_at,omitempty"`
+	CreatedBy string `json:"created_by"`
 }
 
 func encodeTask(value task.Task) taskWire {
@@ -48,6 +51,7 @@ func encodeTask(value task.Task) taskWire {
 		ResponseSchema: encodeResponseSchema(value.ResponseSchema),
 		Payload:        encodeDataPayload(value.Payload),
 		Attachments:    attachmentwire.EncodeSlice(value.Attachments),
+		ExpiresAt:      encodeExpirationPolicy(value.Expiration),
 		CreatedBy:      corewire.EncodeUserID(value.CreatedBy),
 	}
 }
@@ -121,6 +125,10 @@ func decodeTask(wire taskWire) (task.Task, error) {
 	if err != nil {
 		return task.Task{}, err
 	}
+	expiration, err := decodeExpirationPolicy(wire.ExpiresAt)
+	if err != nil {
+		return task.Task{}, err
+	}
 	return task.Task{
 		ID:             id,
 		Owner:          owner,
@@ -138,6 +146,7 @@ func decodeTask(wire taskWire) (task.Task, error) {
 		ResponseSchema: responseSchema,
 		Payload:        payload,
 		Attachments:    attachments,
+		Expiration:     expiration,
 		CreatedBy:      createdBy,
 	}, nil
 }

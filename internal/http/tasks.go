@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/assets"
@@ -22,7 +23,11 @@ func (server Server) createTask(w http.ResponseWriter, r *http.Request) {
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
 		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
+		return
+	}
+
+	if !server.allowBySubject(w, actor.subject.ID.String()) {
 		return
 	}
 
@@ -30,7 +35,7 @@ func (server Server) createTask(w http.ResponseWriter, r *http.Request) {
 	requestAccepted, requestMatched := requestResult.(taskRequestAccepted)
 	if !requestMatched {
 		rejected := requestResult.(taskRequestRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
@@ -42,29 +47,8 @@ func (server Server) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, collectibleID := range requestAccepted.collectibleIDs {
-		fundResult := server.assetService.FundReward(r.Context(), actor.subject.ID, created.Value.ID, collectibleID)
-		if _, funded := fundResult.(assets.RewardFunded); !funded {
-			writeDomainError(w, fundResult.(assets.FundRewardRejected).Reason)
-			return
-		}
-	}
-	if len(requestAccepted.collectibleIDs) > 0 {
-		refreshed := server.taskService.Get(r.Context(), actor.subject, created.Value.ID)
-		got, gotMatched := refreshed.(task.TaskGot)
-		if !gotMatched {
-			writeDomainError(w, refreshed.(task.GetRejected).Reason)
-			return
-		}
-		response, fundingErr := server.withAllocatedFunding(r.Context(), taskToResponse(got.Value), got.Value.ID)
-		if fundingErr != nil {
-			writeDomainError(w, *fundingErr)
-			return
-		}
-		writeTaskResponse(w, http.StatusCreated, response)
-		return
-	}
-
+	// Reward collectibles named in the request were escrowed inside the create
+	// transaction, so withAllocatedFunding reports them from the live holds.
 	response, fundingErr := server.withAllocatedFunding(r.Context(), taskToResponse(created.Value), created.Value.ID)
 	if fundingErr != nil {
 		writeDomainError(w, *fundingErr)
@@ -73,11 +57,10 @@ func (server Server) createTask(w http.ResponseWriter, r *http.Request) {
 	writeTaskResponse(w, http.StatusCreated, response)
 }
 func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserOrOrgSubject(r)
+	actorResult := server.requireUserOrOrgSubject(r, agent.ScopeTasksRead)
 	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		rejected := actorResult.(actorRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeActorRejection(w, actorResult)
 		return
 	}
 
@@ -85,7 +68,7 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	scopeAccepted, scopeMatched := scopeResult.(taskListScopeAccepted)
 	if !scopeMatched {
 		rejected := scopeResult.(taskListScopeRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
@@ -99,16 +82,19 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	pageResult := parsePageStrict(r)
 	pageAccepted, pageMatched := pageResult.(pageParseAccepted)
 	if !pageMatched {
-		writeError(w, http.StatusBadRequest, pageResult.(pageParseRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, pageResult.(pageParseRejected).reason)
 		return
 	}
 
-	result := server.taskService.List(r.Context(), actor.actor, scopeAccepted.value, filtersAccepted.value, pageAccepted.value)
+	result := server.taskService.List(r.Context(), actor.actor, scopeAccepted.value, filtersAccepted.value, pageAccepted.value.Probe())
 	switch listed := result.(type) {
 	case task.ListRejected:
 		writeDomainError(w, listed.Reason)
 	case task.TasksListed:
-		writeTasksResponse(w, http.StatusOK, tasksToResponse(listed.Values))
+		visible, nextOffset := probeListWindow(len(listed.Values), pageAccepted.value)
+		response := tasksToResponse(listed.Values[:visible])
+		response.NextOffset = nextOffset
+		writeTasksResponse(w, http.StatusOK, response)
 	}
 }
 func tasksToResponse(values []task.ListItem) tasksResponse {
@@ -130,7 +116,7 @@ func (server Server) unpublishTask(w http.ResponseWriter, r *http.Request) {
 func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
 	taskIDResult := parseTaskPathValue(r)
 	if rejected, matched := taskIDResult.(taskIDRejected); matched {
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 	taskIDAccepted := taskIDResult.(taskIDAccepted)
@@ -138,13 +124,13 @@ func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireWorkerSubject(r, agent.ScopeSubmissionsWrite, taskIDAccepted.value)
 	actor, actorMatched := actorResult.(userSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
 		return
 	}
 
 	requestResult := decodeReservationRequest(r)
 	if rejected, matched := requestResult.(reservationRequestRejected); matched {
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 	requestAccepted := requestResult.(reservationRequestAccepted)
@@ -211,27 +197,32 @@ func (server Server) reserveTaskForRequest(ctx context.Context, actor auth.UserS
 }
 
 func (server Server) listTaskReservations(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserOrOrgSubject(r)
+	actorResult := server.requireUserOrOrgSubject(r, agent.ScopeSubmissionsRead)
 	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(actorRejected).reason)
+		writeActorRejection(w, actorResult)
 		return
 	}
 	taskIDResult := parseTaskPathValue(r)
 	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
 	if !taskIDMatched {
-		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, taskIDResult.(taskIDRejected).reason)
 		return
 	}
 
-	result := server.taskService.ListReservations(r.Context(), actor.actor, taskIDAccepted.value)
+	page, pageOK := parsePageOrReject(w, r)
+	if !pageOK {
+		return
+	}
+	result := server.taskService.ListReservations(r.Context(), actor.actor, taskIDAccepted.value, page.Probe())
 	listed, matched := result.(task.ReservationsListed)
 	if !matched {
 		writeDomainError(w, result.(task.ReservationsListRejected).Reason)
 		return
 	}
-	response := reservationsResponse{Reservations: make([]reservationResponse, 0, len(listed.Values))}
-	for _, value := range listed.Values {
+	visible, nextOffset := probeListWindow(len(listed.Values), page)
+	response := reservationsResponse{Reservations: make([]reservationResponse, 0, visible), NextOffset: nextOffset}
+	for _, value := range listed.Values[:visible] {
 		response.Reservations = append(response.Reservations, reservationToResponse(value, ""))
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -246,22 +237,22 @@ func (server Server) cancelTaskReservation(w http.ResponseWriter, r *http.Reques
 	server.changeTaskReservation(w, r, server.taskService.CancelReservation)
 }
 func (server Server) changeTaskReservation(w http.ResponseWriter, r *http.Request, changer taskReservationChanger) {
-	actorResult := server.requireUserOrOrgSubject(r)
+	actorResult := server.requireUserOrOrgSubject(r, agent.ScopeSubmissionsReview)
 	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, actorResult.(actorRejected).reason)
+		writeActorRejection(w, actorResult)
 		return
 	}
 	taskIDResult := parseTaskPathValue(r)
 	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
 	if !taskIDMatched {
-		writeError(w, http.StatusBadRequest, taskIDResult.(taskIDRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, taskIDResult.(taskIDRejected).reason)
 		return
 	}
 	reservationIDResult := parseReservationPathValue(r)
 	reservationIDAccepted, reservationIDMatched := reservationIDResult.(reservationIDAccepted)
 	if !reservationIDMatched {
-		writeError(w, http.StatusBadRequest, reservationIDResult.(reservationIDRejected).reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, reservationIDResult.(reservationIDRejected).reason)
 		return
 	}
 
@@ -274,11 +265,10 @@ func (server Server) changeTaskReservation(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, reservationToResponse(changed.Value, changed.IssuedWorkerCredentialSecret))
 }
 func (server Server) changeTaskState(w http.ResponseWriter, r *http.Request, changer taskStateChanger) {
-	actorResult := server.requireUserOrOrgSubject(r)
+	actorResult := server.requireUserOrOrgSubject(r, agent.ScopeTasksWrite)
 	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		rejected := actorResult.(actorRejected)
-		writeError(w, http.StatusUnauthorized, rejected.reason)
+		writeActorRejection(w, actorResult)
 		return
 	}
 
@@ -286,7 +276,7 @@ func (server Server) changeTaskState(w http.ResponseWriter, r *http.Request, cha
 	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
 	if !taskIDMatched {
 		rejected := taskIDResult.(taskIDRejected)
-		writeError(w, http.StatusBadRequest, rejected.reason)
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
 	}
 
@@ -401,23 +391,31 @@ func decodeTaskRequest(r *http.Request, actor auth.UserSubject) taskRequestResul
 		return taskRequestRejected{reason: attachmentsResult.(attachmentsRequestRejected).reason}
 	}
 
+	expirationResult := task.ParseExpirationPolicy(request.ExpiresAt, time.Now().UTC())
+	expirationAccepted, expirationMatched := expirationResult.(task.ExpirationPolicyAccepted)
+	if !expirationMatched {
+		return taskRequestRejected{reason: expirationResult.(task.ExpirationPolicyRejected).Reason.Description()}
+	}
+
 	return taskRequestAccepted{command: task.CreateCommand{
-		Actor:          actor,
-		Owner:          ownerAccepted.value,
-		Title:          titleAccepted.Value,
-		Description:    descriptionAccepted.Value,
-		Type:           taskTypeAccepted.Value,
-		Reference:      referenceAccepted.Value,
-		Reward:         rewardAccepted.value,
-		Participation:  participationAccepted.policy,
-		AssigneeScope:  participationAccepted.assigneeScope,
-		ReservationTTL: participationAccepted.ttl,
-		Visibility:     visibilityAccepted.value,
-		Placement:      placementAccepted.value,
-		ResponseSchema: schemaSourceAccepted.Value,
-		Payload:        payloadAccepted.value,
-		Attachments:    attachmentsAccepted.values,
-	}, collectibleIDs: rewardAccepted.collectibleIDs}
+		Actor:              actor,
+		Owner:              ownerAccepted.value,
+		Title:              titleAccepted.Value,
+		Description:        descriptionAccepted.Value,
+		Type:               taskTypeAccepted.Value,
+		Reference:          referenceAccepted.Value,
+		Reward:             rewardAccepted.value,
+		Participation:      participationAccepted.policy,
+		AssigneeScope:      participationAccepted.assigneeScope,
+		ReservationTTL:     participationAccepted.ttl,
+		Visibility:         visibilityAccepted.value,
+		Placement:          placementAccepted.value,
+		ResponseSchema:     schemaSourceAccepted.Value,
+		Payload:            payloadAccepted.value,
+		Attachments:        attachmentsAccepted.values,
+		Expiration:         expirationAccepted.Value,
+		FundCollectibleIDs: rewardAccepted.collectibleIDs,
+	}}
 }
 func parseTaskParticipationRequest(request taskParticipationRequest) taskParticipationResult {
 	rawPolicy := request.Policy
@@ -907,6 +905,7 @@ func taskToResponse(value task.Task) taskResponse {
 		AvailabilityKind:        taskAvailabilityKind(value).String(),
 		ViewerAction:            taskViewerAction(value).String(),
 		ReviewerAction:          task.ReviewerActionNone.String(),
+		ExpiresAt:               task.ExpirationInstantString(value.Expiration),
 	}
 }
 
@@ -956,7 +955,7 @@ func (server Server) taskViewerActionForActor(ctx context.Context, actor auth.Us
 	if base != task.ViewerActionReserve && base != task.ViewerActionRequestApproval {
 		return base
 	}
-	listResult := server.taskService.ListReservations(ctx, actor, value.ID)
+	listResult := server.taskService.ListReservations(ctx, actor, value.ID, core.DefaultPage())
 	listed, matched := listResult.(task.ReservationsListed)
 	if !matched {
 		return base

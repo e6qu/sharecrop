@@ -279,15 +279,18 @@ func requireFundableTask(ctx context.Context, tx Tx, taskID core.TaskID, taskRow
 }
 
 // findFundForKey returns a non-nil FundResult when a fund command with the
-// given idempotency key has already been recorded for the task. The reply is
-// reconstructed from the durable task_fund ledger entry, so it replays even
-// after the task_funds row has been consumed by an award or refund.
-func findFundForKey(ctx context.Context, tx Tx, key string, taskID core.TaskID) ledger.FundResult {
+// given idempotency key has already been recorded for the task by the same
+// funding account. The lookup is account-scoped because idempotency keys are
+// unique per account, not globally — two unrelated funders may reuse the same
+// client-chosen key. The reply is reconstructed from the durable task_fund
+// ledger entry, so it replays even after the task_funds row has been consumed
+// by an award or refund.
+func findFundForKey(ctx context.Context, tx Tx, key string, taskID core.TaskID, funderAccountID string) ledger.FundResult {
 	var kind string
 	var rawFunderAccountID string
 	var amount int64
 	var rawTaskID string
-	scanErr := tx.QueryRow(ctx, "select kind, account_id::text, amount, coalesce(task_id::text, '') from ledger_entries where idempotency_key = $1", key).Scan(&kind, &rawFunderAccountID, &amount, &rawTaskID)
+	scanErr := tx.QueryRow(ctx, "select kind, account_id::text, amount, coalesce(task_id::text, '') from ledger_entries where idempotency_key = $1 and account_id = $2", key, funderAccountID).Scan(&kind, &rawFunderAccountID, &amount, &rawTaskID)
 	if errors.Is(scanErr, ErrNoRows) {
 		return nil
 	}
@@ -656,6 +659,10 @@ func refundHeldCollectibleReward(ctx context.Context, tx Tx, taskID core.TaskID)
 // the credit payout is reconstructed from the durable task_payout ledger entry
 // keyed on the accept's idempotency key.
 func idempotentAccept(ctx context.Context, tx Tx, command ledger.AcceptStoreCommand, rawWorkerID string) ledger.AcceptResult {
+	workerID, workerProblem := parseReviewWorker(rawWorkerID)
+	if workerProblem != nil {
+		return ledger.AcceptRejected{Reason: *workerProblem}
+	}
 	outcome := ledger.PayoutOutcome(ledger.NoPayout{})
 	var amount int64
 	scanErr := tx.QueryRow(ctx, "select amount from ledger_entries where task_id = $1 and kind = 'task_payout' and idempotency_key = $2", command.TaskID.String(), command.IdempotencyKey.String()).Scan(&amount)
@@ -663,13 +670,23 @@ func idempotentAccept(ctx context.Context, tx Tx, command ledger.AcceptStoreComm
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read task payout failed")}
 	}
 	if scanErr == nil {
-		worker, workerMatched := core.ParseUserID(rawWorkerID).(core.UserIDCreated)
-		amountAccepted, amountMatched := ledger.NewCreditAmount(amount).(ledger.CreditAmountAccepted)
-		if workerMatched && amountMatched {
-			outcome = ledger.CreditPayout{WorkerUserID: worker.Value, Amount: amountAccepted.Value}
+		if amountAccepted, amountMatched := ledger.NewCreditAmount(amount).(ledger.CreditAmountAccepted); amountMatched {
+			outcome = ledger.CreditPayout{WorkerUserID: workerID, Amount: amountAccepted.Value}
 		}
 	}
-	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, Payout: outcome, Tip: ledger.NoTip{}}
+	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: outcome, Tip: ledger.NoTip{}}
+}
+
+// parseReviewWorker converts the reviewed submission's stored author id into
+// a domain user id; a row that fails this parse is corrupt.
+func parseReviewWorker(rawWorkerID string) (core.UserID, *core.DomainError) {
+	workerResult := core.ParseUserID(rawWorkerID)
+	worker, matched := workerResult.(core.UserIDCreated)
+	if !matched {
+		reason := workerResult.(core.UserIDRejected).Reason
+		return core.UserID{}, &reason
+	}
+	return worker.Value, nil
 }
 
 type fundBuildResult interface {

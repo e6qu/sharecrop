@@ -142,6 +142,7 @@ non-Terraform deploy.
 | `SHARECROP_WAZERO_CACHE_DIR`    | image default `/wazero-cache` | Baked AOT cache; leave as-is. Unset would make the guest compile at startup. |
 | `SHARECROP_WASI_POOL_SIZE`      | optional                  | Guest pool size; defaults to GOMAXPROCS (task vCPUs). |
 | `SHARECROP_INSECURE_COOKIES`    | optional                  | Leave unset in production (cookies stay Secure).  |
+| `SHARECROP_HTTP_PROTOCOL`       | optional                  | `h1` (default) or `h2c`. `h2c` serves cleartext HTTP/2 alongside HTTP/1.1 (see Lifecycle runner & listener protocol). |
 | `SHARECROP_ACCOUNT_TOKEN_DELIVERY` | optional               | Defaults to `log` (fail-closed).                  |
 | `SHARECROP_SHAUTH_ISSUER`       | task configuration        | Exact HTTPS OpenID Connect issuer, including any trailing slash. |
 | `SHARECROP_SHAUTH_CLIENT_ID`    | task configuration        | Sharecrop's confidential Shauth client ID.       |
@@ -175,6 +176,36 @@ refresh-family revocation are committed in one database transaction, so every
 replica and a restarted service observe the same logout state. Shauth-managed
 browser entry hides local password and reset controls; deployments without
 Shauth retain those local account flows.
+
+### Lifecycle runner
+
+`cmd/sharecrop serve` starts a host-side lifecycle runner (`internal/runner`)
+alongside the listener, in both native and WASI-hosted modes. Each sweep runs
+on its own ticker; failures are logged and retried on the next tick. The
+sweeps act as the durable system actor (`core.SystemUserID()`, seeded by
+migration 000039; registration rejects its reserved address).
+
+| Sweep                | Interval | Effect                                                                     |
+| -------------------- | -------- | -------------------------------------------------------------------------- |
+| Reservation expiry   | 1m       | Releases requested/active reservations past `expires_at`; emits `reservation_expired`. |
+| Task expiry          | 1m       | Moves open tasks past `expires_at` to `expired`, refunds escrowed credits (idempotency key `expire:<task_id>`) and held collectibles, releases reservations; emits `task_expired`. |
+| Privacy retention    | 1h       | Runs the sensitive-field retention sweep as the system actor.               |
+| Rate-limit eviction  | 5m       | Deletes fully-refilled `rate_limit_buckets` rows.                           |
+| MCP session eviction | 10m      | Deletes MCP HTTP sessions idle past the 30-minute TTL plus their replay events. |
+| Webhook pump         | 5s       | Expands new domain events into deliveries and dispatches the due batch.     |
+
+On shutdown the runner is stopped after `Server.Shutdown` and before the guest
+pool and PostgreSQL pool close, so an in-flight sweep finishes against live
+resources.
+
+### Listener protocol
+
+`SHARECROP_HTTP_PROTOCOL=h2c` wraps the handler in an h2c upgrader
+(`golang.org/x/net/http2/h2c`), accepting cleartext HTTP/2 alongside
+HTTP/1.1; unset or `h1` serves HTTP/1.1 only. The API Gateway edge in this
+deployment still speaks HTTP/1.1 to the service (with its 30-second response
+cap), so h2c is an opt-in for direct clients and future edges; end-to-end
+HTTP/2 is a separate edge decision.
 
 ### Database
 

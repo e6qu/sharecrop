@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event/eventtest"
 )
 
 func TestParseCollectibleKindRoundTrips(t *testing.T) {
@@ -49,7 +50,7 @@ func TestNewCollectibleNameRejectsBlank(t *testing.T) {
 
 func TestServiceMintCreatesMintedCollectible(t *testing.T) {
 	store := &memoryStore{}
-	service := NewService(store)
+	service := NewService(store, eventtest.NewRecorder())
 	minted, matched := service.Mint(context.Background(), CollectibleOwnerKindUser, newUserID(t).String(), "", name(t, "Gold badge"), CollectibleKindBadge, TransferPolicyNonTransferableExceptPayout, "golden-sickle").(CollectibleMinted)
 	if !matched {
 		t.Fatalf("mint was rejected")
@@ -64,7 +65,7 @@ func TestServiceMintCreatesMintedCollectible(t *testing.T) {
 
 func TestServiceMintScopesOrganizationOwnedCollectible(t *testing.T) {
 	store := &memoryStore{}
-	service := NewService(store)
+	service := NewService(store, eventtest.NewRecorder())
 	organizationID := newOrganizationID(t).String()
 
 	minted, matched := service.Mint(context.Background(), CollectibleOwnerKindOrganization, organizationID, "", name(t, "Org badge"), CollectibleKindBadge, TransferPolicyTransferableWithinOrg, "harvest-star").(CollectibleMinted)

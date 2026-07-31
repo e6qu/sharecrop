@@ -1,6 +1,7 @@
 port module Main exposing (main)
 
 import Browser
+import Browser.Events
 import Browser.Navigation as Nav
 import Dict
 import File
@@ -11,6 +12,8 @@ import Sharecrop.Generated.Admin as Admin
 import Sharecrop.Generated.Agent as Agent
 import Sharecrop.Generated.Auth as Auth
 import Sharecrop.Generated.Collectible as Collectible
+import Sharecrop.Generated.Events as Events
+import Sharecrop.Generated.Ledger as Ledger
 import Sharecrop.Generated.Moderation as Moderation
 import Sharecrop.Generated.Notification as Notification
 import Sharecrop.Generated.Organization as Organization
@@ -37,11 +40,17 @@ main =
             -- Access tokens expire after 15 minutes; rotate every 10 so a
             -- tab left open does not silently start failing every request.
             -- Only while logged in - the refresh endpoint would just 401
-            -- on the auth screen.
+            -- on the auth screen. The 15-second poll keeps the unread badge
+            -- (and the current page's live lists) fresh, and returning to a
+            -- hidden tab refetches immediately instead of waiting a tick.
             \model ->
                 case model.session of
                     LoggedIn _ ->
-                        Time.every (10 * 60 * 1000) SessionRefreshTick
+                        Sub.batch
+                            [ Time.every (10 * 60 * 1000) SessionRefreshTick
+                            , Time.every (15 * 1000) PollTick
+                            , Browser.Events.onVisibilityChange VisibilityChanged
+                            ]
 
                     LoggedOut ->
                         Sub.none
@@ -86,6 +95,18 @@ emptyLoggedIn response =
     , balance = Nothing
     , entries = []
     , ledgerOffset = 0
+    , ledgerNextOffset = 0
+    , unreadCount = 0
+    , inboxUnreadOnly = False
+    , activityEvents = []
+    , activityCursor = ""
+    , webhookSubscriptions = []
+    , webhookURL = ""
+    , webhookKinds = []
+    , webhookMessage = Nothing
+    , newWebhookSecret = Nothing
+    , activeWebhookDeliveriesID = Nothing
+    , webhookDeliveries = []
     , createTitle = ""
     , createTitleInvalid = False
     , createDescription = ""
@@ -104,6 +125,7 @@ emptyLoggedIn response =
     , createAssigneeScope = Task.TaskAssigneeScopeUser
     , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
     , createReservationHours = "48"
+    , createExpiresAt = ""
     , createAttachments = []
     , createMessage = Nothing
     , fundTaskId = ""
@@ -114,6 +136,7 @@ emptyLoggedIn response =
     , tasks = []
     , taskStateFilter = []
     , taskListOffset = 0
+    , taskListNextOffset = 0
     , taskListQuery = ""
     , taskListTypeFilter = ""
     , taskListSort = "newest"
@@ -126,6 +149,7 @@ emptyLoggedIn response =
     , discoveryTasks = []
     , discoveryIncludeReserved = False
     , discoveryOffset = 0
+    , discoveryNextOffset = 0
     , discoveryQuery = ""
     , detail = Nothing
     , detailError = Nothing
@@ -147,7 +171,7 @@ emptyLoggedIn response =
     , reviewPartialCredit = ""
     , reviewTip = ""
     , reviewTipCollectibleId = ""
-    , reviewBan = False
+    , reviewBan = Ledger.BanSelectionNone
     , reviewMessage = Nothing
     , collectibles = []
     , collectibleName = ""
@@ -169,6 +193,7 @@ emptyLoggedIn response =
     , orgBalance = Nothing
     , orgLedger = []
     , orgLedgerOffset = 0
+    , orgLedgerNextOffset = 0
     , orgAuditEvents = []
     , orgAuditMessage = Nothing
     , orgTeams = []
@@ -182,6 +207,7 @@ emptyLoggedIn response =
     , orgTaskTypeFilter = ""
     , orgTaskSort = "newest"
     , orgTaskOffset = 0
+    , orgTaskNextOffset = 0
     , orgTaskMessage = Nothing
     , orgTaskSavedViewName = ""
     , orgTaskSavedViews = []
@@ -202,6 +228,7 @@ emptyLoggedIn response =
     , userWork = []
     , userSubmissions = []
     , userSubmissionsOffset = 0
+    , userSubmissionsNextOffset = 0
     , pendingRevisionTaskID = Nothing
     , pendingRevisionResponse = ""
     , seriesDetail = Nothing
@@ -222,6 +249,7 @@ emptyLoggedIn response =
     , teamWorkTypeFilter = ""
     , teamWorkSort = "newest"
     , teamWorkOffset = 0
+    , teamWorkNextOffset = 0
     , teamWorkMessage = Nothing
     , teamWorkSavedViewName = ""
     , teamWorkSavedViews = []
@@ -256,24 +284,32 @@ emptyLoggedIn response =
     , userDirectory = []
     , userDirectoryQuery = ""
     , userDirectoryOffset = 0
+    , userDirectoryNextOffset = 0
     , organizationQuery = ""
     , organizationOffset = 0
+    , organizationNextOffset = 0
     , standaloneTeamQuery = ""
     , standaloneTeamOffset = 0
+    , standaloneTeamNextOffset = 0
     , orgTeamQuery = ""
     , orgTeamOffset = 0
+    , orgTeamNextOffset = 0
     , operations = Nothing
     , auditEvents = []
     , auditEventsOffset = 0
+    , auditEventsNextOffset = 0
     , platformAdmins = []
     , platformAdminsOffset = 0
+    , platformAdminsNextOffset = 0
     , adminSelectedUserId = ""
     , adminModerationReports = []
     , adminModerationStateFilter = "open"
     , adminModerationOffset = 0
+    , adminModerationNextOffset = 0
     , adminModerationResolutionNote = ""
     , adminPrivacyRequests = []
     , adminPrivacyOffset = 0
+    , adminPrivacyNextOffset = 0
     , adminPrivacyResolutionNote = ""
     , adminRetentionRedactedFieldCount = Nothing
     , auditActionFilter = ""
@@ -282,6 +318,7 @@ emptyLoggedIn response =
     , adminMessage = Nothing
     , notifications = []
     , notificationsOffset = 0
+    , notificationsNextOffset = 0
     , inboxMessage = Nothing
     }
 
@@ -619,8 +656,17 @@ enterPageFields page state =
         AdminPage ->
             { state | page = page, operations = Nothing, auditEvents = [], auditEventsOffset = 0, platformAdmins = [], platformAdminsOffset = 0, adminSelectedUserId = "", adminModerationReports = [], adminModerationStateFilter = "open", adminModerationOffset = 0, adminModerationResolutionNote = "", adminPrivacyRequests = [], adminPrivacyOffset = 0, adminPrivacyResolutionNote = "", adminRetentionRedactedFieldCount = Nothing, auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
 
+        OverviewPage ->
+            -- The activity feed restarts from the top of the stream on every
+            -- entry; a stale cursor from a previous visit would silently skip
+            -- everything that happened while the page was away.
+            { state | page = page, activityEvents = [], activityCursor = "" }
+
+        AgentsPage ->
+            { state | page = page, webhookURL = "", webhookKinds = [], webhookMessage = Nothing, newWebhookSecret = Nothing, activeWebhookDeliveriesID = Nothing, webhookDeliveries = [] }
+
         InboxPage ->
-            { state | page = page, notifications = [], notificationsOffset = 0, inboxMessage = Nothing }
+            { state | page = page, notifications = [], notificationsOffset = 0, notificationsNextOffset = 0, inboxUnreadOnly = False, inboxMessage = Nothing }
 
         CollectibleDetailPage _ ->
             { state | page = page, transferMessage = Nothing, transferRecipientId = "" }
@@ -635,7 +681,7 @@ enterPageFields page state =
             -- ownerControlsCard) always target *this* task when submitted,
             -- regardless of whatever task was last selected on the standalone
             -- Funding/Collectibles pages.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitFieldValues = Dict.empty, submitRawMode = revisionDraftFor taskId state /= "", submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing, fundNonce = state.fundNonce + 1, awardTaskId = taskId, awardMessage = Nothing }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitFieldValues = Dict.empty, submitRawMode = revisionDraftFor taskId state /= "", submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = Ledger.BanSelectionNone, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing, fundNonce = state.fundNonce + 1, awardTaskId = taskId, awardMessage = Nothing }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -644,7 +690,7 @@ enterPageFields page state =
 
         CreateTaskPage ->
             -- Clear a half-finished draft and any stale create message on entry.
-            { state | page = page, createTitle = "", createTitleInvalid = False, createDescription = "", createDescriptionInvalid = False, createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createRewardAmountInvalid = False, createRewardCollectibleIds = [], createAttachments = [], createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48" }
+            { state | page = page, createTitle = "", createTitleInvalid = False, createDescription = "", createDescriptionInvalid = False, createResponseSchema = "{\"kind\":\"freeform\"}", createSchemaFields = [], createPayloadJson = "", createRewardKind = "none", createRewardAmount = "", createRewardAmountInvalid = False, createRewardCollectibleIds = [], createAttachments = [], createMessage = Nothing, createTaskType = "general", createReferenceURL = "", createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen, createReservationHours = "48", createExpiresAt = "" }
 
         FundingPage ->
             { state | page = page, fundMessage = Nothing }
@@ -780,7 +826,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | balance = Api.balanceFromResult result }), Cmd.none )
 
         LedgerReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | entries = Api.entriesFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | entries = Api.entriesFromResult result, ledgerNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         PreviousLedgerPageClicked ->
             Api.withSession model
@@ -803,7 +849,7 @@ update msg model =
                 )
 
         TasksReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | tasks = Api.tasksFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | tasks = Api.tasksFromResult result, taskListNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         TaskStateFilterToggled value ->
             let
@@ -948,6 +994,9 @@ update msg model =
         CreateReservationHoursChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createReservationHours = value }), Cmd.none )
 
+        CreateExpiresAtChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | createExpiresAt = value }), Cmd.none )
+
         PickCreateAttachmentClicked ->
             Api.withSession model
                 (\state ->
@@ -991,6 +1040,7 @@ update msg model =
                             , createAttachments = []
                             , createParticipationPolicy = participationPolicyTag Task.TaskParticipationPolicyOpen
                             , createReservationHours = "48"
+                            , createExpiresAt = ""
                             , createMessage = Just (SuccessNote ("Created task " ++ created.id))
                         }
                 )
@@ -1242,7 +1292,7 @@ update msg model =
                 )
 
         DiscoveryReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | discoveryTasks = Api.tasksFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | discoveryTasks = Api.tasksFromResult result, discoveryNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         DiscoveryViewClicked taskId ->
             ( Api.updateLoggedIn model
@@ -1261,7 +1311,7 @@ update msg model =
                         , reviewPartialCredit = ""
                         , reviewTip = ""
                         , reviewTipCollectibleId = ""
-                        , reviewBan = False
+                        , reviewBan = Ledger.BanSelectionNone
                         , reviewMessage = Nothing
                         , taskActionMessage = Nothing
                         , taskComments = []
@@ -1449,7 +1499,19 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | reviewTipCollectibleId = value }), Cmd.none )
 
         ReviewBanChanged value ->
-            ( Api.updateLoggedIn model (\state -> { state | reviewBan = value }), Cmd.none )
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | reviewBan =
+                            if value then
+                                Ledger.BanSelectionBanImplementor
+
+                            else
+                                Ledger.BanSelectionNone
+                    }
+                )
+            , Cmd.none
+            )
 
         AcceptClicked submissionId ->
             Api.withSession model (\state -> Api.acceptCommand model state submissionId)
@@ -1465,7 +1527,7 @@ update msg model =
             -- inherit the previous one's note / partial credit / tip / collectible tip / ban.
             Api.withSession model
                 (\state ->
-                    ( Api.updateLoggedIn model (\current -> { current | reviewMessage = Just (SuccessNote "Review saved."), reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = False, activeSubmissionCommentsID = Just submissionId, submissionComments = [], submissionCommentMessage = Nothing })
+                    ( Api.updateLoggedIn model (\current -> { current | reviewMessage = Just (SuccessNote "Review saved."), reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = Ledger.BanSelectionNone, activeSubmissionCommentsID = Just submissionId, submissionComments = [], submissionCommentMessage = Nothing })
                     , Cmd.batch
                         [ Api.refreshAfterAccept model
                         , Api.fetchSubmissionComments state.accessToken submissionId
@@ -1615,7 +1677,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | transferMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrganizationsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | organizations = Api.organizationsFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | organizations = Api.organizationsFromResult result, organizationNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         CreateOrgNameChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createOrgName = value }), Cmd.none )
@@ -1633,7 +1695,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | orgBalance = Api.balanceFromResult result }), Cmd.none )
 
         OrgLedgerReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | orgLedger = Api.entriesFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgLedger = Api.entriesFromResult result, orgLedgerNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         PreviousOrgLedgerPageClicked ->
             Api.withSession model
@@ -1662,10 +1724,10 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = [], orgAuditMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgTeamsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | orgTeams = Api.teamsFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgTeams = Api.teamsFromResult result, orgTeamNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         StandaloneTeamsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | standaloneTeams = Api.teamsFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | standaloneTeams = Api.teamsFromResult result, standaloneTeamNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         CreateTeamNameChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createTeamName = value }), Cmd.none )
@@ -1695,11 +1757,11 @@ update msg model =
             ( Api.updateLoggedIn model
                 (\state ->
                     case result of
-                        Ok users ->
-                            { state | userDirectory = users }
+                        Ok page ->
+                            { state | userDirectory = page.users, userDirectoryNextOffset = page.nextOffset }
 
                         Err _ ->
-                            { state | userDirectory = [] }
+                            { state | userDirectory = [], userDirectoryNextOffset = 0 }
                 )
             , Cmd.none
             )
@@ -1859,7 +1921,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | userWork = Api.tasksFromResult result }), Cmd.none )
 
         UserSubmissionsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | userSubmissions = Api.submissionsFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | userSubmissions = Api.submissionsFromResult result, userSubmissionsNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         PreviousUserSubmissionsPageClicked ->
             Api.withSession model
@@ -2004,10 +2066,10 @@ update msg model =
                 (\state ->
                     case result of
                         Ok response ->
-                            { state | teamWork = response.tasks, teamWorkMessage = Nothing }
+                            { state | teamWork = response.tasks, teamWorkNextOffset = response.nextOffset, teamWorkMessage = Nothing }
 
                         Err error ->
-                            { state | teamWork = [], teamWorkMessage = Just (FailureNote (httpErrorLabel error)) }
+                            { state | teamWork = [], teamWorkNextOffset = 0, teamWorkMessage = Just (FailureNote (httpErrorLabel error)) }
                 )
             , Cmd.none
             )
@@ -2165,10 +2227,10 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | teamMemberMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgTasksReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgTasks = response.tasks, orgTaskMessage = Nothing }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgTasks = response.tasks, orgTaskNextOffset = response.nextOffset, orgTaskMessage = Nothing }), Cmd.none )
 
         OrgTasksReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgTasks = [], orgTaskMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgTasks = [], orgTaskNextOffset = 0, orgTaskMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgTaskQueryChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | orgTaskQuery = value }), Cmd.none )
@@ -2584,16 +2646,16 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | operations = Nothing, adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AuditEventsReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | auditEvents = response.events, adminMessage = Nothing }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | auditEvents = response.events, auditEventsNextOffset = response.nextOffset, adminMessage = Nothing }), Cmd.none )
 
         AuditEventsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | auditEvents = [], auditEventsNextOffset = 0, adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         PlatformAdminsReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = response.admins }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = response.admins, platformAdminsNextOffset = response.nextOffset }), Cmd.none )
 
         PlatformAdminsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = [], adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | platformAdmins = [], platformAdminsNextOffset = 0, adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AdminSelectedUserChanged userId ->
             ( Api.updateLoggedIn model (\state -> { state | adminSelectedUserId = userId }), Cmd.none )
@@ -2617,10 +2679,10 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AdminModerationReportsReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = response.reports, adminMessage = Nothing }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = response.reports, adminModerationNextOffset = response.nextOffset, adminMessage = Nothing }), Cmd.none )
 
         AdminModerationReportsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = [], adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = [], adminModerationNextOffset = 0, adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AdminModerationStateFilterChanged value ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminModerationStateFilter = value, adminModerationOffset = 0 }), Api.fetchAdminModerationReports state.accessToken value 0 ))
@@ -2662,10 +2724,10 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AdminPrivacyRequestsReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = response.requests, adminMessage = Nothing }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = response.requests, adminPrivacyNextOffset = response.nextOffset, adminMessage = Nothing }), Cmd.none )
 
         AdminPrivacyRequestsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = [], adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminPrivacyRequests = [], adminPrivacyNextOffset = 0, adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         PreviousAdminPrivacyPageClicked ->
             Api.withSession model
@@ -2761,10 +2823,10 @@ update msg model =
                 )
 
         NotificationsReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | notifications = response.notifications, inboxMessage = Nothing }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | notifications = response.notifications, notificationsNextOffset = response.nextOffset, inboxMessage = Nothing }), Cmd.none )
 
         NotificationsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | notifications = [], inboxMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | notifications = [], notificationsNextOffset = 0, inboxMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         PreviousNotificationsPageClicked ->
             Api.withSession model
@@ -2773,7 +2835,7 @@ update msg model =
                         offset =
                             max 0 (state.notificationsOffset - Api.selectorPageSize)
                     in
-                    ( Api.updateLoggedIn model (\current -> { current | notificationsOffset = offset }), Api.fetchNotifications state.accessToken offset )
+                    ( Api.updateLoggedIn model (\current -> { current | notificationsOffset = offset }), Api.fetchNotifications state.accessToken state.inboxUnreadOnly offset )
                 )
 
         NextNotificationsPageClicked ->
@@ -2783,17 +2845,138 @@ update msg model =
                         offset =
                             state.notificationsOffset + Api.selectorPageSize
                     in
-                    ( Api.updateLoggedIn model (\current -> { current | notificationsOffset = offset }), Api.fetchNotifications state.accessToken offset )
+                    ( Api.updateLoggedIn model (\current -> { current | notificationsOffset = offset }), Api.fetchNotifications state.accessToken state.inboxUnreadOnly offset )
                 )
 
         MarkNotificationReadClicked notificationId ->
             Api.withSession model (\state -> ( model, Api.markNotificationRead state.accessToken notificationId ))
 
         NotificationReadReceived (Ok notification) ->
-            ( Api.updateLoggedIn model (\state -> { state | notifications = replaceNotification notification state.notifications, inboxMessage = Nothing }), Cmd.none )
+            -- The nav badge counts unread rows, so it must drop by one right
+            -- after a successful mark-read rather than waiting for a poll.
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | notifications = replaceNotification notification current.notifications, inboxMessage = Nothing })
+                    , Api.fetchUnreadCount state.accessToken
+                    )
+                )
 
         NotificationReadReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | inboxMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
+        UnreadCountReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | unreadCount = response.unreadCount }), Cmd.none )
+
+        UnreadCountReceived (Err _) ->
+            -- Keep the last known count: flashing the badge away on a
+            -- transient fetch failure would misreport "nothing unread".
+            ( model, Cmd.none )
+
+        InboxUnreadOnlyToggled unreadOnly ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | inboxUnreadOnly = unreadOnly, notificationsOffset = 0 })
+                    , Api.fetchNotifications state.accessToken unreadOnly 0
+                    )
+                )
+
+        PollTick _ ->
+            Api.withSession model (\state -> ( model, pollCmd state ))
+
+        VisibilityChanged visibility ->
+            case visibility of
+                Browser.Events.Visible ->
+                    Api.withSession model (\state -> ( model, pollCmd state ))
+
+                Browser.Events.Hidden ->
+                    ( model, Cmd.none )
+
+        ActivityEventsReceived (Ok response) ->
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | activityEvents = appendActivityEvents state.activityEvents response.events
+                        , activityCursor =
+                            if response.nextCursor == "" then
+                                state.activityCursor
+
+                            else
+                                response.nextCursor
+                    }
+                )
+            , Cmd.none
+            )
+
+        ActivityEventsReceived (Err _) ->
+            -- The feed is a live convenience; keep what is already shown
+            -- rather than replacing it with an error state on one bad poll.
+            ( model, Cmd.none )
+
+        WebhooksReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | webhookSubscriptions = response.subscriptions }), Cmd.none )
+
+        WebhooksReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | webhookSubscriptions = [], webhookMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
+        WebhookURLChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | webhookURL = value }), Cmd.none )
+
+        ToggleWebhookKind kind ->
+            ( Api.updateLoggedIn model (\state -> { state | webhookKinds = Api.toggleWebhookKind kind state.webhookKinds }), Cmd.none )
+
+        CreateWebhookClicked ->
+            Api.withSession model (\state -> Api.createWebhookCommand model state)
+
+        WebhookCreated (Ok created) ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model
+                        (\current ->
+                            { current
+                                | newWebhookSecret = Just created
+                                , webhookURL = ""
+                                , webhookKinds = []
+                                , webhookMessage = Nothing
+                            }
+                        )
+                    , Api.fetchWebhookSubscriptions state.accessToken
+                    )
+                )
+
+        WebhookCreated (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | webhookMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
+        RevokeWebhookClicked subscriptionId ->
+            Api.withSession model (\state -> ( model, Api.revokeWebhookSubscription state.accessToken subscriptionId ))
+
+        WebhookRevoked (Ok _) ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | webhookMessage = Just (SuccessNote "Webhook revoked. Deliveries to it have stopped.") })
+                    , Api.fetchWebhookSubscriptions state.accessToken
+                    )
+                )
+
+        WebhookRevoked (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | webhookMessage = Just (FailureNote ("Could not revoke the webhook: " ++ httpErrorLabel error)) }), Cmd.none )
+
+        OpenWebhookDeliveries subscriptionId ->
+            Api.withSession model
+                (\state ->
+                    if state.activeWebhookDeliveriesID == Just subscriptionId then
+                        ( Api.updateLoggedIn model (\current -> { current | activeWebhookDeliveriesID = Nothing, webhookDeliveries = [] }), Cmd.none )
+
+                    else
+                        ( Api.updateLoggedIn model (\current -> { current | activeWebhookDeliveriesID = Just subscriptionId, webhookDeliveries = [] })
+                        , Api.fetchWebhookDeliveries state.accessToken subscriptionId
+                        )
+                )
+
+        WebhookDeliveriesReceived (Ok response) ->
+            ( Api.updateLoggedIn model (\state -> { state | webhookDeliveries = response.deliveries }), Cmd.none )
+
+        WebhookDeliveriesReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | webhookMessage = Just (FailureNote ("Could not load deliveries: " ++ httpErrorLabel error)) }), Cmd.none )
 
         LinkClicked request ->
             case request of
@@ -2834,6 +3017,57 @@ update msg model =
                 )
             , Cmd.none
             )
+
+
+{-| One freshness pass: always the unread badge count, plus whatever live
+list the current page shows (Inbox rows, Overview activity). Runs on the
+15-second poll tick and when a hidden tab becomes visible again.
+-}
+pollCmd : LoggedInModel -> Cmd Msg
+pollCmd state =
+    Cmd.batch
+        (Api.fetchUnreadCount state.accessToken
+            :: (case state.page of
+                    InboxPage ->
+                        [ Api.fetchNotifications state.accessToken state.inboxUnreadOnly state.notificationsOffset ]
+
+                    OverviewPage ->
+                        [ Api.fetchEvents state.accessToken state.activityCursor ]
+
+                    _ ->
+                        []
+               )
+        )
+
+
+{-| The next_offset carried by a paged list response, or 0 (no next page)
+when the request failed - a failed page must not offer paging deeper into
+nothing.
+-}
+nextOffsetFromResult : (response -> Int) -> Result Http.Error response -> Int
+nextOffsetFromResult toNextOffset result =
+    case result of
+        Ok response ->
+            toNextOffset response
+
+        Err _ ->
+            0
+
+
+{-| Append newly fetched feed events, skipping any id already shown (the
+first poll can race the page-entry fetch before a cursor exists), and keep
+only the newest 50 so a long-lived tab does not grow without bound.
+-}
+appendActivityEvents : List Events.EventResponse -> List Events.EventResponse -> List Events.EventResponse
+appendActivityEvents existing incoming =
+    let
+        knownIds =
+            List.map .id existing
+
+        merged =
+            existing ++ List.filter (\event -> not (List.member event.id knownIds)) incoming
+    in
+    List.drop (List.length merged - 50) merged
 
 
 seriesListRefresh : Model -> Cmd Msg

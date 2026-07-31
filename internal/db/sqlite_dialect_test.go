@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/sqlitex"
 )
@@ -35,6 +36,149 @@ func newUserIDForTest(t *testing.T) core.UserID {
 		t.Fatalf("user id rejected")
 	}
 	return created.Value
+}
+
+// TestNewSchemaDDLOnSQLite proves the 000037-000041 migrations translate to
+// SQLite: the bigserial event cursor auto-assigns monotonically (rowid alias),
+// ledger idempotency keys are unique per account rather than globally, the
+// webhook pump cursor and system actor rows are seeded, and the task
+// expires_at column exists.
+func TestNewSchemaDDLOnSQLite(t *testing.T) {
+	ctx := context.Background()
+	handle := openSQLiteWithSchema(t)
+
+	var firstSeq, secondSeq int64
+	if err := handle.QueryRowContext(ctx,
+		"insert into domain_events (id, kind, actor_kind) values ('event-1', 'task_opened', 'system') returning seq",
+	).Scan(&firstSeq); err != nil {
+		t.Fatalf("insert first event: %v", err)
+	}
+	if err := handle.QueryRowContext(ctx,
+		"insert into domain_events (id, kind, actor_kind) values ('event-2', 'task_funded', 'system') returning seq",
+	).Scan(&secondSeq); err != nil {
+		t.Fatalf("insert second event: %v", err)
+	}
+	if secondSeq <= firstSeq {
+		t.Fatalf("event seq not monotonic: first %d, second %d", firstSeq, secondSeq)
+	}
+
+	insertLedgerRow := func(rowID, accountID, key string) error {
+		_, err := handle.ExecContext(ctx,
+			"insert into ledger_entries (id, account_id, kind, amount, idempotency_key) values ($1, $2, 'task_escrow', 5, $3)",
+			rowID, accountID, key,
+		)
+		return err
+	}
+	if err := insertLedgerRow("ledger-1", "account-1", "retry-1"); err != nil {
+		t.Fatalf("first ledger row: %v", err)
+	}
+	if err := insertLedgerRow("ledger-2", "account-2", "retry-1"); err != nil {
+		t.Fatalf("same key on another account must be allowed: %v", err)
+	}
+	if err := insertLedgerRow("ledger-3", "account-1", "retry-1"); err == nil {
+		t.Fatalf("same key on the same account must be rejected")
+	}
+
+	var lastSeq int64
+	if err := handle.QueryRowContext(ctx,
+		"select last_seq from webhook_pump_cursor where singleton = 1",
+	).Scan(&lastSeq); err != nil {
+		t.Fatalf("webhook pump cursor not seeded: %v", err)
+	}
+	if lastSeq != 0 {
+		t.Fatalf("pump cursor last_seq = %d, want 0", lastSeq)
+	}
+
+	var systemEmail string
+	if err := handle.QueryRowContext(ctx,
+		"select email from users where id = '00000000-0000-7000-8000-000000000001'",
+	).Scan(&systemEmail); err != nil {
+		t.Fatalf("system actor row not seeded: %v", err)
+	}
+	if systemEmail != "system@sharecrop.invalid" {
+		t.Fatalf("system actor email = %q", systemEmail)
+	}
+
+	if _, err := handle.ExecContext(ctx,
+		"update tasks set expires_at = $1 where 1 = 0", time.Now().UTC(),
+	); err != nil {
+		t.Fatalf("tasks.expires_at missing: %v", err)
+	}
+}
+
+// TestEventStoreOnSQLite proves the event store's transactional append,
+// recipient fan-out, and cursor-filtered listing through the SQLite dialect.
+func TestEventStoreOnSQLite(t *testing.T) {
+	ctx := context.Background()
+	store := EventStore{db: NewSQLite(openSQLiteWithSchema(t))}
+
+	actor := newUserIDForTest(t)
+	owner := newUserIDForTest(t)
+	stranger := newUserIDForTest(t)
+	taskID, _ := core.NewTaskID().(core.TaskIDCreated)
+
+	emit := func(kind event.Kind) event.StoredEvent {
+		t.Helper()
+		idResult, _ := core.NewDomainEventID().(core.DomainEventIDCreated)
+		subject := event.NoSubjectRefs()
+		subject.Task = event.TaskSubject{ID: taskID.Value}
+		appended, matched := store.Append(ctx, event.Event{
+			ID:         idResult.Value,
+			Kind:       kind,
+			Actor:      event.ActorUser{ID: actor},
+			Subject:    subject,
+			Metadata:   event.EmptyMetadata(),
+			OccurredAt: time.Now().UTC().Round(time.Microsecond),
+		}, event.NewRecipients(actor, owner)).(event.AppendStoreAccepted)
+		if !matched {
+			t.Fatalf("append rejected")
+		}
+		return appended.Value
+	}
+
+	first := emit(event.KindTaskFunded)
+	second := emit(event.KindSubmissionCreated)
+	if second.Cursor.Sequence() <= first.Cursor.Sequence() {
+		t.Fatalf("cursors not monotonic: %d then %d", first.Cursor.Sequence(), second.Cursor.Sequence())
+	}
+
+	page, _ := core.NewPage(50, 0).(core.PageAccepted)
+	listed, matched := store.ListForRecipient(ctx, owner, event.FromStart{}, page.Value).(event.ListStoreAccepted)
+	if !matched {
+		t.Fatalf("list rejected")
+	}
+	if len(listed.Values) != 2 {
+		t.Fatalf("owner feed has %d events, want 2", len(listed.Values))
+	}
+	got := listed.Values[0]
+	if got.Event.Kind != event.KindTaskFunded {
+		t.Fatalf("first event kind = %q", got.Event.Kind.String())
+	}
+	if ref, ok := got.Event.Subject.Task.(event.TaskSubject); !ok || ref.ID != taskID.Value {
+		t.Fatalf("task ref did not round-trip")
+	}
+	if _, ok := got.Event.Subject.Submission.(event.NoSubmission); !ok {
+		t.Fatalf("absent submission ref did not round-trip as absent")
+	}
+	if event.ActorUserID(got.Event.Actor) != actor {
+		t.Fatalf("actor did not round-trip")
+	}
+
+	after, matched := store.ListForRecipient(ctx, owner, event.After{Cursor: first.Cursor}, page.Value).(event.ListStoreAccepted)
+	if !matched {
+		t.Fatalf("after-cursor list rejected")
+	}
+	if len(after.Values) != 1 || after.Values[0].Event.Kind != event.KindSubmissionCreated {
+		t.Fatalf("after-cursor feed wrong: %d values", len(after.Values))
+	}
+
+	strangerFeed, matched := store.ListForRecipient(ctx, stranger, event.FromStart{}, page.Value).(event.ListStoreAccepted)
+	if !matched {
+		t.Fatalf("stranger list rejected")
+	}
+	if len(strangerFeed.Values) != 0 {
+		t.Fatalf("stranger must not see the events, got %d", len(strangerFeed.Values))
+	}
 }
 
 // TestNotificationStoreOnSQLite runs the real notification store against SQLite
@@ -70,7 +214,7 @@ func TestNotificationStoreOnSQLite(t *testing.T) {
 	if !ok {
 		t.Fatalf("page rejected")
 	}
-	listed, ok := store.List(ctx, recipient, page.Value).(notification.ListStoreAccepted)
+	listed, ok := store.List(ctx, recipient, notification.AnyState{}, page.Value).(notification.ListStoreAccepted)
 	if !ok {
 		t.Fatalf("list rejected")
 	}

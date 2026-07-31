@@ -11,12 +11,37 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
+	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/submissionbridge"
 )
 
 // RecordSensitiveFieldAccess takes a full submission.Submission, serialized by
-// submissionbridge's shared EncodeSubmission/DecodeSubmission codec.
+// submissionbridge's shared EncodeSubmission/DecodeSubmission codec;
+// RecordSensitiveFieldAccessBatch carries a slice of them.
+
+// ---- []submission.Submission ----
+
+func encodeSubmissions(values []submission.Submission) []submissionbridge.SubmissionWire {
+	encoded := make([]submissionbridge.SubmissionWire, 0, len(values))
+	for index := range values {
+		encoded = append(encoded, submissionbridge.EncodeSubmission(values[index]))
+	}
+	return encoded
+}
+
+func decodeSubmissions(wires []submissionbridge.SubmissionWire) ([]submission.Submission, error) {
+	values := make([]submission.Submission, 0, len(wires))
+	for index := range wires {
+		value, err := submissionbridge.DecodeSubmission(wires[index])
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, nil
+}
 
 // ---- httpserver.PrivacyRequestRecord ----
 

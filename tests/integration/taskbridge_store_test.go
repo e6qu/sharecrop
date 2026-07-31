@@ -97,8 +97,8 @@ func TestTaskBridgeDualRun(t *testing.T) {
 		if _, matched := result.(task.CreateReservationStoreAccepted); !matched {
 			t.Fatalf("bridge CreateReservation = %T, want accepted", result)
 		}
-		viaBridge := requireReservationsListed(t, bridgeStore.ListReservations(ctx, taskID))
-		direct := requireReservationsListed(t, dbStore.ListReservations(ctx, taskID))
+		viaBridge := requireReservationsListed(t, bridgeStore.ListReservations(ctx, taskID, core.DefaultPage()))
+		direct := requireReservationsListed(t, dbStore.ListReservations(ctx, taskID, core.DefaultPage()))
 		if len(viaBridge) != len(direct) || len(viaBridge) != 1 {
 			t.Fatalf("reservation counts: bridge %d, direct %d, want 1", len(viaBridge), len(direct))
 		}
@@ -112,8 +112,8 @@ func TestTaskBridgeDualRun(t *testing.T) {
 		if _, matched := bridgeStore.CreateTaskComment(ctx, comment).(task.CreateTaskCommentStoreAccepted); !matched {
 			t.Fatalf("bridge CreateTaskComment did not accept")
 		}
-		viaBridge := requireTaskComments(t, bridgeStore.ListTaskComments(ctx, taskID))
-		direct := requireTaskComments(t, dbStore.ListTaskComments(ctx, taskID))
+		viaBridge := requireTaskComments(t, bridgeStore.ListTaskComments(ctx, taskID, core.DefaultPage()))
+		direct := requireTaskComments(t, dbStore.ListTaskComments(ctx, taskID, core.DefaultPage()))
 		if len(viaBridge) != len(direct) || len(viaBridge) != 1 {
 			t.Fatalf("task comment counts: bridge %d, direct %d, want 1", len(viaBridge), len(direct))
 		}
@@ -165,8 +165,8 @@ func TestTaskBridgeDualRun(t *testing.T) {
 		if _, matched := bridgeStore.CreateSeriesComment(ctx, comment).(task.CreateSeriesCommentStoreAccepted); !matched {
 			t.Fatalf("bridge CreateSeriesComment did not accept")
 		}
-		viaBridge := requireSeriesComments(t, bridgeStore.ListSeriesComments(ctx, seriesID2))
-		direct := requireSeriesComments(t, dbStore.ListSeriesComments(ctx, seriesID2))
+		viaBridge := requireSeriesComments(t, bridgeStore.ListSeriesComments(ctx, seriesID2, core.DefaultPage()))
+		direct := requireSeriesComments(t, dbStore.ListSeriesComments(ctx, seriesID2, core.DefaultPage()))
 		if len(viaBridge) != len(direct) || len(viaBridge) != 1 {
 			t.Fatalf("series comment counts: bridge %d, direct %d, want 1", len(viaBridge), len(direct))
 		}

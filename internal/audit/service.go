@@ -33,7 +33,13 @@ var (
 	ActionTaskFunded                  = Action{value: "task_funded"}
 	ActionTaskRefunded                = Action{value: "task_refunded"}
 	ActionPrivacyRequestCreated       = Action{value: "privacy_request_created"}
+	ActionSensitiveFieldsAccessed     = Action{value: "sensitive_fields_accessed"}
 	ActionModerationReportCreated     = Action{value: "moderation_report_created"}
+	ActionModerationReportTriaged     = Action{value: "moderation_report_triaged"}
+	ActionPrivacyRequestResolved      = Action{value: "privacy_request_resolved"}
+	ActionPrivacyRetentionRun         = Action{value: "privacy_retention_run"}
+	ActionPlatformAdminGranted        = Action{value: "platform_admin_granted"}
+	ActionPlatformAdminRevoked        = Action{value: "platform_admin_revoked"}
 )
 
 func (action Action) String() string {

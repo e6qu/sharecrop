@@ -1194,6 +1194,16 @@ Package intent:
 - `internal/capability`: opaque scoped token generation and verification.
 - `internal/http`: HTTP handlers, DTO parsing, response rendering.
 - `internal/mcp`: MCP adapter.
+- `internal/event`: the append-only domain event stream; services emit events
+  for every externally meaningful mutation, and notifications, webhook
+  deliveries, and the browser live feed derive from it.
+- `internal/webhook`: webhook subscription domain model and management
+  (guest-safe); `internal/webhookdispatch` is the host-only signed-delivery
+  dispatcher.
+- `internal/runner`: the host-only lifecycle runner (reservation and task
+  expiry, privacy retention, rate-limit and MCP-session sweeps, webhook pump).
+- `internal/appgraph`: the shared domain service-graph builder used by serve,
+  mcp-stdio, the WASI guest, and the runner.
 
 ## Implementation Milestones
 

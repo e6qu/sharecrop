@@ -2,6 +2,67 @@
 
 ## Implemented surface
 
+- **Domain event stream** (`internal/event`, `domain_events` + `domain_event_recipients`):
+  every externally meaningful mutation emits a typed event from the service
+  layer, so REST and MCP actions produce identical downstream effects.
+  Notifications, webhook deliveries, and the browser live feed all derive from
+  this one stream. Emission is post-commit best-effort (no outbox yet).
+- **Notifications**: sealed 18-kind enum (submission, reservation, task,
+  series-comment, payout/tip, collectible kinds), unread filter
+  (`GET /api/notifications?state=unread`) and unread count
+  (`GET /api/notifications/unread-count`), fan-out from the event recorder
+  with self-notification suppression.
+- **Live browser updates**: cursor-based per-user feed
+  (`GET /api/events?after=`) plus an SSE variant (`GET /api/events/stream`,
+  streaming when the transport has a Flusher, bounded replay under the WASI
+  bridge). The Elm client polls every 15 seconds and on tab-visibility,
+  shows an unread badge, and renders a Recent-activity card on Overview.
+- **Outbound webhooks**: user- or organization-owned subscriptions over event
+  kinds (`/api/webhook-subscriptions`, MCP tools, Elm management UI on the
+  Agents page), HMAC-SHA256-signed deliveries
+  (`Sharecrop-Webhook-Signature: v1=...`), bounded retry schedule
+  (30s/5m/30m/2h/8h ±20% then dead), `FOR UPDATE SKIP LOCKED` claims, and a
+  dial-time SSRF guard (https-only, no redirects, non-public addresses
+  rejected at the resolved socket). Secrets are shown once at creation and
+  stored as written (HMAC requires the plaintext).
+- **Lifecycle runner** (`internal/runner`, host-only, both native and WASI
+  modes): reservation expiry (1m), task expiration (1m), privacy retention as
+  the system actor (1h), Postgres rate-limit bucket eviction (5m), MCP session
+  sweep (10m), webhook pump (5s). The seeded system actor
+  (`core.SystemUserID()`, `system@sharecrop.invalid`) can never authenticate
+  and registration rejects its address.
+- **Task expiration is real**: tasks accept an optional `expires_at`
+  (REST/MCP), the sweep transitions open tasks past the instant to the
+  `expired` state, refunds credit and collectible escrow idempotently
+  (`expire:<task_id>` keys), releases reservations, and emits `task_expired`.
+- **API quality**: error bodies carry a machine-readable `code` (10-code
+  enum); MCP tool failures return structured `{"code","message"}` JSON;
+  org credentials are scope-checked on REST exactly as on MCP; ledger
+  idempotency keys are unique per account (not globally); task creation
+  escrows reward collectibles transactionally; list responses carry
+  `next_offset`; previously unbounded lists are paginated; the moderation
+  list filters in SQL before paginating; `ban_implementor` became the
+  `ban_selection` enum; request-changes requires an idempotency key and
+  replays; audit after a committed mutation is best-effort.
+- **MCP parity**: `create_task` supports owner/visibility/assignee-scope/
+  reservation-expiry/series/payload/attachments/reward-collectible-ids/
+  expires_at exactly like REST; `accept_submission` takes
+  `tip_collectible_id`; `list_tasks` takes the full REST filter set; credits
+  tools (`get_credit_balance`, `list_ledger`) run under the now-live
+  `ledger_read` scope; list tools take limit/offset.
+- **HTTP/2 groundwork**: `SHARECROP_HTTP_PROTOCOL=h2c` opts the listener into
+  cleartext HTTP/2 (`golang.org/x/net/http2/h2c`); default stays HTTP/1.1
+  because the API Gateway edge speaks HTTP/1.1 with a 30-second cap.
+- **Farm/pixel UI**: the shipped Elm app uses the farm design system end to
+  end — `--color-farm-*` Tailwind tokens, self-hosted Press Start 2P/VT323,
+  parchment cards with hard ink borders and offset shadows on the field
+  green, pixel display headings, sprite-backed empty states and brand row,
+  measured ≥4.5:1 contrast per tone, global `:focus-visible` outline. The
+  demo's `arcade.css` is a stub; app and demo share one theme.
+- **Service graph**: `internal/appgraph.Build` assembles the domain services
+  for serve, mcp-stdio, the WASI guest (appmux), and the runner from one
+  place.
+
 - A Go HTTP API (`internal/http`) over domain services (`internal/task`,
   `internal/ledger`, `internal/assets`, `internal/submission`, `internal/org`,
   ...), an Elm browser client, an MCP interface at `/mcp` (Streamable HTTP with
@@ -146,6 +207,18 @@ host-side body read. The container/deploy work then baked the wazero AOT cache,
 slimmed the image, and added the ghcr release workflow.
 
 ## Test status
+
+The review-upgrade branch passed the full local battery: every static gate
+(format, contracts, openapi, policy, release contract, TypeScript, copy-paste,
+dead code, WASI bridge, workflow timeouts, lint, vet), Go unit suites, Deno
+tests, PostgreSQL integration (including lifecycle-sweep, webhook-pump
+concurrency, and idempotency-scope tests), HTTP end-to-end (including the
+MCP-mutation-produces-notification proof, the REST scope-gate proof, error-code
+and next_offset contracts, and MCP/REST create-task parity), DB-backed
+Playwright (52 specs including unread badge, activity feed, webhook management,
+request-changes, expiration), the demo/mobile Playwright suites against the
+rebuilt WASM demo, and WASM scenario parity. Screenshots of the rethemed
+screens were reviewed manually.
 
 PR CI runs format/contract/policy/type checks, Go unit and integration tests,
 HTTP end-to-end tests, shared scenario parity against both SQL engines, and

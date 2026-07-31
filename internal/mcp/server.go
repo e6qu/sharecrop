@@ -16,6 +16,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/orgcred"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
+	"github.com/e6qu/sharecrop/internal/webhook"
 )
 
 // CallerCredential is the scope/task-restriction facts of whichever
@@ -33,7 +34,7 @@ type CallerCredential struct {
 // requireUserOrOrgSubject in internal/http); every other method stays
 // auth.UserSubject-only, matching REST exactly rather than exceeding it.
 type Services interface {
-	ListTasks(context.Context, auth.Subject, task.ListScope, task.ListFilters) task.ListResult
+	ListTasks(context.Context, auth.Subject, task.ListScope, task.ListFilters, core.Page) task.ListResult
 	GetTask(context.Context, auth.UserSubject, core.TaskID) task.GetResult
 	CreateTask(context.Context, task.CreateCommand) task.CreateResult
 	OpenTask(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
@@ -42,10 +43,10 @@ type Services interface {
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
 	SubmitResponse(context.Context, submission.SubmitCommand) submission.SubmitResult
 	GetSubmissionStatus(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
-	ListTaskSubmissions(context.Context, auth.UserSubject, core.TaskID) submission.ListResult
+	ListTaskSubmissions(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult
 	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
 	ReviewAcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult
-	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, submission.ReviewNote) ledger.RequestChangesResult
+	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult
 	RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
 	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
@@ -56,15 +57,15 @@ type Services interface {
 	RemoveTaskFromSeries(context.Context, auth.UserSubject, core.TaskSeriesID, core.TaskID) task.SeriesMutationResult
 	ReorderSeries(context.Context, auth.UserSubject, core.TaskSeriesID, []core.TaskID) task.SeriesMutationResult
 	AddSeriesComment(context.Context, auth.UserSubject, core.TaskSeriesID, task.CommentBody) task.SeriesCommentResult
-	ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID) task.SeriesCommentsResult
+	ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID, core.Page) task.SeriesCommentsResult
 	AddTaskComment(context.Context, auth.UserSubject, core.TaskID, task.CommentBody) task.TaskCommentResult
-	ListTaskComments(context.Context, auth.UserSubject, core.TaskID) task.TaskCommentsResult
+	ListTaskComments(context.Context, auth.UserSubject, core.TaskID, core.Page) task.TaskCommentsResult
 	AddSubmissionComment(context.Context, auth.UserSubject, core.SubmissionID, task.CommentBody) submission.SubmissionCommentResult
-	ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID) submission.SubmissionCommentsResult
+	ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID, core.Page) submission.SubmissionCommentsResult
 	UnpublishTask(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
 	ReserveTask(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ReserveTaskForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
-	ListReservations(context.Context, auth.Subject, core.TaskID) task.ReservationsListResult
+	ListReservations(context.Context, auth.Subject, core.TaskID, core.Page) task.ReservationsListResult
 	ApproveReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	DeclineReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
@@ -95,8 +96,17 @@ type Services interface {
 	FundCollectibleReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
 	RefundCollectibleReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
 
-	ListNotifications(context.Context, core.UserID, core.Page) notification.ListResult
+	ListNotifications(context.Context, core.UserID, notification.StateFilter, core.Page) notification.ListResult
+	CountUnreadNotifications(context.Context, core.UserID) notification.CountResult
 	MarkNotificationRead(context.Context, core.UserID, core.NotificationID) notification.MarkReadResult
+
+	GetCreditBalance(context.Context, core.UserID) ledger.BalanceResult
+	ListLedger(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
+
+	CreateWebhookSubscription(context.Context, webhook.Owner, webhook.EndpointURL, webhook.KindFilter) webhook.CreateResult
+	ListWebhookSubscriptions(context.Context, webhook.Owner, core.Page) webhook.ListResult
+	RevokeWebhookSubscription(context.Context, webhook.Owner, core.WebhookSubscriptionID) webhook.RevokeResult
+	ListWebhookDeliveries(context.Context, webhook.Owner, core.WebhookSubscriptionID, core.Page) webhook.ListDeliveriesResult
 
 	ListUsers(context.Context, string, core.Page) auth.UserDirectoryResult
 	GetUserProfile(context.Context, auth.UserSubject, core.UserID, core.Page) task.ListResult
@@ -209,12 +219,12 @@ func (server Server) handleToolsCall(ctx context.Context, subject auth.Subject, 
 		}
 	}
 
-	outcome := server.dispatchTool(ctx, subject, definition.Name, params.Arguments)
+	outcome := server.dispatchTool(ctx, subject, credential, definition.Name, params.Arguments)
 	switch typed := outcome.(type) {
 	case toolSucceeded:
 		return marshalResult(request.ID, toolCallResult{Content: []contentItem{{Type: "text", Text: string(typed.payload)}}})
 	case toolFailed:
-		return marshalResult(request.ID, toolCallResult{Content: []contentItem{{Type: "text", Text: typed.message}}, IsError: true})
+		return marshalResult(request.ID, toolCallResult{Content: []contentItem{{Type: "text", Text: typed.structuredText()}}, IsError: true})
 	case toolProtocolError:
 		return errorResponse(request.ID, typed.code, typed.message)
 	default:
@@ -241,7 +251,7 @@ func toolArgumentTaskID(arguments json.RawMessage) (taskID string, present bool)
 func requireUserSubjectForTool(subject auth.Subject) (auth.UserSubject, toolResult, bool) {
 	userActor, isUser := subject.(auth.UserSubject)
 	if !isUser {
-		return auth.UserSubject{}, toolFailed{message: "this tool requires a personal agent credential, not an organization credential"}, false
+		return auth.UserSubject{}, toolFailed{code: core.ErrorCodePermissionDenied, message: "this tool requires a personal agent credential, not an organization credential"}, false
 	}
 	return userActor, nil, true
 }
@@ -258,13 +268,25 @@ func (server Server) requireAdminSubjectForTool(ctx context.Context, subject aut
 		return userActor, failure, false
 	}
 	if !server.services.IsPlatformAdmin(ctx, userActor.ID) {
-		return userActor, toolFailed{message: "platform admin access is required"}, false
+		return userActor, toolFailed{code: core.ErrorCodePermissionDenied, message: "platform admin access is required"}, false
 	}
 	return userActor, nil, true
 }
 
-func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, name string, arguments json.RawMessage) toolResult {
+// dispatchTool routes one authorized tool call. credential carries the
+// caller's scope facts for the few tools (webhook creation) that enforce a
+// per-argument entitlement beyond the single tool scope handleToolsCall
+// already checked.
+func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, credential CallerCredential, name string, arguments json.RawMessage) toolResult {
 	switch name {
+	case toolCreateWebhookSubscription:
+		return server.callCreateWebhookSubscription(ctx, subject, credential, arguments)
+	case toolListWebhookSubscriptions:
+		return server.callListWebhookSubscriptions(ctx, subject, arguments)
+	case toolRevokeWebhookSubscription:
+		return server.callRevokeWebhookSubscription(ctx, subject, arguments)
+	case toolListWebhookDeliveries:
+		return server.callListWebhookDeliveries(ctx, subject, arguments)
 	case toolListTasks:
 		return server.callListTasks(ctx, subject, arguments)
 	case toolGetTask:
@@ -587,12 +609,30 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, nam
 			return failure
 		}
 		return server.callListTeamCollectibles(ctx, userActor, arguments)
+	case toolGetCreditBalance:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callGetCreditBalance(ctx, userActor)
+	case toolListLedger:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callListLedger(ctx, userActor, arguments)
 	case toolListNotifications:
 		userActor, failure, ok := requireUserSubjectForTool(subject)
 		if !ok {
 			return failure
 		}
 		return server.callListNotifications(ctx, userActor, arguments)
+	case toolGetUnreadNotificationCount:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callGetUnreadNotificationCount(ctx, userActor, arguments)
 	case toolMarkNotificationRead:
 		userActor, failure, ok := requireUserSubjectForTool(subject)
 		if !ok {
@@ -779,8 +819,30 @@ type toolSucceeded struct {
 	payload json.RawMessage
 }
 
+// toolFailed is a domain-level tool failure. It carries the machine-readable
+// core.ErrorCode alongside the human-readable message; the tool result
+// renders both as one compact JSON text item with isError:true, so agents
+// can branch on the code instead of parsing prose.
 type toolFailed struct {
+	code    core.ErrorCode
 	message string
+}
+
+// toolErrorBody is the wire shape of a failed tool result's single text item.
+type toolErrorBody struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// structuredText renders the failure as compact JSON. A marshal failure is
+// impossible for two plain strings, but the fallback keeps the message
+// visible rather than dropping it.
+func (failure toolFailed) structuredText() string {
+	encoded, err := json.Marshal(toolErrorBody{Code: failure.code.String(), Message: failure.message})
+	if err != nil {
+		return failure.message
+	}
+	return string(encoded)
 }
 
 type toolProtocolError struct {

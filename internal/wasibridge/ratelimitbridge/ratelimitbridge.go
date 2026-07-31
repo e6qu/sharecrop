@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/e6qu/sharecrop/internal/core"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 )
 
@@ -48,17 +49,19 @@ func (g GuestRateLimiter) Allow(key string) bool {
 	return allowed
 }
 
-// ActiveBuckets reports the number of live buckets (used by the metrics route).
-func (g GuestRateLimiter) ActiveBuckets() int {
+// ActiveBuckets reports the number of live buckets (used by the metrics
+// route). A transport or host-side storage failure surfaces as the
+// unavailable variant rather than a fabricated zero count.
+func (g GuestRateLimiter) ActiveBuckets() httpserver.ActiveBucketsResult {
 	raw, err := g.call("ActiveBuckets", "")
 	if err != nil {
-		return 0
+		return httpserver.ActiveBucketsUnavailable{Reason: core.NewDomainError(core.ErrorCodeUnavailable, "count rate limit buckets failed")}
 	}
 	var count int
 	if err := json.Unmarshal(raw, &count); err != nil {
-		return 0
+		return httpserver.ActiveBucketsUnavailable{Reason: core.NewDomainError(core.ErrorCodeUnavailable, "decode rate limit bucket count failed")}
 	}
-	return count
+	return httpserver.ActiveBucketsCounted{Count: count}
 }
 
 // StorageKind names the limiter's backing store (used by the metrics route).
@@ -104,7 +107,12 @@ func Dispatch(_ context.Context, ipLimiter, subjectLimiter httpserver.RateLimite
 		}
 		return json.Marshal(limiter.Allow(key))
 	case "ActiveBuckets":
-		return json.Marshal(limiter.ActiveBuckets())
+		result := limiter.ActiveBuckets()
+		counted, matched := result.(httpserver.ActiveBucketsCounted)
+		if !matched {
+			return nil, fmt.Errorf("ratelimit bridge: %s", result.(httpserver.ActiveBucketsUnavailable).Reason.Description())
+		}
+		return json.Marshal(counted.Count)
 	case "StorageKind":
 		return json.Marshal(limiter.StorageKind())
 	default:

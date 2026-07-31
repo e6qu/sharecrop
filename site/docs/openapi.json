@@ -229,10 +229,14 @@
                           "created_at"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "events"
+                    "events",
+                    "next_offset"
                   ]
                 }
               }
@@ -252,6 +256,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "reports": {
                       "type": "array",
                       "items": {
@@ -312,7 +319,8 @@
                     }
                   },
                   "required": [
-                    "reports"
+                    "reports",
+                    "next_offset"
                   ]
                 }
               }
@@ -496,10 +504,14 @@
                           "created_at"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "admins"
+                    "admins",
+                    "next_offset"
                   ]
                 }
               }
@@ -609,6 +621,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "requests": {
                       "type": "array",
                       "items": {
@@ -657,7 +672,8 @@
                     }
                   },
                   "required": [
-                    "requests"
+                    "requests",
+                    "next_offset"
                   ]
                 }
               }
@@ -821,10 +837,14 @@
                           "task_id"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "credentials"
+                    "credentials",
+                    "next_offset"
                   ]
                 }
               }
@@ -1527,10 +1547,14 @@
                           "art"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "collectibles"
+                    "collectibles",
+                    "next_offset"
                   ]
                 }
               }
@@ -1761,7 +1785,7 @@
         }
       }
     },
-    "/api/collectibles/{id}/transfer": {
+    "/api/collectibles/{collectible_id}/transfer": {
       "post": {
         "operationId": "transferCollectible",
         "requestBody": {
@@ -1900,11 +1924,62 @@
                           "task_id"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "entries"
+                    "entries",
+                    "next_offset"
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "operationId": "listEvents",
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "next_cursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "events",
+                    "next_cursor"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events/stream": {
+      "get": {
+        "operationId": "streamEvents",
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -2021,6 +2096,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "notifications": {
                       "type": "array",
                       "items": {
@@ -2069,7 +2147,33 @@
                     }
                   },
                   "required": [
-                    "notifications"
+                    "notifications",
+                    "next_offset"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notifications/unread-count": {
+      "get": {
+        "operationId": "unreadNotificationCount",
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "unread_count": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "unread_count"
                   ]
                 }
               }
@@ -2155,6 +2259,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "organizations": {
                       "type": "array",
                       "items": {
@@ -2179,7 +2286,8 @@
                     }
                   },
                   "required": [
-                    "organizations"
+                    "organizations",
+                    "next_offset"
                   ]
                 }
               }
@@ -2236,7 +2344,71 @@
         }
       }
     },
-    "/api/organizations/{id}/collectibles": {
+    "/api/organizations/{organization_id}/audit-events": {
+      "get": {
+        "operationId": "listOrganizationAuditEvents",
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "actor_user_id": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "metadata_json": {
+                            "type": "string"
+                          },
+                          "subject_id": {
+                            "type": "string"
+                          },
+                          "subject_kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "actor_user_id",
+                          "action",
+                          "subject_kind",
+                          "subject_id",
+                          "metadata_json",
+                          "created_at"
+                        ]
+                      }
+                    },
+                    "next_offset": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "events",
+                    "next_offset"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/organizations/{organization_id}/collectibles": {
       "get": {
         "operationId": "listOrganizationCollectibles",
         "responses": {
@@ -2292,10 +2464,14 @@
                           "art"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "collectibles"
+                    "collectibles",
+                    "next_offset"
                   ]
                 }
               }
@@ -2304,67 +2480,7 @@
         }
       }
     },
-    "/api/organizations/{organization_id}/audit-events": {
-      "get": {
-        "operationId": "listOrganizationAuditEvents",
-        "responses": {
-          "default": {
-            "description": "response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "events": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "action": {
-                            "type": "string"
-                          },
-                          "actor_user_id": {
-                            "type": "string"
-                          },
-                          "created_at": {
-                            "type": "string"
-                          },
-                          "id": {
-                            "type": "string"
-                          },
-                          "metadata_json": {
-                            "type": "string"
-                          },
-                          "subject_id": {
-                            "type": "string"
-                          },
-                          "subject_kind": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "actor_user_id",
-                          "action",
-                          "subject_kind",
-                          "subject_id",
-                          "metadata_json",
-                          "created_at"
-                        ]
-                      }
-                    }
-                  },
-                  "required": [
-                    "events"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/organizations/{organization_id}/collectibles/{id}/award": {
+    "/api/organizations/{organization_id}/collectibles/{collectible_id}/award": {
       "post": {
         "operationId": "awardOrganizationCollectible",
         "requestBody": {
@@ -2485,10 +2601,14 @@
                           "expires_at"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "credentials"
+                    "credentials",
+                    "next_offset"
                   ]
                 }
               }
@@ -2705,10 +2825,14 @@
                           "task_id"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "entries"
+                    "entries",
+                    "next_offset"
                   ]
                 }
               }
@@ -2760,10 +2884,14 @@
                           "roles"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "members"
+                    "members",
+                    "next_offset"
                   ]
                 }
               }
@@ -2947,6 +3075,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "teams": {
                       "type": "array",
                       "items": {
@@ -2983,7 +3114,8 @@
                     }
                   },
                   "required": [
-                    "teams"
+                    "teams",
+                    "next_offset"
                   ]
                 }
               }
@@ -3063,6 +3195,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "requests": {
                       "type": "array",
                       "items": {
@@ -3111,7 +3246,8 @@
                     }
                   },
                   "required": [
-                    "requests"
+                    "requests",
+                    "next_offset"
                   ]
                 }
               }
@@ -3203,6 +3339,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "views": {
                       "type": "array",
                       "items": {
@@ -3243,7 +3382,8 @@
                     }
                   },
                   "required": [
-                    "views"
+                    "views",
+                    "next_offset"
                   ]
                 }
               }
@@ -3503,10 +3643,14 @@
                           "created_at"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "comments"
+                    "comments",
+                    "next_offset"
                   ]
                 }
               }
@@ -3582,6 +3726,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "series": {
                       "type": "array",
                       "items": {
@@ -3618,7 +3765,8 @@
                     }
                   },
                   "required": [
-                    "series"
+                    "series",
+                    "next_offset"
                   ]
                 }
               }
@@ -3770,6 +3918,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -3866,7 +4017,8 @@
                           "created_by",
                           "availability_kind",
                           "viewer_action",
-                          "reviewer_action"
+                          "reviewer_action",
+                          "expires_at"
                         ]
                       }
                     }
@@ -4007,6 +4159,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -4103,7 +4258,8 @@
                           "created_by",
                           "availability_kind",
                           "viewer_action",
-                          "reviewer_action"
+                          "reviewer_action",
+                          "expires_at"
                         ]
                       }
                     }
@@ -4263,6 +4419,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -4359,7 +4518,8 @@
                           "created_by",
                           "availability_kind",
                           "viewer_action",
-                          "reviewer_action"
+                          "reviewer_action",
+                          "expires_at"
                         ]
                       }
                     }
@@ -4509,6 +4669,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -4605,7 +4768,8 @@
                           "created_by",
                           "availability_kind",
                           "viewer_action",
-                          "reviewer_action"
+                          "reviewer_action",
+                          "expires_at"
                         ]
                       }
                     }
@@ -4662,10 +4826,14 @@
                           "created_at"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "comments"
+                    "comments",
+                    "next_offset"
                   ]
                 }
               }
@@ -4863,6 +5031,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -4959,7 +5130,8 @@
                           "created_by",
                           "availability_kind",
                           "viewer_action",
-                          "reviewer_action"
+                          "reviewer_action",
+                          "expires_at"
                         ]
                       }
                     }
@@ -5109,6 +5281,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -5205,7 +5380,8 @@
                           "created_by",
                           "availability_kind",
                           "viewer_action",
-                          "reviewer_action"
+                          "reviewer_action",
+                          "expires_at"
                         ]
                       }
                     }
@@ -5366,6 +5542,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -5462,7 +5641,8 @@
                           "created_by",
                           "availability_kind",
                           "viewer_action",
-                          "reviewer_action"
+                          "reviewer_action",
+                          "expires_at"
                         ]
                       }
                     }
@@ -5620,6 +5800,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -5716,7 +5899,8 @@
                           "created_by",
                           "availability_kind",
                           "viewer_action",
-                          "reviewer_action"
+                          "reviewer_action",
+                          "expires_at"
                         ]
                       }
                     }
@@ -5857,6 +6041,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -5953,7 +6140,8 @@
                           "created_by",
                           "availability_kind",
                           "viewer_action",
-                          "reviewer_action"
+                          "reviewer_action",
+                          "expires_at"
                         ]
                       }
                     }
@@ -6103,6 +6291,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "expires_at": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -6199,7 +6390,8 @@
                           "created_by",
                           "availability_kind",
                           "viewer_action",
-                          "reviewer_action"
+                          "reviewer_action",
+                          "expires_at"
                         ]
                       }
                     }
@@ -6227,6 +6419,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "tasks": {
                       "type": "array",
                       "items": {
@@ -6307,7 +6502,8 @@
                     }
                   },
                   "required": [
-                    "tasks"
+                    "tasks",
+                    "next_offset"
                   ]
                 }
               }
@@ -6346,6 +6542,9 @@
                     }
                   },
                   "description": {
+                    "type": "string"
+                  },
+                  "expires_at": {
                     "type": "string"
                   },
                   "owner": {
@@ -6498,7 +6697,8 @@
                   "placement",
                   "response_schema_json",
                   "payload",
-                  "attachments"
+                  "attachments",
+                  "expires_at"
                 ]
               }
             }
@@ -6557,6 +6757,9 @@
                       "type": "string"
                     },
                     "description": {
+                      "type": "string"
+                    },
+                    "expires_at": {
                       "type": "string"
                     },
                     "id": {
@@ -6655,7 +6858,8 @@
                     "created_by",
                     "availability_kind",
                     "viewer_action",
-                    "reviewer_action"
+                    "reviewer_action",
+                    "expires_at"
                   ]
                 }
               }
@@ -6722,6 +6926,9 @@
                     "description": {
                       "type": "string"
                     },
+                    "expires_at": {
+                      "type": "string"
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -6818,7 +7025,8 @@
                     "created_by",
                     "availability_kind",
                     "viewer_action",
-                    "reviewer_action"
+                    "reviewer_action",
+                    "expires_at"
                   ]
                 }
               }
@@ -6894,6 +7102,9 @@
                     "description": {
                       "type": "string"
                     },
+                    "expires_at": {
+                      "type": "string"
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -6990,7 +7201,8 @@
                     "created_by",
                     "availability_kind",
                     "viewer_action",
-                    "reviewer_action"
+                    "reviewer_action",
+                    "expires_at"
                   ]
                 }
               }
@@ -7064,10 +7276,14 @@
                           "art"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "collectibles"
+                    "collectibles",
+                    "next_offset"
                   ]
                 }
               }
@@ -7190,10 +7406,14 @@
                           "created_at"
                         ]
                       }
+                    },
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "comments"
+                    "comments",
+                    "next_offset"
                   ]
                 }
               }
@@ -7379,6 +7599,9 @@
                     "description": {
                       "type": "string"
                     },
+                    "expires_at": {
+                      "type": "string"
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -7475,7 +7698,8 @@
                     "created_by",
                     "availability_kind",
                     "viewer_action",
-                    "reviewer_action"
+                    "reviewer_action",
+                    "expires_at"
                   ]
                 }
               }
@@ -7553,6 +7777,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "reservations": {
                       "type": "array",
                       "items": {
@@ -7593,7 +7820,8 @@
                     }
                   },
                   "required": [
-                    "reservations"
+                    "reservations",
+                    "next_offset"
                   ]
                 }
               }
@@ -7859,6 +8087,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "submissions": {
                       "type": "array",
                       "items": {
@@ -7976,7 +8207,8 @@
                     }
                   },
                   "required": [
-                    "submissions"
+                    "submissions",
+                    "next_offset"
                   ]
                 }
               }
@@ -8251,8 +8483,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "ban_implementor": {
-                    "type": "boolean"
+                  "ban_selection": {
+                    "type": "string"
                   },
                   "idempotency_key": {
                     "type": "string"
@@ -8272,7 +8504,7 @@
                   "review_note",
                   "partial_credit_amount",
                   "tip_amount",
-                  "ban_implementor"
+                  "ban_selection"
                 ]
               }
             }
@@ -8337,11 +8569,15 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "idempotency_key": {
+                    "type": "string"
+                  },
                   "review_note": {
                     "type": "string"
                   }
                 },
                 "required": [
+                  "idempotency_key",
                   "review_note"
                 ]
               }
@@ -8465,6 +8701,9 @@
                     "description": {
                       "type": "string"
                     },
+                    "expires_at": {
+                      "type": "string"
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -8561,7 +8800,8 @@
                     "created_by",
                     "availability_kind",
                     "viewer_action",
-                    "reviewer_action"
+                    "reviewer_action",
+                    "expires_at"
                   ]
                 }
               }
@@ -8581,6 +8821,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "teams": {
                       "type": "array",
                       "items": {
@@ -8617,7 +8860,8 @@
                     }
                   },
                   "required": [
-                    "teams"
+                    "teams",
+                    "next_offset"
                   ]
                 }
               }
@@ -8686,7 +8930,67 @@
         }
       }
     },
-    "/api/teams/{id}/collectibles": {
+    "/api/teams/{team_id}": {
+      "get": {
+        "operationId": "getTeam",
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "team": {
+                      "type": "object",
+                      "properties": {
+                        "created_by": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "organization_id": {
+                          "type": "string"
+                        },
+                        "owner_kind": {
+                          "type": "string"
+                        },
+                        "owner_user_id": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "owner_kind",
+                        "organization_id",
+                        "owner_user_id",
+                        "name",
+                        "created_by"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "team",
+                    "members"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/teams/{team_id}/collectibles": {
       "get": {
         "operationId": "listTeamCollectibles",
         "responses": {
@@ -8742,70 +9046,14 @@
                           "art"
                         ]
                       }
-                    }
-                  },
-                  "required": [
-                    "collectibles"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/teams/{team_id}": {
-      "get": {
-        "operationId": "getTeam",
-        "responses": {
-          "default": {
-            "description": "response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "members": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
                     },
-                    "team": {
-                      "type": "object",
-                      "properties": {
-                        "created_by": {
-                          "type": "string"
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "name": {
-                          "type": "string"
-                        },
-                        "organization_id": {
-                          "type": "string"
-                        },
-                        "owner_kind": {
-                          "type": "string"
-                        },
-                        "owner_user_id": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "owner_kind",
-                        "organization_id",
-                        "owner_user_id",
-                        "name",
-                        "created_by"
-                      ]
+                    "next_offset": {
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "team",
-                    "members"
+                    "collectibles",
+                    "next_offset"
                   ]
                 }
               }
@@ -8902,6 +9150,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "tasks": {
                       "type": "array",
                       "items": {
@@ -8982,7 +9233,8 @@
                     }
                   },
                   "required": [
-                    "tasks"
+                    "tasks",
+                    "next_offset"
                   ]
                 }
               }
@@ -9002,6 +9254,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "users": {
                       "type": "array",
                       "items": {
@@ -9026,7 +9281,8 @@
                     }
                   },
                   "required": [
-                    "users"
+                    "users",
+                    "next_offset"
                   ]
                 }
               }
@@ -9150,6 +9406,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "submissions": {
                       "type": "array",
                       "items": {
@@ -9267,7 +9526,8 @@
                     }
                   },
                   "required": [
-                    "submissions"
+                    "submissions",
+                    "next_offset"
                   ]
                 }
               }
@@ -9287,6 +9547,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
                     "tasks": {
                       "type": "array",
                       "items": {
@@ -9367,7 +9630,289 @@
                     }
                   },
                   "required": [
-                    "tasks"
+                    "tasks",
+                    "next_offset"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhook-subscriptions": {
+      "get": {
+        "operationId": "listWebhookSubscriptions",
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "next_offset": {
+                      "type": "integer"
+                    },
+                    "subscriptions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "created_at": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kinds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "owner_kind": {
+                            "type": "string"
+                          },
+                          "owner_organization_id": {
+                            "type": "string"
+                          },
+                          "owner_user_id": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "owner_kind",
+                          "owner_user_id",
+                          "owner_organization_id",
+                          "url",
+                          "kinds",
+                          "state",
+                          "created_at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "subscriptions",
+                    "next_offset"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createWebhookSubscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kinds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "organization_id": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url",
+                  "kinds",
+                  "organization_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "secret": {
+                      "type": "string"
+                    },
+                    "subscription": {
+                      "type": "object",
+                      "properties": {
+                        "created_at": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "kinds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "owner_kind": {
+                          "type": "string"
+                        },
+                        "owner_organization_id": {
+                          "type": "string"
+                        },
+                        "owner_user_id": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "owner_kind",
+                        "owner_user_id",
+                        "owner_organization_id",
+                        "url",
+                        "kinds",
+                        "state",
+                        "created_at"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "subscription",
+                    "secret"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhook-subscriptions/{subscription_id}": {
+      "delete": {
+        "operationId": "revokeWebhookSubscription",
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "created_at": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "owner_kind": {
+                      "type": "string"
+                    },
+                    "owner_organization_id": {
+                      "type": "string"
+                    },
+                    "owner_user_id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "owner_kind",
+                    "owner_user_id",
+                    "owner_organization_id",
+                    "url",
+                    "kinds",
+                    "state",
+                    "created_at"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhook-subscriptions/{subscription_id}/deliveries": {
+      "get": {
+        "operationId": "listWebhookDeliveries",
+        "responses": {
+          "default": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deliveries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "attempt_count": {
+                            "type": "integer"
+                          },
+                          "event_cursor": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "last_status": {
+                            "type": "string"
+                          },
+                          "next_attempt_at": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "event_cursor",
+                          "state",
+                          "attempt_count",
+                          "next_attempt_at",
+                          "last_status"
+                        ]
+                      }
+                    },
+                    "next_offset": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "deliveries",
+                    "next_offset"
                   ]
                 }
               }

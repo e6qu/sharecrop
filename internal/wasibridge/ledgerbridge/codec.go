@@ -480,6 +480,7 @@ type requestChangesCommandWire struct {
 	RequesterUserID string `json:"requester_user_id"`
 	TaskID          string `json:"task_id"`
 	SubmissionID    string `json:"submission_id"`
+	IdempotencyKey  string `json:"idempotency_key"`
 	ReviewNote      string `json:"review_note"`
 }
 
@@ -488,6 +489,7 @@ func encodeRequestChangesCommand(command ledger.RequestChangesStoreCommand) requ
 		RequesterUserID: corewire.EncodeUserID(command.RequesterUserID),
 		TaskID:          corewire.EncodeTaskID(command.TaskID),
 		SubmissionID:    corewire.EncodeSubmissionID(command.SubmissionID),
+		IdempotencyKey:  encodeIdempotencyKey(command.IdempotencyKey),
 		ReviewNote:      encodeReviewNote(command.ReviewNote),
 	}
 }
@@ -509,10 +511,15 @@ func decodeRequestChangesCommand(wire requestChangesCommandWire) (ledger.Request
 	if err != nil {
 		return ledger.RequestChangesStoreCommand{}, err
 	}
+	idempotencyKey, err := decodeIdempotencyKey(wire.IdempotencyKey)
+	if err != nil {
+		return ledger.RequestChangesStoreCommand{}, err
+	}
 	return ledger.RequestChangesStoreCommand{
 		RequesterUserID: requesterUserID,
 		TaskID:          taskID,
 		SubmissionID:    submissionID,
+		IdempotencyKey:  idempotencyKey,
 		ReviewNote:      reviewNote,
 	}, nil
 }
@@ -878,18 +885,20 @@ type reviewedSubmissionWire struct {
 	Variant      string                  `json:"variant"`
 	TaskID       string                  `json:"task_id,omitempty"`
 	SubmissionID string                  `json:"submission_id,omitempty"`
+	WorkerUserID string                  `json:"worker_user_id,omitempty"`
 	Payout       *payoutOutcomeWire      `json:"payout,omitempty"`
 	Tip          *tipOutcomeWire         `json:"tip,omitempty"`
 	Error        *domainwire.DomainError `json:"error,omitempty"`
 }
 
-func reviewedSubmissionSuccess(variant string, taskID core.TaskID, submissionID core.SubmissionID, payout ledger.PayoutOutcome, tip ledger.TipOutcome) reviewedSubmissionWire {
+func reviewedSubmissionSuccess(variant string, taskID core.TaskID, submissionID core.SubmissionID, workerUserID core.UserID, payout ledger.PayoutOutcome, tip ledger.TipOutcome) reviewedSubmissionWire {
 	payoutWire := encodePayoutOutcome(payout)
 	tipWire := encodeTipOutcome(tip)
 	return reviewedSubmissionWire{
 		Variant:      variant,
 		TaskID:       corewire.EncodeTaskID(taskID),
 		SubmissionID: corewire.EncodeSubmissionID(submissionID),
+		WorkerUserID: corewire.EncodeUserID(workerUserID),
 		Payout:       &payoutWire,
 		Tip:          &tipWire,
 	}
@@ -898,6 +907,7 @@ func reviewedSubmissionSuccess(variant string, taskID core.TaskID, submissionID 
 type reviewedSubmissionValue struct {
 	taskID       core.TaskID
 	submissionID core.SubmissionID
+	workerUserID core.UserID
 	payout       ledger.PayoutOutcome
 	tip          ledger.TipOutcome
 }
@@ -908,6 +918,10 @@ func decodeReviewedSubmission(wire reviewedSubmissionWire) (reviewedSubmissionVa
 		return reviewedSubmissionValue{}, err
 	}
 	submissionID, err := corewire.DecodeSubmissionID(wire.SubmissionID)
+	if err != nil {
+		return reviewedSubmissionValue{}, err
+	}
+	workerUserID, err := corewire.DecodeUserID(wire.WorkerUserID)
 	if err != nil {
 		return reviewedSubmissionValue{}, err
 	}
@@ -922,13 +936,13 @@ func decodeReviewedSubmission(wire reviewedSubmissionWire) (reviewedSubmissionVa
 	if err != nil {
 		return reviewedSubmissionValue{}, err
 	}
-	return reviewedSubmissionValue{taskID: taskID, submissionID: submissionID, payout: payout, tip: tip}, nil
+	return reviewedSubmissionValue{taskID: taskID, submissionID: submissionID, workerUserID: workerUserID, payout: payout, tip: tip}, nil
 }
 
 func encodeAcceptResult(result ledger.AcceptResult) reviewedSubmissionWire {
 	switch typed := result.(type) {
 	case ledger.SubmissionAccepted:
-		return reviewedSubmissionSuccess("accepted", typed.TaskID, typed.SubmissionID, typed.Payout, typed.Tip)
+		return reviewedSubmissionSuccess("accepted", typed.TaskID, typed.SubmissionID, typed.WorkerUserID, typed.Payout, typed.Tip)
 	case ledger.AcceptRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return reviewedSubmissionWire{Variant: "failed", Error: &reason}
@@ -944,7 +958,7 @@ func decodeAcceptResult(wire reviewedSubmissionWire) (ledger.AcceptResult, error
 		if err != nil {
 			return nil, err
 		}
-		return ledger.SubmissionAccepted{TaskID: value.taskID, SubmissionID: value.submissionID, Payout: value.payout, Tip: value.tip}, nil
+		return ledger.SubmissionAccepted{TaskID: value.taskID, SubmissionID: value.submissionID, WorkerUserID: value.workerUserID, Payout: value.payout, Tip: value.tip}, nil
 	case "failed":
 		return ledger.AcceptRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
@@ -955,7 +969,7 @@ func decodeAcceptResult(wire reviewedSubmissionWire) (ledger.AcceptResult, error
 func encodeRejectResult(result ledger.RejectResult) reviewedSubmissionWire {
 	switch typed := result.(type) {
 	case ledger.SubmissionRejected:
-		return reviewedSubmissionSuccess("rejected", typed.TaskID, typed.SubmissionID, typed.Payout, typed.Tip)
+		return reviewedSubmissionSuccess("rejected", typed.TaskID, typed.SubmissionID, typed.WorkerUserID, typed.Payout, typed.Tip)
 	case ledger.RejectRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return reviewedSubmissionWire{Variant: "failed", Error: &reason}
@@ -971,7 +985,7 @@ func decodeRejectResult(wire reviewedSubmissionWire) (ledger.RejectResult, error
 		if err != nil {
 			return nil, err
 		}
-		return ledger.SubmissionRejected{TaskID: value.taskID, SubmissionID: value.submissionID, Payout: value.payout, Tip: value.tip}, nil
+		return ledger.SubmissionRejected{TaskID: value.taskID, SubmissionID: value.submissionID, WorkerUserID: value.workerUserID, Payout: value.payout, Tip: value.tip}, nil
 	case "failed":
 		return ledger.RejectRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
@@ -983,6 +997,7 @@ type changesRequestedWire struct {
 	Variant      string                  `json:"variant"`
 	TaskID       string                  `json:"task_id,omitempty"`
 	SubmissionID string                  `json:"submission_id,omitempty"`
+	WorkerUserID string                  `json:"worker_user_id,omitempty"`
 	ReviewNote   string                  `json:"review_note,omitempty"`
 	Error        *domainwire.DomainError `json:"error,omitempty"`
 }
@@ -994,6 +1009,7 @@ func encodeRequestChangesResult(result ledger.RequestChangesResult) changesReque
 			Variant:      "requested",
 			TaskID:       corewire.EncodeTaskID(typed.TaskID),
 			SubmissionID: corewire.EncodeSubmissionID(typed.SubmissionID),
+			WorkerUserID: corewire.EncodeUserID(typed.WorkerUserID),
 			ReviewNote:   typed.ReviewNote,
 		}
 	case ledger.RequestChangesRejected:
@@ -1015,7 +1031,11 @@ func decodeRequestChangesResult(wire changesRequestedWire) (ledger.RequestChange
 		if err != nil {
 			return nil, err
 		}
-		return ledger.ChangesRequested{TaskID: taskID, SubmissionID: submissionID, ReviewNote: wire.ReviewNote}, nil
+		workerUserID, err := corewire.DecodeUserID(wire.WorkerUserID)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.ChangesRequested{TaskID: taskID, SubmissionID: submissionID, WorkerUserID: workerUserID, ReviewNote: wire.ReviewNote}, nil
 	case "rejected":
 		return ledger.RequestChangesRejected{Reason: decodeReason(wire.Error)}, nil
 	default:

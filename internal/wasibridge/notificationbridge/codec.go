@@ -14,15 +14,54 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
 )
 
-// ---- notification.Kind / notification.State (free-form string wrappers) ----
+// ---- notification.Kind / notification.State (sealed enums) ----
 
 func encodeKind(kind notification.Kind) string { return kind.String() }
 
-func decodeKind(raw string) notification.Kind { return notification.KindFromString(raw) }
+func decodeKind(raw string) (notification.Kind, error) {
+	result := notification.ParseKind(raw)
+	parsed, matched := result.(notification.KindParsed)
+	if !matched {
+		return notification.Kind{}, fmt.Errorf("unknown notification kind %q", raw)
+	}
+	return parsed.Value, nil
+}
 
 func encodeState(state notification.State) string { return state.String() }
 
-func decodeState(raw string) notification.State { return notification.StateFromString(raw) }
+func decodeState(raw string) (notification.State, error) {
+	result := notification.ParseState(raw)
+	parsed, matched := result.(notification.StateParsed)
+	if !matched {
+		return notification.State{}, fmt.Errorf("unknown notification state %q", raw)
+	}
+	return parsed.Value, nil
+}
+
+// ---- notification.StateFilter ----
+
+const (
+	stateFilterAnyWire        = "any_state"
+	stateFilterUnreadOnlyWire = "unread_only"
+)
+
+func encodeStateFilter(filter notification.StateFilter) string {
+	if _, unreadOnly := filter.(notification.UnreadOnly); unreadOnly {
+		return stateFilterUnreadOnlyWire
+	}
+	return stateFilterAnyWire
+}
+
+func decodeStateFilter(raw string) (notification.StateFilter, error) {
+	switch raw {
+	case stateFilterAnyWire:
+		return notification.AnyState{}, nil
+	case stateFilterUnreadOnlyWire:
+		return notification.UnreadOnly{}, nil
+	default:
+		return nil, fmt.Errorf("unknown notification state filter %q", raw)
+	}
+}
 
 // ---- notification.Subject / notification.Metadata ----
 
@@ -86,13 +125,21 @@ func decodeNotification(wire notificationWire) (notification.Notification, error
 	if err != nil {
 		return notification.Notification{}, err
 	}
+	kind, err := decodeKind(wire.Kind)
+	if err != nil {
+		return notification.Notification{}, err
+	}
+	state, err := decodeState(wire.State)
+	if err != nil {
+		return notification.Notification{}, err
+	}
 	return notification.Notification{
 		ID:          id,
 		RecipientID: recipient,
 		ActorID:     actor,
-		Kind:        decodeKind(wire.Kind),
+		Kind:        kind,
 		Subject:     decodeSubject(wire.Subject),
-		State:       decodeState(wire.State),
+		State:       state,
 		Metadata:    decodeMetadata(wire.Metadata),
 		CreatedAt:   createdAt,
 	}, nil
@@ -172,6 +219,38 @@ func decodeListResult(wire listResultWire) (notification.ListStoreResult, error)
 		return notification.ListStoreRejected{Reason: domainwire.DecodeDomainError(*wire.Error)}, nil
 	default:
 		return nil, fmt.Errorf("unknown list result variant %q", wire.Variant)
+	}
+}
+
+type countResultWire struct {
+	Variant string                  `json:"variant"`
+	Count   int64                   `json:"count,omitempty"`
+	Error   *domainwire.DomainError `json:"error,omitempty"`
+}
+
+func encodeCountResult(result notification.CountStoreResult) countResultWire {
+	switch typed := result.(type) {
+	case notification.CountUnreadCounted:
+		return countResultWire{Variant: "counted", Count: typed.Count}
+	case notification.CountStoreRejected:
+		reason := domainwire.EncodeDomainError(typed.Reason)
+		return countResultWire{Variant: "rejected", Error: &reason}
+	default:
+		return countResultWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown notification result %T", result))}
+	}
+}
+
+func decodeCountResult(wire countResultWire) (notification.CountStoreResult, error) {
+	switch wire.Variant {
+	case "counted":
+		return notification.CountUnreadCounted{Count: wire.Count}, nil
+	case "rejected":
+		if wire.Error == nil {
+			return nil, fmt.Errorf("rejected count result is missing its error")
+		}
+		return notification.CountStoreRejected{Reason: domainwire.DecodeDomainError(*wire.Error)}, nil
+	default:
+		return nil, fmt.Errorf("unknown count result variant %q", wire.Variant)
 	}
 }
 

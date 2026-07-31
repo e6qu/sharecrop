@@ -119,8 +119,8 @@ func TestSubmissionBridgeDualRun(t *testing.T) {
 		if _, matched := bridgeStore.CreateSubmissionComment(ctx, comment).(submission.CreateSubmissionCommentStoreAccepted); !matched {
 			t.Fatalf("bridge CreateSubmissionComment did not accept")
 		}
-		viaBridge := requireCommentsListed(t, bridgeStore.ListSubmissionComments(ctx, submissionID))
-		direct := requireCommentsListed(t, dbStore.ListSubmissionComments(ctx, submissionID))
+		viaBridge := requireCommentsListed(t, bridgeStore.ListSubmissionComments(ctx, submissionID, core.DefaultPage()))
+		direct := requireCommentsListed(t, dbStore.ListSubmissionComments(ctx, submissionID, core.DefaultPage()))
 		if len(viaBridge) != len(direct) || len(viaBridge) != 1 {
 			t.Fatalf("comment counts: bridge %d, direct %d, want 1", len(viaBridge), len(direct))
 		}

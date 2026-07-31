@@ -510,6 +510,7 @@ type alias TaskResponse =
     , payloadJSON : String
     , attachments : List TaskAttachmentResponse
     , createdBy : String
+    , expiresAt : String
     }
 
 taskResponseDecoder : Decoder TaskResponse
@@ -549,12 +550,13 @@ taskResponseDecoder =
             )
         |> Decode.andThen
             (\finish ->
-                Decode.map5 finish
+                Decode.map6 finish
                     (Decode.field "response_schema_json" Decode.string)
                     (Decode.field "payload_kind" Decode.string)
                     (Decode.field "payload_json" Decode.string)
                     (Decode.field "attachments" (Decode.list taskAttachmentResponseDecoder))
                     (Decode.field "created_by" Decode.string)
+                    (Decode.field "expires_at" Decode.string)
             )
 
 taskResponseEncoder : TaskResponse -> Encode.Value
@@ -589,6 +591,7 @@ taskResponseEncoder taskResponse =
         , ( "payload_json", Encode.string taskResponse.payloadJSON )
         , ( "attachments", Encode.list taskAttachmentResponseEncoder taskResponse.attachments )
         , ( "created_by", Encode.string taskResponse.createdBy )
+        , ( "expires_at", Encode.string taskResponse.expiresAt )
         ]
 
 type alias TaskCommentResponse =
@@ -620,17 +623,20 @@ taskCommentResponseEncoder taskCommentResponse =
 
 type alias TasksResponse =
     { tasks : List TaskListItemResponse
+    , nextOffset : Int
     }
 
 tasksResponseDecoder : Decoder TasksResponse
 tasksResponseDecoder =
-    Decode.map TasksResponse
+    Decode.map2 TasksResponse
         (Decode.field "tasks" (Decode.list taskListItemResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 tasksResponseEncoder : TasksResponse -> Encode.Value
 tasksResponseEncoder tasksResponse =
     Encode.object
         [ ( "tasks", Encode.list taskListItemResponseEncoder tasksResponse.tasks )
+        , ( "next_offset", Encode.int tasksResponse.nextOffset )
         ]
 
 type alias UserProfileResponse =
@@ -686,15 +692,18 @@ taskReservationResponseEncoder taskReservationResponse =
 
 type alias TaskReservationsResponse =
     { reservations : List TaskReservationResponse
+    , nextOffset : Int
     }
 
 taskReservationsResponseDecoder : Decoder TaskReservationsResponse
 taskReservationsResponseDecoder =
-    Decode.map TaskReservationsResponse
+    Decode.map2 TaskReservationsResponse
         (Decode.field "reservations" (Decode.list taskReservationResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 taskReservationsResponseEncoder : TaskReservationsResponse -> Encode.Value
 taskReservationsResponseEncoder taskReservationsResponse =
     Encode.object
         [ ( "reservations", Encode.list taskReservationResponseEncoder taskReservationsResponse.reservations )
+        , ( "next_offset", Encode.int taskReservationsResponse.nextOffset )
         ]

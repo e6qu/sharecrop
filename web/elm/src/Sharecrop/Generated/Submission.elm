@@ -173,17 +173,20 @@ submissionResponseEncoder submissionResponse =
 
 type alias SubmissionsResponse =
     { submissions : List SubmissionResponse
+    , nextOffset : Int
     }
 
 submissionsResponseDecoder : Decoder SubmissionsResponse
 submissionsResponseDecoder =
-    Decode.map SubmissionsResponse
+    Decode.map2 SubmissionsResponse
         (Decode.field "submissions" (Decode.list submissionResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 submissionsResponseEncoder : SubmissionsResponse -> Encode.Value
 submissionsResponseEncoder submissionsResponse =
     Encode.object
         [ ( "submissions", Encode.list submissionResponseEncoder submissionsResponse.submissions )
+        , ( "next_offset", Encode.int submissionsResponse.nextOffset )
         ]
 
 type alias SubmissionCommentResponse =
@@ -215,17 +218,20 @@ submissionCommentResponseEncoder submissionCommentResponse =
 
 type alias SubmissionCommentsResponse =
     { comments : List SubmissionCommentResponse
+    , nextOffset : Int
     }
 
 submissionCommentsResponseDecoder : Decoder SubmissionCommentsResponse
 submissionCommentsResponseDecoder =
-    Decode.map SubmissionCommentsResponse
+    Decode.map2 SubmissionCommentsResponse
         (Decode.field "comments" (Decode.list submissionCommentResponseDecoder))
+        (Decode.field "next_offset" Decode.int)
 
 submissionCommentsResponseEncoder : SubmissionCommentsResponse -> Encode.Value
 submissionCommentsResponseEncoder submissionCommentsResponse =
     Encode.object
         [ ( "comments", Encode.list submissionCommentResponseEncoder submissionCommentsResponse.comments )
+        , ( "next_offset", Encode.int submissionCommentsResponse.nextOffset )
         ]
 
 type alias SubmissionCreatedResponse =

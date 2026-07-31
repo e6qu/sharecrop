@@ -6,7 +6,7 @@ This document maps the current product surface to user-facing flows for the brow
 
 - As a visitor, I can open `/demo/` without a database-backed account so I can understand the product flows from seeded demo data.
 - As a visitor, I am signed in automatically as the seeded demo user (mara) so I can use requester, reviewer, and agent-operator flows without registering. There is no demo user selector; the demo is single-actor.
-- As a visitor, I see the demo's arcade visual theme. There is no light/dark or multi-theme chooser.
+- As a visitor, I see the same pixel/farm visual theme the shipped app uses. There is no light/dark or multi-theme chooser.
 - As a visitor, I get a fresh seeded state on every page load, because the demo reseeds deterministically from its seed routine.
 - As a visitor, I can open `/docs/` and read a task lifecycle, REST, and MCP quickstart.
 - As a visitor, I can find the repository API reference, MCP reference, operator runbook, and agent-side scheduling recipe from the hosted docs.
@@ -64,7 +64,7 @@ This document maps the current product surface to user-facing flows for the brow
 ## Platform Reviewer
 
 - As a platform reviewer, I can tell which workflows are implemented and which are placeholders in the demo.
-- As a platform reviewer, I can exercise the same workflows in the demo (arcade theme) and against a real backend deployment.
+- As a platform reviewer, I can exercise the same workflows in the demo and against a real backend deployment, with one shared pixel/farm theme in both.
 - As a platform reviewer, I can verify that API-backed UI flows still map to the HTTP and MCP contracts.
 
 ## Deferred Or Partial Stories
