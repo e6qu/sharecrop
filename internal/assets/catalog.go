@@ -3,6 +3,7 @@ package assets
 import (
 	"strings"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 )
 
@@ -155,13 +156,20 @@ type CatalogEntry struct {
 	Cap   EditionCap
 }
 
-// CatalogListing pairs one catalog entry with its live-instance count for
-// catalog reads.
+// CatalogListing pairs one catalog entry with its live-instance count and
+// current-ownership facts for catalog reads.
 type CatalogListing struct {
 	Entry CatalogEntry
 	// LiveInstanceCount counts the entry's instances that are not withdrawn
 	// (the number circulating right now; for uniques this is 0 or 1).
 	LiveInstanceCount int64
+	// LiveOwnerCount counts the distinct owners holding the entry's live
+	// instances (0 when nothing circulates).
+	LiveOwnerCount int64
+	// OwnerDisplayName labels the holder of a unique entry's live instance
+	// (user display name, organization name, or team name); zero when the
+	// entry is not unique or its slot is unminted.
+	OwnerDisplayName auth.DisplayName
 }
 
 type CatalogListResult interface {

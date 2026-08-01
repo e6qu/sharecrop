@@ -1152,6 +1152,14 @@ func (testAssetService) WithdrawCollectible(context.Context, core.UserID, core.C
 	return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
 }
 
+func (testAssetService) ReleaseCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult {
+	return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
+}
+
+func (testAssetService) ReleaseCollectible(context.Context, core.UserID, core.CollectibleID) assets.ReleaseResult {
+	return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
+}
+
 func (testAssetService) DeleteWithdrawnCollectible(context.Context, core.CollectibleID) assets.DeleteCollectibleResult {
 	return assets.DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
 }

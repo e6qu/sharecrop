@@ -18,16 +18,32 @@ const collectibleColumns = `id::text, name, kind, state, transfer_policy, owner_
 
 // collectibleListColumns is collectibleColumns qualified for the left join
 // that resolves the issuer's display name on the list read paths (mutation
-// paths keep the unjoined projection so their FOR UPDATE locks stay simple).
-const collectibleListColumns = `collectibles.id::text, collectibles.name, collectibles.kind, collectibles.state,
+// paths keep the unjoined projection so their FOR UPDATE locks stay simple),
+// plus the owner's display label resolved per owner kind.
+var collectibleListColumns = `collectibles.id::text, collectibles.name, collectibles.kind, collectibles.state,
 	collectibles.transfer_policy, collectibles.owner_user_id::text, collectibles.owner_kind,
 	coalesce(collectibles.organization_id::text, ''), collectibles.art, coalesce(collectibles.catalog_slug, ''),
 	collectibles.edition_number, coalesce(collectibles.issued_by_user_id::text, ''),
-	coalesce(coalesce(nullif(users.display_name, ''), split_part(users.email, '@', 1)), '')`
+	coalesce(coalesce(nullif(users.display_name, ''), split_part(users.email, '@', 1)), ''),
+	` + collectibleOwnerLabelSQL("collectibles")
 
 // collectibleIssuerJoin joins the issuer's user row for display-name
 // resolution; issuerless (pre-provenance) rows keep an empty name.
 const collectibleIssuerJoin = "left join users on users.id = collectibles.issued_by_user_id"
+
+// collectibleOwnerLabelSQL resolves the owner's display label for one
+// collectibles row alias: the user's display name (the standard
+// displayNameSQL fallback chain), the organization's name, or the team's
+// name, per owner_kind. An owner row that no longer exists yields an empty
+// label.
+func collectibleOwnerLabelSQL(alias string) string {
+	return `case ` + alias + `.owner_kind
+		when 'user' then coalesce((select ` + displayNameSQL("owner_users") + ` from users owner_users where owner_users.id = ` + alias + `.owner_user_id), '')
+		when 'organization' then coalesce((select owner_orgs.name from organizations owner_orgs where owner_orgs.id = ` + alias + `.owner_user_id), '')
+		when 'team' then coalesce((select owner_teams.name from teams owner_teams where owner_teams.id = ` + alias + `.owner_user_id), '')
+		else ''
+	end`
+}
 
 type CollectibleStore struct {
 	db Beginner
@@ -527,7 +543,7 @@ func scanCollectible(rows Rows) collectibleParseResult {
 }
 
 // scanCollectibleWithIssuerName scans a list-projection row (the collectible
-// columns plus the resolved issuer display name).
+// columns plus the resolved issuer display name and owner display label).
 func scanCollectibleWithIssuerName(rows Rows) collectibleParseResult {
 	var rawID string
 	var rawName string
@@ -542,7 +558,8 @@ func scanCollectibleWithIssuerName(rows Rows) collectibleParseResult {
 	var editionNumber *int64
 	var rawIssuer string
 	var rawIssuerName string
-	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner, &rawOwnerKind, &rawOrganizationID, &rawArt, &rawCatalogSlug, &editionNumber, &rawIssuer, &rawIssuerName); err != nil {
+	var rawOwnerName string
+	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner, &rawOwnerKind, &rawOrganizationID, &rawArt, &rawCatalogSlug, &editionNumber, &rawIssuer, &rawIssuerName, &rawOwnerName); err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan collectible failed")}
 	}
 	parsed := parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner, rawOwnerKind, rawOrganizationID, rawArt, rawCatalogSlug, editionNumber, rawIssuer)
@@ -557,6 +574,14 @@ func scanCollectibleWithIssuerName(rows Rows) collectibleParseResult {
 			return collectibleParseRejected{reason: nameResult.(auth.DisplayNameRejected).Reason}
 		}
 		accepted.value.IssuerDisplayName = name.Value
+	}
+	if rawOwnerName != "" {
+		nameResult := auth.NewDisplayName(rawOwnerName)
+		name, nameMatched := nameResult.(auth.DisplayNameAccepted)
+		if !nameMatched {
+			return collectibleParseRejected{reason: nameResult.(auth.DisplayNameRejected).Reason}
+		}
+		accepted.value.OwnerDisplayName = name.Value
 	}
 	return collectibleParsed{value: accepted.value}
 }
@@ -710,12 +735,20 @@ func parseCatalogEntry(rawSlug string, rawName string, rawKind string, rawPolicy
 }
 
 func (store CollectibleStore) ListCatalogEntries(ctx context.Context) assets.CatalogListResult {
-	// The correlated subquery counts each entry's live (non-withdrawn)
-	// instances in the same read, so the listing reports circulation without
-	// a per-entry round trip.
+	// The correlated subqueries report each entry's circulation in the same
+	// read, without a per-entry round trip: the live (non-withdrawn) instance
+	// count, the distinct owners of those instances, and — for unique entries
+	// — the display label of the live instance's holder.
 	rows, err := store.db.Query(ctx, `
 		select `+catalogEntryColumns+`,
-			(select count(*) from collectibles where collectibles.catalog_slug = collectible_catalog_entries.slug and collectibles.state <> 'withdrawn') as live_instances
+			(select count(*) from collectibles where collectibles.catalog_slug = collectible_catalog_entries.slug and collectibles.state <> 'withdrawn') as live_instances,
+			(select count(distinct collectibles.owner_kind || ':' || collectibles.owner_user_id::text) from collectibles where collectibles.catalog_slug = collectible_catalog_entries.slug and collectibles.state <> 'withdrawn') as live_owners,
+			case when collectible_catalog_entries.kind = 'unique' then coalesce((
+				select `+collectibleOwnerLabelSQL("live_uniques")+`
+				from collectibles live_uniques
+				where live_uniques.catalog_slug = collectible_catalog_entries.slug and live_uniques.state <> 'withdrawn'
+				limit 1
+			), '') else '' end as owner_label
 		from collectible_catalog_entries
 		order by created_at asc, slug asc
 	`)
@@ -755,12 +788,14 @@ func (catalogListingParsed) catalogListingParseResult() {}
 func (catalogListingParseRejected) catalogListingParseResult() {}
 
 // scanCatalogListing scans one catalog row projected with the trailing
-// live-instance count column.
+// live-instance count, live-owner count, and unique-owner label columns.
 func scanCatalogListing(rows Rows) catalogListingParseResult {
 	var rawSlug, rawName, rawKind, rawPolicy, rawArt, rawState string
 	var maxEditions *int64
 	var liveInstances int64
-	if err := rows.Scan(&rawSlug, &rawName, &rawKind, &rawPolicy, &rawArt, &rawState, &maxEditions, &liveInstances); err != nil {
+	var liveOwners int64
+	var rawOwnerLabel string
+	if err := rows.Scan(&rawSlug, &rawName, &rawKind, &rawPolicy, &rawArt, &rawState, &maxEditions, &liveInstances, &liveOwners, &rawOwnerLabel); err != nil {
 		return catalogListingParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan catalog listing failed")}
 	}
 	parsed := parseCatalogEntry(rawSlug, rawName, rawKind, rawPolicy, rawArt, rawState, maxEditions)
@@ -768,7 +803,21 @@ func scanCatalogListing(rows Rows) catalogListingParseResult {
 	if !matched {
 		return catalogListingParseRejected{reason: parsed.(catalogEntryParseRejected).reason}
 	}
-	return catalogListingParsed{value: assets.CatalogListing{Entry: entry.value, LiveInstanceCount: liveInstances}}
+	var ownerLabel auth.DisplayName
+	if rawOwnerLabel != "" {
+		labelResult := auth.NewDisplayName(rawOwnerLabel)
+		label, labelMatched := labelResult.(auth.DisplayNameAccepted)
+		if !labelMatched {
+			return catalogListingParseRejected{reason: labelResult.(auth.DisplayNameRejected).Reason}
+		}
+		ownerLabel = label.Value
+	}
+	return catalogListingParsed{value: assets.CatalogListing{
+		Entry:             entry.value,
+		LiveInstanceCount: liveInstances,
+		LiveOwnerCount:    liveOwners,
+		OwnerDisplayName:  ownerLabel,
+	}}
 }
 
 func maxEditionsColumn(cap assets.EditionCap) *int64 {
@@ -831,8 +880,33 @@ func (store CollectibleStore) WithdrawCatalogEntry(ctx context.Context, slug ass
 	return assets.CatalogMutated{Value: entry.value}
 }
 
-// DeleteCatalogEntry removes a withdrawn entry that no live (non-withdrawn)
-// instance references.
+// ReleaseCatalogEntry returns a withdrawn entry to the available state so it
+// can be awarded again. An entry that is not withdrawn (available, or
+// nonexistent) is refused with a conflict, mirroring WithdrawCatalogEntry.
+func (store CollectibleStore) ReleaseCatalogEntry(ctx context.Context, slug assets.CatalogSlug) assets.CatalogMutationResult {
+	tag, err := store.db.Exec(ctx, `
+		update collectible_catalog_entries
+		set state = 'available', state_recorded_at = now()
+		where slug = $1 and state = 'withdrawn'
+	`, slug.String())
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release catalog entry failed")}
+	}
+	if tag != 1 {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "catalog entry is not withdrawn and cannot be released")}
+	}
+	result := store.findCatalogEntry(ctx, store.db, slug, false)
+	entry, matched := result.(catalogEntryParsed)
+	if !matched {
+		return assets.CatalogMutationRejected{Reason: result.(catalogEntryParseRejected).reason}
+	}
+	return assets.CatalogMutated{Value: entry.value}
+}
+
+// DeleteCatalogEntry removes a withdrawn entry that no instance references —
+// live or withdrawn. Withdrawn instances still carry the entry's provenance
+// (and can be released back into circulation), so deleting a history-bearing
+// entry is refused; delete the withdrawn instances first.
 func (store CollectibleStore) DeleteCatalogEntry(ctx context.Context, slug assets.CatalogSlug) assets.CatalogMutationResult {
 	tx, err := store.db.Begin(ctx)
 	if err != nil {
@@ -848,14 +922,14 @@ func (store CollectibleStore) DeleteCatalogEntry(ctx context.Context, slug asset
 	if entry.value.State != assets.CatalogEntryStateWithdrawn {
 		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only withdrawn catalog entries can be deleted")}
 	}
-	var liveInstances bool
+	var hasInstances bool
 	if err := tx.QueryRow(ctx, `
-		select exists(select 1 from collectibles where catalog_slug = $1 and state <> 'withdrawn')
-	`, slug.String()).Scan(&liveInstances); err != nil {
+		select exists(select 1 from collectibles where catalog_slug = $1)
+	`, slug.String()).Scan(&hasInstances); err != nil {
 		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check catalog entry instances failed")}
 	}
-	if liveInstances {
-		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "catalog entry still has live instances")}
+	if hasInstances {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "catalog entry still has instances (live or withdrawn)")}
 	}
 	if _, err := tx.Exec(ctx, "delete from collectible_catalog_entries where slug = $1", slug.String()); err != nil {
 		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "delete catalog entry failed")}
@@ -990,6 +1064,81 @@ func (store CollectibleStore) WithdrawCollectible(ctx context.Context, command a
 	withdrawn := collectible.value
 	withdrawn.State = assets.CollectibleStateWithdrawn
 	return assets.CollectibleWithdrawn{Value: withdrawn, RecordedEvents: []event.Draft{draft}}
+}
+
+// ReleaseCollectible returns a withdrawn instance to its holder's inventory
+// (state -> minted, owner unchanged). The catalog entry row is locked first
+// so the uniqueness re-check serializes against AwardFromCatalog: a unique
+// whose live slot was re-minted while this instance was withdrawn is refused
+// with a conflict, and the partial unique index on live instances backstops
+// the check (a unique violation on the state flip is translated into the
+// same conflict). The holder is merged into the event draft's recipients
+// inside the transaction.
+func (store CollectibleStore) ReleaseCollectible(ctx context.Context, command assets.ReleaseCollectibleStoreCommand) assets.ReleaseResult {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin release collectible transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	collectibleResult := lockCollectible(ctx, tx, command.CollectibleID)
+	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
+	if !collectibleMatched {
+		return assets.ReleaseRejected{Reason: collectibleResult.(collectibleParseRejected).reason}
+	}
+	if collectible.value.State != assets.CollectibleStateWithdrawn {
+		return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only withdrawn collectibles can be released")}
+	}
+	fromCatalog, catalogMatched := collectible.value.Catalog.(assets.FromCatalog)
+	if !catalogMatched {
+		// Unreachable through the current lifecycle (only catalog instances
+		// can be withdrawn), kept as a guard for pre-provenance data.
+		return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible has no catalog entry to validate against")}
+	}
+
+	// Lock the entry row so the uniqueness re-check serializes with awards.
+	entryResult := store.findCatalogEntry(ctx, tx, fromCatalog.Slug, true)
+	entry, entryMatched := entryResult.(catalogEntryParsed)
+	if !entryMatched {
+		return assets.ReleaseRejected{Reason: entryResult.(catalogEntryParseRejected).reason}
+	}
+	if entry.value.Kind == assets.CollectibleKindUnique {
+		var liveExists bool
+		if err := tx.QueryRow(ctx, `
+			select exists(select 1 from collectibles where catalog_slug = $1 and state <> 'withdrawn')
+		`, fromCatalog.Slug.String()).Scan(&liveExists); err != nil {
+			return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check unique catalog instance failed")}
+		}
+		if liveExists {
+			return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "another live instance of this unique collectible exists")}
+		}
+	}
+
+	if _, err := tx.Exec(ctx, "update collectibles set state = 'minted', state_recorded_at = now() where id = $1", command.CollectibleID.String()); err != nil {
+		if isUniqueViolation(err) {
+			return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "another live instance of this unique collectible exists")}
+		}
+		return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release collectible failed")}
+	}
+
+	draft := command.Draft
+	if collectible.value.OwnerKind == assets.CollectibleOwnerKindUser {
+		holderResult := core.ParseUserID(collectible.value.OwnerID)
+		holder, holderMatched := holderResult.(core.UserIDCreated)
+		if !holderMatched {
+			return assets.ReleaseRejected{Reason: holderResult.(core.UserIDRejected).Reason}
+		}
+		draft = draft.WithRecipients(holder.Value)
+	}
+	if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+		return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record collectible released event failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit release collectible failed")}
+	}
+	released := collectible.value
+	released.State = assets.CollectibleStateMinted
+	return assets.CollectibleReleased{Value: released, RecordedEvents: []event.Draft{draft}}
 }
 
 // DeleteWithdrawnCollectible hard-deletes a withdrawn instance after

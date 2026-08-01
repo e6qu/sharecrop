@@ -72,8 +72,10 @@ This document maps the current product surface to user-facing flows for the brow
 - As a platform admin, I can grant credits to a user or organization account with a required note and an idempotency key, so support adjustments are explained, auditable, and safe to retry.
 - As a platform admin, I can see the grant note in the beneficiary's ledger, and the beneficiary is notified with a `credit_granted` notification.
 - As a platform admin, I can add a collectible catalog entry (badge, capped edition run, or one-of-one unique) using art from the fixed sprite registry, and award numbered instances from it.
-- As a platform admin, I can withdraw a catalog entry so no further instances are awarded while existing holders keep theirs, and delete the entry once it is withdrawn and no live instance remains.
+- As a platform admin, I can withdraw a catalog entry so no further instances are awarded while existing holders keep theirs, release a withdrawn entry back to available so it can be awarded again, and delete the entry once it is withdrawn and no instance — live or withdrawn — remains.
 - As a platform admin, I can withdraw a specific collectible instance from its holder (who is notified with a `collectible_withdrawn` notification) and hard-delete it once withdrawn.
+- As a platform admin, I can release a withdrawn collectible instance back into its holder's inventory (who is notified with a `collectible_released` notification); releasing a unique whose live slot was re-minted in the meantime is refused.
+- As a user, I can see who currently holds a collectible: collectible listings label the owner (user, organization, or team) by name, and the catalog shows each unique entry's current holder and how many distinct owners hold an edition run.
 
 ## Platform Reviewer
 

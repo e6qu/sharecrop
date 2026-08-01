@@ -1513,6 +1513,15 @@ postWithdrawCatalogEntry token slug =
         (expectJsonWithServerError CatalogEntryMutated Collectible.collectibleCatalogEntryDecoder)
 
 
+postReleaseCatalogEntry : String -> String -> Cmd Msg
+postReleaseCatalogEntry token slug =
+    authorizedRequest "POST"
+        token
+        ("/api/admin/collectible-catalog/" ++ slug ++ "/release")
+        (Http.jsonBody (Encode.object []))
+        (expectJsonWithServerError CatalogEntryMutated Collectible.collectibleCatalogEntryDecoder)
+
+
 deleteCatalogEntryCmd : String -> String -> Cmd Msg
 deleteCatalogEntryCmd token slug =
     authorizedRequest "DELETE"
@@ -1529,6 +1538,15 @@ postWithdrawCollectible token collectibleId =
         ("/api/admin/collectibles/" ++ collectibleId ++ "/withdraw")
         (Http.jsonBody (Encode.object []))
         (expectJsonWithServerError CollectibleWithdrawnReceived Collectible.collectibleResponseDecoder)
+
+
+postReleaseCollectible : String -> String -> Cmd Msg
+postReleaseCollectible token collectibleId =
+    authorizedRequest "POST"
+        token
+        ("/api/admin/collectibles/" ++ collectibleId ++ "/release")
+        (Http.jsonBody (Encode.object []))
+        (expectJsonWithServerError CollectibleReleasedReceived Collectible.collectibleResponseDecoder)
 
 
 deleteCollectibleCmd : String -> String -> Cmd Msg

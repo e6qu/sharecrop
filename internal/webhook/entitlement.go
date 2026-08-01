@@ -25,7 +25,7 @@ func RequiredScopeForKind(kind event.Kind) agent.Scope {
 		return agent.ScopeSubmissionsRead
 	case event.KindTaskFunded, event.KindPayoutReceived, event.KindTipReceived, event.KindCreditGranted, event.KindCreditsSent:
 		return agent.ScopeLedgerRead
-	case event.KindCollectibleAwarded, event.KindCollectibleWithdrawn:
+	case event.KindCollectibleAwarded, event.KindCollectibleWithdrawn, event.KindCollectibleReleased:
 		return agent.ScopeCollectiblesRead
 	default:
 		// Unreachable for a sealed Kind constructed through ParseKind or the

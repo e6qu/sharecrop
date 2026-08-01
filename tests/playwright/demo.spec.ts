@@ -457,9 +457,9 @@ test("the collectibles catalog renders sprites, awards a default, and trades it"
   await page.getByTestId("nav-manage-menu").click();
   await page.getByRole("link", { name: "Collectibles", exact: true }).click();
 
-  // The 25 default collectibles plus the 3 seeded demo entries (unique,
-  // edition, withdrawn) render as a gallery of pixel sprites.
-  await expect(page.getByTestId("catalog-entry")).toHaveCount(28);
+  // The 25 default collectibles plus the 4 seeded demo entries (two
+  // uniques, edition, withdrawn) render as a gallery of pixel sprites.
+  await expect(page.getByTestId("catalog-entry")).toHaveCount(29);
 
   // Award one to myself (the demo user id), then it appears in my holdings.
   await page.getByTestId("award-default-section").click();
@@ -541,8 +541,9 @@ test("the demo seeds show catalog states, provenance, and the received credit se
   await page.getByTestId("nav-manage-menu").click();
   await page.getByRole("link", { name: "Collectibles", exact: true }).click();
 
-  // Catalog states and counts: the withdrawn entry, the fully-minted
-  // unique, and the partially-minted edition.
+  // Catalog states, counts, and owners: the withdrawn entry, the
+  // fully-minted uniques (each naming its holder), and the partially-minted
+  // edition with its distinct-owner count.
   const withdrawnEntry = page.getByTestId("catalog-entry").filter({
     hasText: "Retired Scarecrow",
   });
@@ -550,11 +551,19 @@ test("the demo seeds show catalog states, provenance, and the received credit se
   const uniqueEntry = page.getByTestId("catalog-entry").filter({
     hasText: "Founders' Medal",
   });
-  await expect(uniqueEntry).toContainText("unique — 1 of 1 minted");
+  await expect(uniqueEntry).toContainText(
+    "unique — 1 of 1 minted · owned by Mara Ellison",
+  );
+  const otherOwnedUnique = page.getByTestId("catalog-entry").filter({
+    hasText: "Best in Show 2026",
+  });
+  await expect(otherOwnedUnique).toContainText(
+    "unique — 1 of 1 minted · owned by Ren Okafor",
+  );
   const editionEntry = page.getByTestId("catalog-entry").filter({
     hasText: "Harvest Festival 2026",
   });
-  await expect(editionEntry).toContainText("3 of 25 minted");
+  await expect(editionEntry).toContainText("3 of 25 minted · 3 owners");
 
   // Provenance on held instances: the edition number, catalog origin, and
   // issuer, plus the withdrawn instance's state and Delete control.
@@ -565,6 +574,9 @@ test("the demo seeds show catalog states, provenance, and the received credit se
     .toContainText("edition #1");
   await expect(festivalRow.getByTestId("collectible-provenance"))
     .toContainText("issued by Mara Ellison");
+  // Own holdings never label their owner - "owned by you" would be noise.
+  await expect(festivalRow.getByTestId("collectible-provenance"))
+    .not.toContainText("owned by");
   const rainDropRow = page.getByTestId("collectible-row").filter({
     hasText: "Rain Drop",
   });
@@ -625,6 +637,83 @@ test("the demo admin adds, withdraws, and deletes a catalog entry with explained
       hasText: "Demo Test Entry",
     }),
   ).toHaveCount(0);
+});
+
+test("the demo admin releases a withdrawn entry and a withdrawn instance", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("95 credits")).toBeVisible();
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByRole("link", { name: "Collectibles", exact: true }).click();
+
+  // The seeded withdrawn entry offers Release beside Delete; releasing it
+  // returns the card to the available layout, awardable again.
+  const entry = page.getByTestId("catalog-entry").filter({
+    hasText: "Retired Scarecrow",
+  });
+  await expect(entry.getByTestId("catalog-delete")).toBeVisible();
+  await entry.getByTestId("catalog-release").click();
+  // The outcome note must be *visible* without opening the manage
+  // disclosure - the release button lives on the card, not in the form.
+  await expect(page.getByTestId("catalog-message")).toBeVisible();
+  await expect(page.getByTestId("catalog-message")).toContainText(
+    "'Retired Scarecrow' is available to award",
+  );
+  await expect(entry).toContainText("available");
+  await expect(entry.getByTestId("catalog-award")).toBeVisible();
+  await expect(entry.getByTestId("catalog-withdraw")).toBeVisible();
+  await expect(entry.getByTestId("catalog-release")).toHaveCount(0);
+
+  // The seeded withdrawn Rain Drop instance offers Release beside Delete;
+  // releasing it returns it to the holdings row, transferable again.
+  const rainDropRow = page.getByTestId("collectible-row").filter({
+    hasText: "Rain Drop",
+  });
+  await expect(rainDropRow.getByTestId("collectible-delete")).toBeVisible();
+  await rainDropRow.getByTestId("collectible-release").click();
+  await expect(page.getByTestId("withdraw-message")).toContainText(
+    "Released 'Rain Drop' back to its holder.",
+  );
+  await expect(rainDropRow).toContainText("minted");
+  await expect(rainDropRow.getByTestId("collectible-delete")).toHaveCount(0);
+  await expect(rainDropRow.getByTestId("send-collectible-toggle"))
+    .toBeEnabled();
+});
+
+test("releasing a unique whose slot was re-minted surfaces the server conflict", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("95 credits")).toBeVisible();
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByRole("link", { name: "Collectibles", exact: true }).click();
+
+  // Withdraw mara's Founders' Medal instance, freeing the unique's slot.
+  const medalRow = page.getByTestId("collectible-row").filter({
+    hasText: "Founders' Medal",
+  });
+  await medalRow.getByTestId("collectible-withdraw").click();
+  await expect(page.getByTestId("withdraw-message")).toContainText(
+    "Withdrew 'Founders' Medal'.",
+  );
+
+  // Re-mint the slot to ren through the admin award control.
+  await page.getByTestId("award-default-section").click();
+  await page.getByTestId("award-recipient-id-query").fill("ren");
+  await page.getByTestId("award-recipient-id").selectOption({
+    label: "ren@sharecrop.demo",
+  });
+  const medalEntry = page.getByTestId("catalog-entry").filter({
+    hasText: "Founders' Medal",
+  });
+  await medalEntry.getByTestId("catalog-award").click();
+  await expect(page.getByTestId("award-default-message")).toContainText(
+    "Awarded",
+  );
+
+  // Releasing the withdrawn instance now conflicts, and the note carries
+  // the server's own reason.
+  await medalRow.getByTestId("collectible-release").click();
+  await expect(page.getByTestId("withdraw-message")).toContainText(
+    "another live instance of this unique collectible exists",
+  );
 });
 
 test("the demo sends credits to another user from the overview card", async ({ page }) => {
@@ -694,8 +783,13 @@ test("the demo organization sends credits and a collectible", async ({ page }) =
   );
 
   // The seeded org-owned Golden Egg moves to a user through the org's
-  // send-to-user control (disabled until a user is picked).
+  // send-to-user control (disabled until a user is picked). Its holding row
+  // names the owning organization, since this is not the viewer's inventory.
   await page.getByTestId("org-collectibles-section").click();
+  await expect(
+    page.getByTestId("org-collectibles").getByTestId("collectible-provenance")
+      .first(),
+  ).toContainText("owned by Field Operations");
   await expect(page.getByTestId("org-send-collectible").first())
     .toBeDisabled();
   await page.getByTestId("org-send-collectible-recipient-query").fill("jules");

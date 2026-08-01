@@ -106,6 +106,8 @@ type Services interface {
 	WithdrawCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult
 	DeleteCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult
 	WithdrawCollectible(context.Context, core.UserID, core.CollectibleID) assets.WithdrawResult
+	ReleaseCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult
+	ReleaseCollectible(context.Context, core.UserID, core.CollectibleID) assets.ReleaseResult
 	DeleteWithdrawnCollectible(context.Context, core.CollectibleID) assets.DeleteCollectibleResult
 
 	ListNotifications(context.Context, core.UserID, notification.StateFilter, core.Page) notification.ListResult
@@ -621,6 +623,12 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 			return failure
 		}
 		return server.callWithdrawCatalogEntry(ctx, userActor, arguments)
+	case toolReleaseCatalogEntry:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callReleaseCatalogEntry(ctx, userActor, arguments)
 	case toolDeleteCatalogEntry:
 		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
 		if !ok {
@@ -633,6 +641,12 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 			return failure
 		}
 		return server.callWithdrawCollectible(ctx, userActor, arguments)
+	case toolReleaseCollectible:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callReleaseCollectible(ctx, userActor, arguments)
 	case toolDeleteWithdrawnCollectible:
 		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
 		if !ok {

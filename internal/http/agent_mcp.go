@@ -314,6 +314,14 @@ func (services mcpServices) WithdrawCollectible(ctx context.Context, actor core.
 	return services.assetService.WithdrawCollectible(ctx, actor, collectibleID)
 }
 
+func (services mcpServices) ReleaseCatalogEntry(ctx context.Context, slug assets.CatalogSlug) assets.CatalogMutationResult {
+	return services.assetService.ReleaseCatalogEntry(ctx, slug)
+}
+
+func (services mcpServices) ReleaseCollectible(ctx context.Context, actor core.UserID, collectibleID core.CollectibleID) assets.ReleaseResult {
+	return services.assetService.ReleaseCollectible(ctx, actor, collectibleID)
+}
+
 func (services mcpServices) DeleteWithdrawnCollectible(ctx context.Context, collectibleID core.CollectibleID) assets.DeleteCollectibleResult {
 	return services.assetService.DeleteWithdrawnCollectible(ctx, collectibleID)
 }

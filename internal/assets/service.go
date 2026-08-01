@@ -20,14 +20,22 @@ type Store interface {
 	ListCatalogEntries(context.Context) CatalogListResult
 	AddCatalogEntry(context.Context, CatalogEntry) CatalogMutationResult
 	WithdrawCatalogEntry(context.Context, CatalogSlug) CatalogMutationResult
-	// DeleteCatalogEntry removes a withdrawn entry that no live instance
-	// references.
+	// ReleaseCatalogEntry returns a withdrawn entry to the available state,
+	// so it can be awarded again.
+	ReleaseCatalogEntry(context.Context, CatalogSlug) CatalogMutationResult
+	// DeleteCatalogEntry removes a withdrawn entry that no instance (live or
+	// withdrawn) references.
 	DeleteCatalogEntry(context.Context, CatalogSlug) CatalogMutationResult
 	// AwardFromCatalog mints a fresh instance of an available catalog entry,
 	// enforcing the entry's kind semantics (unique: one live instance ever;
 	// edition: numbered against the cap; badge: uncapped).
 	AwardFromCatalog(context.Context, AwardFromCatalogStoreCommand) CreateStoreResult
 	WithdrawCollectible(context.Context, WithdrawCollectibleStoreCommand) WithdrawResult
+	// ReleaseCollectible returns a withdrawn instance to its holder's
+	// inventory (state -> minted, owner unchanged), re-validating the entry's
+	// kind semantics under the entry row lock: a unique whose live slot was
+	// re-minted while this instance was withdrawn is refused with a conflict.
+	ReleaseCollectible(context.Context, ReleaseCollectibleStoreCommand) ReleaseResult
 	// DeleteWithdrawnCollectible hard-deletes an instance, allowed only from
 	// the withdrawn state and only when no task escrow references it.
 	DeleteWithdrawnCollectible(context.Context, core.CollectibleID) DeleteCollectibleResult
@@ -81,6 +89,35 @@ type TransferFromOrganizationStoreCommand struct {
 	// transaction.
 	Draft event.Draft
 }
+
+// ReleaseCollectibleStoreCommand returns a withdrawn instance to its holder
+// (state -> minted). The store merges the holder into the draft's recipients
+// inside the release transaction.
+type ReleaseCollectibleStoreCommand struct {
+	CollectibleID core.CollectibleID
+	// Draft is the collectible_released event recorded inside the release
+	// transaction.
+	Draft event.Draft
+}
+
+type ReleaseResult interface {
+	releaseResult()
+}
+
+type CollectibleReleased struct {
+	Value Collectible
+	// RecordedEvents are the drafts recorded inside the release transaction
+	// (the collectible_released event to the holder).
+	RecordedEvents []event.Draft
+}
+
+type ReleaseRejected struct {
+	Reason core.DomainError
+}
+
+func (CollectibleReleased) releaseResult() {}
+
+func (ReleaseRejected) releaseResult() {}
 
 type WithdrawResult interface {
 	withdrawResult()
@@ -452,7 +489,15 @@ func (service Service) WithdrawCatalogEntry(ctx context.Context, slug CatalogSlu
 	return service.store.WithdrawCatalogEntry(ctx, slug)
 }
 
-// DeleteCatalogEntry removes a withdrawn entry no live instance references.
+// ReleaseCatalogEntry returns a withdrawn entry to the available state so it
+// can be awarded again. Platform-admin authorization is the calling
+// boundary's responsibility.
+func (service Service) ReleaseCatalogEntry(ctx context.Context, slug CatalogSlug) CatalogMutationResult {
+	return service.store.ReleaseCatalogEntry(ctx, slug)
+}
+
+// DeleteCatalogEntry removes a withdrawn entry no instance (live or
+// withdrawn) references.
 func (service Service) DeleteCatalogEntry(ctx context.Context, slug CatalogSlug) CatalogMutationResult {
 	return service.store.DeleteCatalogEntry(ctx, slug)
 }
@@ -510,6 +555,31 @@ func (service Service) WithdrawCollectible(ctx context.Context, actor core.UserI
 	})
 	if withdrawn, matched := result.(CollectibleWithdrawn); matched {
 		service.recorder.Dispatch(ctx, withdrawn.RecordedEvents...)
+	}
+	return result
+}
+
+// ReleaseCollectible returns a withdrawn instance to its holder's inventory
+// (state -> minted, owner unchanged). The holder learns through the
+// collectible_released event, recorded inside the release transaction. The
+// store re-validates the entry's kind semantics under the entry row lock.
+// Platform-admin authorization is the calling boundary's responsibility;
+// actor is the acting admin.
+func (service Service) ReleaseCollectible(ctx context.Context, actor core.UserID, collectibleID core.CollectibleID) ReleaseResult {
+	subject := event.NoSubjectRefs()
+	subject.Collectible = event.CollectibleSubject{ID: collectibleID}
+	draftResult := event.NewDraft(event.KindCollectibleReleased, event.ActorUser{ID: actor}, subject,
+		event.EmptyMetadata(), event.NewRecipients(actor))
+	draftCreated, draftMatched := draftResult.(event.DraftCreated)
+	if !draftMatched {
+		return ReleaseRejected{Reason: draftResult.(event.DraftRejected).Reason}
+	}
+	result := service.store.ReleaseCollectible(ctx, ReleaseCollectibleStoreCommand{
+		CollectibleID: collectibleID,
+		Draft:         draftCreated.Value,
+	})
+	if released, matched := result.(CollectibleReleased); matched {
+		service.recorder.Dispatch(ctx, released.RecordedEvents...)
 	}
 	return result
 }

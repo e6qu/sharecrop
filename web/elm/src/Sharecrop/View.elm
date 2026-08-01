@@ -819,7 +819,7 @@ teamDetailView teamId state =
                         text ""
                     , teamWorkDashboard detail.team.id state
                     , Ui.sectionTitle "Collectibles"
-                    , collectiblesHoldingsList "team-collectibles" state.teamCollectibles
+                    , collectiblesHoldingsList "team-collectibles" state.subjectId state.teamCollectibles
                     , maybeNote state.teamCollectiblesMessage "team-collectibles-message"
                     ]
 
@@ -1041,22 +1041,28 @@ teamWorkSection subjectId title identifier emptyMessage tasks =
         ]
 
 
-collectiblesHoldingsList : String -> List Collectible.CollectibleResponse -> Html Msg
-collectiblesHoldingsList idPrefix collectibles =
+collectiblesHoldingsList : String -> String -> List Collectible.CollectibleResponse -> Html Msg
+collectiblesHoldingsList idPrefix viewerSubjectId collectibles =
     if List.isEmpty collectibles then
         Ui.emptyState (idPrefix ++ "-empty") "harvest-star" "No collectibles yet."
 
     else
         div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId idPrefix ]
-            (List.map collectibleHoldingRow collectibles)
+            (List.map (collectibleHoldingRow viewerSubjectId) collectibles)
 
 
-collectibleHoldingRow : Collectible.CollectibleResponse -> Html Msg
-collectibleHoldingRow c =
-    div [ Html.Attributes.class "flex items-center gap-2 py-2", testId "collectible-holding-row" ]
-        [ Sprites.pixel c.art 5
-        , span [ Html.Attributes.class "text-sm font-medium" ] [ text c.name ]
-        , Ui.badge (collectibleKindLabel c.kind)
+collectibleHoldingRow : String -> Collectible.CollectibleResponse -> Html Msg
+collectibleHoldingRow viewerSubjectId c =
+    div [ Html.Attributes.class "space-y-1 py-2", testId "collectible-holding-row" ]
+        [ div [ Html.Attributes.class "flex items-center gap-2" ]
+            [ Sprites.pixel c.art 5
+            , span [ Html.Attributes.class "text-sm font-medium" ] [ text c.name ]
+            , Ui.badge (collectibleKindLabel c.kind)
+            ]
+
+        -- Team and org holdings are someone else's inventory from the
+        -- viewer's seat, so the provenance line names the owner here.
+        , collectibleProvenanceLine viewerSubjectId c
         ]
 
 
@@ -1073,7 +1079,7 @@ collectibleDetailView collectibleId state =
                     , p [ Html.Attributes.class "text-sm" ] [ text ("Kind: " ++ collectibleKindLabel collectible.kind) ]
                     , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ collectibleStateLabel collectible.state) ]
                     , p [ Html.Attributes.class "text-sm" ] [ text ("Transfer policy: " ++ collectiblePolicyLabel collectible.transferPolicy) ]
-                    , collectibleProvenanceLine collectible
+                    , collectibleProvenanceLine state.subjectId collectible
                     , case collectible.transferPolicy of
                         Collectible.CollectibleTransferPolicyTransferableBetweenUsers ->
                             tradeControls collectible state
@@ -2055,7 +2061,7 @@ activeOrganizationView state =
                 , maybeNote state.provisionMemberMessage "provision-member-message"
                 ]
             , Ui.disclosure "org-collectibles-section" False ("Collectibles (" ++ String.fromInt (List.length state.orgCollectibles) ++ ")") <|
-                [ collectiblesHoldingsList "org-collectibles" state.orgCollectibles
+                [ collectiblesHoldingsList "org-collectibles" state.subjectId state.orgCollectibles
                 , maybeNote state.orgCollectiblesMessage "org-collectibles-message"
                 , if List.isEmpty state.orgCollectibles then
                     text ""
@@ -3781,6 +3787,11 @@ collectiblesView state =
 
           else
             text ""
+
+        -- Card-level, beside the gallery the entry cards live in, so add,
+        -- withdraw, release, and delete outcomes (including server conflict
+        -- reasons) stay visible when the manage disclosure is closed.
+        , maybeNote state.catalogMessage "catalog-message"
         , catalogGallery state
         , collectiblesList state
 
@@ -3792,8 +3803,9 @@ collectiblesView state =
 
 
 {-| The admin catalog editor: an "add entry" form whose art comes from the
-sprite registry (every sprite rendered, pick by click), plus the shared
-outcome note for adds, withdrawals, and deletions.
+sprite registry (every sprite rendered, pick by click). The shared outcome
+note for catalog mutations renders beside the gallery (see collectiblesView),
+where it stays visible when this disclosure is closed.
 -}
 catalogManageControls : LoggedInModel -> List (Html Msg)
 catalogManageControls state =
@@ -3820,7 +3832,6 @@ catalogManageControls state =
     , div [ Html.Attributes.class "grid grid-cols-4 gap-2 sm:grid-cols-6", testId "catalog-art-picker" ]
         (List.map (catalogArtOption state.catalogArt) Sprites.slugs)
     , Ui.primaryButton [ type_ "button", onClick AddCatalogEntryClicked, testId "catalog-add" ] "Add catalog entry"
-    , maybeNote state.catalogMessage "catalog-message"
     ]
 
 
@@ -3944,31 +3955,56 @@ catalogEntryStateBadge state =
             Ui.badgeVariant "danger" "withdrawn"
 
 
-{-| How much of the entry's run has minted: "3 of 100 minted" for an
-edition, "unique — 1 of 1 minted" once a unique exists, a bare count for
-uncapped badges.
+{-| How much of the entry's run has minted, and who holds it: "3 of 100
+minted · 3 owners" for an edition (the owner count skipped while nothing is
+minted), "unique — 1 of 1 minted · owned by Ren Okafor" once a unique's
+live instance exists, a bare count for uncapped badges.
 -}
 catalogMintedLabel : Collectible.CollectibleCatalogEntry -> String
 catalogMintedLabel entry =
     case entry.kind of
         Collectible.CollectibleKindUnique ->
             if entry.mintedCount >= 1 then
-                "unique — 1 of 1 minted"
+                if String.trim entry.ownerDisplayName == "" then
+                    -- Minted but no live holder (the instance is withdrawn).
+                    "unique — 1 of 1 minted"
+
+                else
+                    "unique — 1 of 1 minted · owned by " ++ entry.ownerDisplayName
 
             else
                 "unique — not yet minted"
 
         Collectible.CollectibleKindEdition ->
-            String.fromInt entry.mintedCount ++ " of " ++ String.fromInt entry.maxEditions ++ " minted"
+            String.fromInt entry.mintedCount
+                ++ " of "
+                ++ String.fromInt entry.maxEditions
+                ++ " minted"
+                ++ catalogOwnerCountSuffix entry.liveOwnerCount
 
         Collectible.CollectibleKindBadge ->
             String.fromInt entry.mintedCount ++ " minted"
 
 
+{-| " · 3 owners" (or " · 1 owner") — dropped entirely while no live
+instance exists, because "0 owners" on an unminted run reads like an error.
+-}
+catalogOwnerCountSuffix : Int -> String
+catalogOwnerCountSuffix liveOwnerCount =
+    if liveOwnerCount <= 0 then
+        ""
+
+    else if liveOwnerCount == 1 then
+        " · 1 owner"
+
+    else
+        " · " ++ String.fromInt liveOwnerCount ++ " owners"
+
+
 {-| The admin's per-entry controls. Every disabled button says why it is
 disabled, in text: an Award with no recipient chosen, a Delete on an entry
 that is still available. Withdrawn entries cannot mint, so Award is not
-offered on them at all.
+offered on them; they get Release (back to awardable) beside Delete instead.
 -}
 catalogEntryAdminControls : String -> Collectible.CollectibleCatalogEntry -> List (Html Msg)
 catalogEntryAdminControls recipientId entry =
@@ -3993,7 +4029,11 @@ catalogEntryAdminControls recipientId entry =
                    )
 
         Collectible.CollectibleCatalogEntryStateWithdrawn ->
-            [ Ui.dangerButton [ type_ "button", onClick (DeleteCatalogEntryClicked entry.slug), testId "catalog-delete" ] "Delete" ]
+            [ div [ Html.Attributes.class "flex flex-wrap items-center justify-center gap-1" ]
+                [ Ui.secondaryButton [ type_ "button", onClick (ReleaseCatalogEntryClicked entry.slug), testId "catalog-release" ] "Release"
+                , Ui.dangerButton [ type_ "button", onClick (DeleteCatalogEntryClicked entry.slug), testId "catalog-delete" ] "Delete"
+                ]
+            ]
 
 
 mintForm : LoggedInModel -> Html Msg
@@ -4054,12 +4094,13 @@ collectibleRow state collectible =
             , collectibleStateBadge collectible.state
             , span [ Html.Attributes.class "text-xs text-farm-muted" ] [ text (collectibleKindLabel collectible.kind) ]
             ]
-        , collectibleProvenanceLine collectible
+        , collectibleProvenanceLine state.subjectId collectible
         , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
             (List.filterMap identity
                 [ awardCollectibleButton state.awardTaskId collectible
                 , sendCollectibleButton state.openSendCollectibleID collectible
                 , adminWithdrawButton state.isAdmin collectible
+                , adminReleaseButton state.isAdmin collectible
                 , adminDeleteButton state.isAdmin collectible
                 ]
             )
@@ -4072,12 +4113,15 @@ collectibleRow state collectible =
         ]
 
 
-{-| Edition number, catalog origin, and issuer - the "where did this come
-from" line under a collectible's name. Skipped entirely for self-minted
-collectibles with no story to tell.
+{-| Edition number, catalog origin, issuer, and owner - the "where did this
+come from" line under a collectible's name. Skipped entirely for self-minted
+collectibles with no story to tell. The owner part is skipped when the
+viewer is the owner (a listing of your own holdings needs no "owned by
+you"), so it only labels holdings that belong to someone else - a team, an
+organization, or another user.
 -}
-collectibleProvenanceLine : Collectible.CollectibleResponse -> Html Msg
-collectibleProvenanceLine collectible =
+collectibleProvenanceLine : String -> Collectible.CollectibleResponse -> Html Msg
+collectibleProvenanceLine viewerSubjectId collectible =
     let
         parts =
             List.filterMap identity
@@ -4096,6 +4140,11 @@ collectibleProvenanceLine collectible =
 
                   else
                     Just ("issued by " ++ collectible.issuerDisplayName)
+                , if String.trim collectible.ownerDisplayName == "" || collectible.ownerID == viewerSubjectId then
+                    Nothing
+
+                  else
+                    Just ("owned by " ++ collectible.ownerDisplayName)
                 ]
     in
     if List.isEmpty parts then
@@ -4215,6 +4264,19 @@ adminWithdrawButton : Bool -> Collectible.CollectibleResponse -> Maybe (Html Msg
 adminWithdrawButton isAdmin collectible =
     if isAdmin && collectible.catalogSlug /= "" && collectible.state /= Collectible.CollectibleStateWithdrawn then
         Just (Ui.secondaryButton [ type_ "button", onClick (WithdrawCollectibleClicked collectible.id), testId "collectible-withdraw" ] "Withdraw")
+
+    else
+        Nothing
+
+
+{-| Admin-only instance release: a withdrawn instance goes back to its
+holder's inventory (the server refuses with a conflict when a unique's live
+slot was re-minted meanwhile - the reason lands in the shared note).
+-}
+adminReleaseButton : Bool -> Collectible.CollectibleResponse -> Maybe (Html Msg)
+adminReleaseButton isAdmin collectible =
+    if isAdmin && collectible.state == Collectible.CollectibleStateWithdrawn then
+        Just (Ui.secondaryButton [ type_ "button", onClick (ReleaseCollectibleClicked collectible.id), testId "collectible-release" ] "Release")
 
     else
         Nothing

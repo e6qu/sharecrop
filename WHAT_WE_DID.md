@@ -6918,3 +6918,23 @@ card, humanized expiry display, per-page document titles, the gnome mark
 replaced the unreadable docs/landing roundel, owner-appropriate task copy,
 and demo seeds showcasing catalog states, provenance, and a received
 transfer. App and demo bundles now build with --optimize.
+
+# Collectible release and ownership visibility
+
+Withdrawal became reversible: platform admins release withdrawn catalog
+entries back to availability and release withdrawn collectible instances
+back to their holders (REST, MCP, and the Collectibles page). Releasing a
+unique re-validates its one-live-instance slot under the entry row lock and
+conflicts when the slot was re-minted during withdrawal, with the partial
+unique index as the engine backstop. Entry deletion tightened to require no
+referencing instances at all (live or withdrawn), so releasable history
+cannot be orphaned. A `collectible_released` event and notification inform
+holders. Ownership became visible: collectible rows and detail show the
+owner's display label (user, organization, or team), unique catalog entries
+show who owns their single instance, and editions show distinct live-owner
+counts. The demo seeds a unique owned by another persona; scenario parity
+covers withdraw→release round-trips for entries and instances. Fixed en
+route: catalog mutation outcomes (withdraw/delete/release notes, including
+server conflict messages) rendered invisibly inside the collapsed
+manage-the-catalog disclosure; the note is now card-level and a visibility
+assertion pins it.

@@ -598,6 +598,35 @@ export async function runSharedScenarioParity(
     "withdrawn catalog entry must report the withdrawn state",
   );
 
+  // Releasing the withdrawn entry returns it to the available state, then a
+  // second withdrawal restores the deletion-ordering flow below.
+  const releasedEntry = await client.request(
+    "POST",
+    `/api/admin/collectible-catalog/${parityEntrySlug}/release`,
+    {},
+  );
+  assertStatus(releasedEntry, 200, "release catalog entry");
+  assertScenario(
+    requireString(releasedEntry.json, "state") === "available",
+    "released catalog entry must report the available state",
+  );
+  const releaseAvailableEntry = await client.request(
+    "POST",
+    `/api/admin/collectible-catalog/${parityEntrySlug}/release`,
+    {},
+  );
+  assertStatus(
+    releaseAvailableEntry,
+    409,
+    "release catalog entry that is already available",
+  );
+  const rewithdrawnEntry = await client.request(
+    "POST",
+    `/api/admin/collectible-catalog/${parityEntrySlug}/withdraw`,
+    {},
+  );
+  assertStatus(rewithdrawnEntry, 200, "re-withdraw catalog entry");
+
   // Deleting the entry is refused while a live instance references it.
   const refusedEntryDelete = await client.request(
     "DELETE",
@@ -620,6 +649,31 @@ export async function runSharedScenarioParity(
     requireString(withdrawnInstance.json, "state") === "withdrawn",
     "withdrawn instance must report the withdrawn state",
   );
+
+  // Releasing the withdrawn instance restores the minted state with the
+  // owner unchanged; a second withdrawal restores the deletion flow below.
+  const releasedInstance = await client.request(
+    "POST",
+    `/api/admin/collectibles/${awardedInstanceID}/release`,
+    {},
+  );
+  assertStatus(releasedInstance, 200, "release catalog instance");
+  assertScenario(
+    requireString(releasedInstance.json, "state") === "minted",
+    "released instance must report the minted state",
+  );
+  assertScenario(
+    requireString(releasedInstance.json, "owner_id") ===
+      transferRecipient.subjectID,
+    "released instance must keep its holder",
+  );
+  const rewithdrawnInstance = await client.request(
+    "POST",
+    `/api/admin/collectibles/${awardedInstanceID}/withdraw`,
+    {},
+  );
+  assertStatus(rewithdrawnInstance, 200, "re-withdraw catalog instance");
+
   const deletedInstance = await client.request(
     "DELETE",
     `/api/admin/collectibles/${awardedInstanceID}`,

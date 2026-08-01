@@ -25,9 +25,11 @@ const (
 	methodListCatalogEntries                  = "assets.ListCatalogEntries"
 	methodAddCatalogEntry                     = "assets.AddCatalogEntry"
 	methodWithdrawCatalogEntry                = "assets.WithdrawCatalogEntry"
+	methodReleaseCatalogEntry                 = "assets.ReleaseCatalogEntry"
 	methodDeleteCatalogEntry                  = "assets.DeleteCatalogEntry"
 	methodAwardFromCatalog                    = "assets.AwardFromCatalog"
 	methodWithdrawCollectible                 = "assets.WithdrawCollectible"
+	methodReleaseCollectible                  = "assets.ReleaseCollectible"
 	methodDeleteWithdrawnCollectible          = "assets.DeleteWithdrawnCollectible"
 	methodTransferCollectibleToOrganization   = "assets.TransferCollectibleToOrganization"
 	methodTransferCollectibleFromOrganization = "assets.TransferCollectibleFromOrganization"
@@ -79,6 +81,10 @@ type withdrawCatalogEntryArgs struct {
 	CatalogSlug string `json:"catalogslug"`
 }
 
+type releaseCatalogEntryArgs struct {
+	CatalogSlug string `json:"catalogslug"`
+}
+
 type deleteCatalogEntryArgs struct {
 	CatalogSlug string `json:"catalogslug"`
 }
@@ -89,6 +95,10 @@ type awardFromCatalogArgs struct {
 
 type withdrawCollectibleArgs struct {
 	WithdrawCommand withdrawCollectibleCommandWire `json:"withdrawcommand"`
+}
+
+type releaseCollectibleArgs struct {
+	ReleaseCommand releaseCollectibleCommandWire `json:"releasecommand"`
 }
 
 type deleteWithdrawnCollectibleArgs struct {
@@ -226,6 +236,16 @@ func Dispatch(ctx context.Context, store assets.Store, method string, args []byt
 			return nil, err
 		}
 		return json.Marshal(encodeCatalogMutationResult(store.WithdrawCatalogEntry(ctx, argCatalogSlug)))
+	case methodReleaseCatalogEntry:
+		var decoded releaseCatalogEntryArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode ReleaseCatalogEntry args: %w", err)
+		}
+		argCatalogSlug, err := decodeCatalogSlug(decoded.CatalogSlug)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeCatalogMutationResult(store.ReleaseCatalogEntry(ctx, argCatalogSlug)))
 	case methodDeleteCatalogEntry:
 		var decoded deleteCatalogEntryArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -256,6 +276,16 @@ func Dispatch(ctx context.Context, store assets.Store, method string, args []byt
 			return nil, err
 		}
 		return json.Marshal(encodeWithdrawResult(store.WithdrawCollectible(ctx, argWithdrawCommand)))
+	case methodReleaseCollectible:
+		var decoded releaseCollectibleArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode ReleaseCollectible args: %w", err)
+		}
+		argReleaseCommand, err := decodeReleaseCollectibleCommand(decoded.ReleaseCommand)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeReleaseResult(store.ReleaseCollectible(ctx, argReleaseCommand)))
 	case methodDeleteWithdrawnCollectible:
 		var decoded deleteWithdrawnCollectibleArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -527,6 +557,26 @@ func (g GuestStore) WithdrawCatalogEntry(ctx context.Context, argCatalogSlug ass
 	return result
 }
 
+func (g GuestStore) ReleaseCatalogEntry(ctx context.Context, argCatalogSlug assets.CatalogSlug) assets.CatalogMutationResult {
+	args, err := json.Marshal(releaseCatalogEntryArgs{CatalogSlug: encodeCatalogSlug(argCatalogSlug)})
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodReleaseCatalogEntry, args)
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	var wire catalogMutationResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	result, err := decodeCatalogMutationResult(wire)
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
 func (g GuestStore) DeleteCatalogEntry(ctx context.Context, argCatalogSlug assets.CatalogSlug) assets.CatalogMutationResult {
 	args, err := json.Marshal(deleteCatalogEntryArgs{CatalogSlug: encodeCatalogSlug(argCatalogSlug)})
 	if err != nil {
@@ -583,6 +633,26 @@ func (g GuestStore) WithdrawCollectible(ctx context.Context, argWithdrawCommand 
 	result, err := decodeWithdrawResult(wire)
 	if err != nil {
 		return assets.WithdrawRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) ReleaseCollectible(ctx context.Context, argReleaseCommand assets.ReleaseCollectibleStoreCommand) assets.ReleaseResult {
+	args, err := json.Marshal(releaseCollectibleArgs{ReleaseCommand: encodeReleaseCollectibleCommand(argReleaseCommand)})
+	if err != nil {
+		return assets.ReleaseRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodReleaseCollectible, args)
+	if err != nil {
+		return assets.ReleaseRejected{Reason: guestError(err)}
+	}
+	var wire releaseResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.ReleaseRejected{Reason: guestError(err)}
+	}
+	result, err := decodeReleaseResult(wire)
+	if err != nil {
+		return assets.ReleaseRejected{Reason: guestError(err)}
 	}
 	return result
 }

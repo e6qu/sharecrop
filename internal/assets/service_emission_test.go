@@ -52,6 +52,53 @@ func TestGiftCollectibleEmitsCollectibleAwarded(t *testing.T) {
 	}
 }
 
+func TestWithdrawCollectibleEmitsCollectibleWithdrawn(t *testing.T) {
+	events := eventtest.NewCapturingStore()
+	store := &memoryStore{events: events}
+	service := NewService(store, eventtest.RecorderOver(events))
+	admin := newUserID(t)
+	collectible := newCollectibleID(t)
+
+	if _, matched := service.WithdrawCollectible(context.Background(), admin, collectible).(CollectibleWithdrawn); !matched {
+		t.Fatalf("withdraw rejected")
+	}
+	appended := events.Appended()
+	if len(appended) != 1 || appended[0].Kind != event.KindCollectibleWithdrawn {
+		t.Fatalf("emitted %d events, want one collectible_withdrawn", len(appended))
+	}
+}
+
+func TestReleaseCollectibleEmitsCollectibleReleased(t *testing.T) {
+	events := eventtest.NewCapturingStore()
+	store := &memoryStore{events: events}
+	service := NewService(store, eventtest.RecorderOver(events))
+	admin := newUserID(t)
+	collectible := newCollectibleID(t)
+
+	released, matched := service.ReleaseCollectible(context.Background(), admin, collectible).(CollectibleReleased)
+	if !matched {
+		t.Fatalf("release rejected")
+	}
+	if released.Value.State != CollectibleStateMinted {
+		t.Fatalf("released state = %q, want minted", released.Value.State.String())
+	}
+	appended := events.Appended()
+	if len(appended) != 1 || appended[0].Kind != event.KindCollectibleReleased {
+		t.Fatalf("emitted %d events, want one collectible_released", len(appended))
+	}
+	subject, subjectMatched := appended[0].Subject.Collectible.(event.CollectibleSubject)
+	if !subjectMatched || subject.ID != collectible {
+		t.Fatalf("collectible subject did not carry the released collectible")
+	}
+	actor, actorMatched := appended[0].Actor.(event.ActorUser)
+	if !actorMatched || actor.ID != admin {
+		t.Fatalf("release actor = %v, want the acting admin", appended[0].Actor)
+	}
+	if !assetsRecipientsContain(events.RecipientsAt(0), admin) {
+		t.Fatalf("collectible_released recipients missed the acting admin")
+	}
+}
+
 func TestAwardOrganizationCollectibleEmitsCollectibleAwarded(t *testing.T) {
 	events := eventtest.NewCapturingStore()
 	store := &memoryStore{events: events}

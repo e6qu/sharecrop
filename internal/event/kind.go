@@ -36,6 +36,7 @@ var (
 	KindTipReceived                = Kind{value: "tip_received"}
 	KindCollectibleAwarded         = Kind{value: "collectible_awarded"}
 	KindCollectibleWithdrawn       = Kind{value: "collectible_withdrawn"}
+	KindCollectibleReleased        = Kind{value: "collectible_released"}
 	KindCreditsSent                = Kind{value: "credits_sent"}
 )
 
@@ -65,6 +66,7 @@ func AllKinds() []Kind {
 		KindTipReceived,
 		KindCollectibleAwarded,
 		KindCollectibleWithdrawn,
+		KindCollectibleReleased,
 		KindCreditsSent,
 	}
 }

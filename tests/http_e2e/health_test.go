@@ -444,6 +444,14 @@ func (healthAssetService) WithdrawCollectible(context.Context, core.UserID, core
 	return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
+func (healthAssetService) ReleaseCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult {
+	return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) ReleaseCollectible(context.Context, core.UserID, core.CollectibleID) assets.ReleaseResult {
+	return assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
 func (healthAssetService) DeleteWithdrawnCollectible(context.Context, core.CollectibleID) assets.DeleteCollectibleResult {
 	return assets.DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }

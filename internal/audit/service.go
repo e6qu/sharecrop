@@ -23,9 +23,11 @@ type Action struct {
 var (
 	ActionAdminCollectibleAwarded     = Action{value: "admin_collectible_awarded"}
 	ActionAdminCollectibleWithdrawn   = Action{value: "admin_collectible_withdrawn"}
+	ActionAdminCollectibleReleased    = Action{value: "admin_collectible_released"}
 	ActionAdminCollectibleDeleted     = Action{value: "admin_collectible_deleted"}
 	ActionAdminCatalogEntryAdded      = Action{value: "admin_catalog_entry_added"}
 	ActionAdminCatalogEntryWithdrawn  = Action{value: "admin_catalog_entry_withdrawn"}
+	ActionAdminCatalogEntryReleased   = Action{value: "admin_catalog_entry_released"}
 	ActionAdminCatalogEntryDeleted    = Action{value: "admin_catalog_entry_deleted"}
 	ActionAdminCreditGranted          = Action{value: "admin_credit_granted"}
 	ActionAccountDeactivated          = Action{value: "account_deactivated"}

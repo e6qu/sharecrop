@@ -161,6 +161,10 @@ type Collectible struct {
 	// the list read paths (the same convention as task creator names);
 	// mutation results and issuerless rows leave it zero.
 	IssuerDisplayName auth.DisplayName
+	// OwnerDisplayName labels the owner for read models: the user's display
+	// name, the organization's name, or the team's name, per OwnerKind. It is
+	// resolved on the list read paths; mutation results leave it zero.
+	OwnerDisplayName auth.DisplayName
 }
 
 // CatalogRef is a collectible instance's link to its catalog entry, or its
