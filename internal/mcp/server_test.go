@@ -691,6 +691,14 @@ func (services fakeServices) WithdrawCollectible(_ context.Context, _ core.UserI
 	return assets.CollectibleWithdrawn{Value: assets.Collectible{ID: collectibleID, State: assets.CollectibleStateWithdrawn}}
 }
 
+func (services fakeServices) ReleaseCatalogEntry(_ context.Context, slug assets.CatalogSlug) assets.CatalogMutationResult {
+	return assets.CatalogMutated{Value: assets.CatalogEntry{Slug: slug, State: assets.CatalogEntryStateAvailable, Cap: assets.NoEditionCap{}}}
+}
+
+func (services fakeServices) ReleaseCollectible(_ context.Context, _ core.UserID, collectibleID core.CollectibleID) assets.ReleaseResult {
+	return assets.CollectibleReleased{Value: assets.Collectible{ID: collectibleID, State: assets.CollectibleStateMinted}}
+}
+
 func (services fakeServices) DeleteWithdrawnCollectible(_ context.Context, _ core.CollectibleID) assets.DeleteCollectibleResult {
 	return assets.CollectibleDeleted{}
 }

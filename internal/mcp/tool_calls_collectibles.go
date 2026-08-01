@@ -29,6 +29,10 @@ type collectibleSummary struct {
 	// IssuerDisplayName names the user who minted or awarded the instance.
 	// Resolved on the list read paths; mutation results leave it empty.
 	IssuerDisplayName string `json:"issuer_display_name"`
+	// OwnerDisplayName labels the current owner (user display name,
+	// organization name, or team name, per owner_kind). Resolved on the list
+	// read paths; mutation results leave it empty.
+	OwnerDisplayName string `json:"owner_display_name"`
 }
 
 type collectiblesListPayload struct {
@@ -50,6 +54,11 @@ type catalogEntryPayload struct {
 	MaxEditions int64 `json:"max_editions"`
 	// MintedCount counts the entry's live (non-withdrawn) instances.
 	MintedCount int64 `json:"minted_count"`
+	// LiveOwnerCount counts the distinct owners holding live instances.
+	LiveOwnerCount int64 `json:"live_owner_count"`
+	// OwnerDisplayName labels the holder of a unique entry's live instance;
+	// empty for non-unique entries and unminted slots.
+	OwnerDisplayName string `json:"owner_display_name"`
 }
 
 type catalogPayload struct {
@@ -84,6 +93,7 @@ func collectibleToSummary(value assets.Collectible) collectibleSummary {
 		CatalogSlug:       catalogSlug,
 		EditionNumber:     editionNumber,
 		IssuerDisplayName: value.IssuerDisplayName.String(),
+		OwnerDisplayName:  value.OwnerDisplayName.String(),
 	}
 }
 
@@ -151,6 +161,8 @@ func (server Server) callCollectibleCatalog(ctx context.Context, subject auth.Us
 	for index := range listed.Values {
 		entry := catalogEntryToPayload(listed.Values[index].Entry)
 		entry.MintedCount = listed.Values[index].LiveInstanceCount
+		entry.LiveOwnerCount = listed.Values[index].LiveOwnerCount
+		entry.OwnerDisplayName = listed.Values[index].OwnerDisplayName.String()
 		payload.Entries = append(payload.Entries, entry)
 	}
 	return marshalPayload(payload)
@@ -481,9 +493,25 @@ func (server Server) callWithdrawCatalogEntry(ctx context.Context, subject auth.
 	return marshalPayload(catalogEntryToPayload(mutated.Value))
 }
 
-// callDeleteCatalogEntry removes a withdrawn entry that no live instance
-// references; a not-yet-withdrawn entry or one with live instances is
-// refused with a conflict. Admin-gated in dispatch.
+// callReleaseCatalogEntry returns a withdrawn entry to the available state
+// so it can be awarded again; an entry that is not withdrawn is refused with
+// a conflict. Admin-gated in dispatch.
+func (server Server) callReleaseCatalogEntry(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	slug, problem := parseMCPCatalogSlug(arguments)
+	if problem != nil {
+		return problem
+	}
+	result := server.services.ReleaseCatalogEntry(ctx, slug)
+	mutated, matched := result.(assets.CatalogMutated)
+	if !matched {
+		return toolFailed{code: result.(assets.CatalogMutationRejected).Reason.Code(), message: result.(assets.CatalogMutationRejected).Reason.Description()}
+	}
+	return marshalPayload(catalogEntryToPayload(mutated.Value))
+}
+
+// callDeleteCatalogEntry removes a withdrawn entry that no instance — live
+// or withdrawn — references; a not-yet-withdrawn entry or one with remaining
+// instances is refused with a conflict. Admin-gated in dispatch.
 func (server Server) callDeleteCatalogEntry(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	slug, problem := parseMCPCatalogSlug(arguments)
 	if problem != nil {
@@ -517,6 +545,30 @@ func (server Server) callWithdrawCollectible(ctx context.Context, subject auth.U
 		return toolFailed{code: result.(assets.WithdrawRejected).Reason.Code(), message: result.(assets.WithdrawRejected).Reason.Description()}
 	}
 	return marshalPayload(collectibleToSummary(withdrawn.Value))
+}
+
+// callReleaseCollectible returns a withdrawn instance to its holder's
+// inventory; the holder learns through the collectible_released event. A
+// non-withdrawn instance, or a unique whose live slot was re-minted, is
+// refused with a conflict. Admin-gated in dispatch.
+func (server Server) callReleaseCollectible(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		CollectibleID string `json:"collectible_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	collectibleIDResult := core.ParseCollectibleID(args.CollectibleID)
+	collectibleID, collectibleMatched := collectibleIDResult.(core.CollectibleIDCreated)
+	if !collectibleMatched {
+		return invalidIDArgument("collectible_id")
+	}
+	result := server.services.ReleaseCollectible(ctx, subject.ID, collectibleID.Value)
+	released, matched := result.(assets.CollectibleReleased)
+	if !matched {
+		return toolFailed{code: result.(assets.ReleaseRejected).Reason.Code(), message: result.(assets.ReleaseRejected).Reason.Description()}
+	}
+	return marshalPayload(collectibleToSummary(released.Value))
 }
 
 // callDeleteWithdrawnCollectible hard-deletes a withdrawn instance; every

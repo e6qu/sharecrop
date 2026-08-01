@@ -6,6 +6,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/assets/assetstest"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 )
 
 func sampleCollectible(t *testing.T) assets.Collectible {
@@ -107,6 +108,42 @@ func TestResultRoundTrips(t *testing.T) {
 	}
 	if typed, matched := held.(assets.TaskHeldCollectiblesFound); !matched || len(typed.IDs) != 1 || typed.IDs[0] != collectible.ID {
 		t.Errorf("task-held result did not round-trip: %T", held)
+	}
+}
+
+func TestReleaseRoundTrips(t *testing.T) {
+	collectible := sampleCollectible(t)
+
+	// Release command (collectible id + the collectible_released draft).
+	draftCreated, draftMatched := event.NewDraft(event.KindCollectibleReleased, event.ActorSystem{}, event.NoSubjectRefs(), event.EmptyMetadata(), event.NewRecipients()).(event.DraftCreated)
+	if !draftMatched {
+		t.Fatalf("release draft rejected")
+	}
+	command := assets.ReleaseCollectibleStoreCommand{CollectibleID: collectible.ID, Draft: draftCreated.Value}
+	decodedCommand, err := decodeReleaseCollectibleCommand(encodeReleaseCollectibleCommand(command))
+	if err != nil {
+		t.Fatalf("decode release command: %v", err)
+	}
+	if decodedCommand.CollectibleID != collectible.ID || decodedCommand.Draft.Kind != event.KindCollectibleReleased {
+		t.Errorf("release command did not round-trip")
+	}
+
+	// Release result (released/rejected).
+	released, err := decodeReleaseResult(encodeReleaseResult(assets.CollectibleReleased{Value: collectible}))
+	if err != nil {
+		t.Fatalf("decode released: %v", err)
+	}
+	if typed, matched := released.(assets.CollectibleReleased); !matched {
+		t.Errorf("released result = %T", released)
+	} else {
+		assertCollectibleEqual(t, typed.Value, collectible)
+	}
+	rejected, err := decodeReleaseResult(encodeReleaseResult(assets.ReleaseRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "another live instance exists")}))
+	if err != nil {
+		t.Fatalf("decode release rejection: %v", err)
+	}
+	if typed, matched := rejected.(assets.ReleaseRejected); !matched || typed.Reason.Code() != core.ErrorCodeConflict {
+		t.Errorf("release rejection did not round-trip: %T", rejected)
 	}
 }
 

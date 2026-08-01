@@ -19,8 +19,8 @@ func newUserID(t *testing.T) core.UserID {
 
 func TestParseKindRoundTripsEveryKind(t *testing.T) {
 	kinds := AllKinds()
-	if len(kinds) != 23 {
-		t.Fatalf("AllKinds() has %d kinds, want 23", len(kinds))
+	if len(kinds) != 24 {
+		t.Fatalf("AllKinds() has %d kinds, want 24", len(kinds))
 	}
 	for _, kind := range kinds {
 		parsed, matched := ParseKind(kind.String()).(KindParsed)

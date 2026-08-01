@@ -77,6 +77,9 @@ type collectibleWire struct {
 	// IssuerName is the resolved issuer display name on list reads; empty
 	// everywhere else.
 	IssuerName string `json:"issuer_name,omitempty"`
+	// OwnerName is the resolved owner display label on list reads; empty
+	// everywhere else.
+	OwnerName string `json:"owner_name,omitempty"`
 }
 
 func encodeCollectible(collectible assets.Collectible) collectibleWire {
@@ -107,6 +110,7 @@ func encodeCollectible(collectible assets.Collectible) collectibleWire {
 		EditionNumber:  editionNumber,
 		Issuer:         issuer,
 		IssuerName:     collectible.IssuerDisplayName.String(),
+		OwnerName:      collectible.OwnerDisplayName.String(),
 	}
 }
 
@@ -159,6 +163,14 @@ func decodeCollectible(wire collectibleWire) (assets.Collectible, error) {
 		}
 		issuerName = nameResult.Value
 	}
+	var ownerName auth.DisplayName
+	if wire.OwnerName != "" {
+		nameResult, nameMatched := auth.NewDisplayName(wire.OwnerName).(auth.DisplayNameAccepted)
+		if !nameMatched {
+			return assets.Collectible{}, fmt.Errorf("collectible owner display label is invalid")
+		}
+		ownerName = nameResult.Value
+	}
 	return assets.Collectible{
 		ID:                id,
 		Name:              name,
@@ -173,6 +185,7 @@ func decodeCollectible(wire collectibleWire) (assets.Collectible, error) {
 		Edition:           editionRef,
 		Issuer:            issuerRef,
 		IssuerDisplayName: issuerName,
+		OwnerDisplayName:  ownerName,
 	}, nil
 }
 
@@ -640,6 +653,11 @@ type catalogListingWire struct {
 	Entry catalogEntryWire `json:"entry"`
 	// LiveInstances counts the entry's non-withdrawn instances.
 	LiveInstances int64 `json:"live_instances"`
+	// LiveOwners counts the distinct owners of the live instances.
+	LiveOwners int64 `json:"live_owners"`
+	// OwnerLabel is the display label of a unique entry's live holder; empty
+	// for non-unique entries and unminted slots.
+	OwnerLabel string `json:"owner_label,omitempty"`
 }
 
 type catalogListResultWire struct {
@@ -653,7 +671,12 @@ func encodeCatalogListResult(result assets.CatalogListResult) catalogListResultW
 	case assets.CatalogListed:
 		entries := make([]catalogListingWire, 0, len(typed.Values))
 		for _, listing := range typed.Values {
-			entries = append(entries, catalogListingWire{Entry: encodeCatalogEntry(listing.Entry), LiveInstances: listing.LiveInstanceCount})
+			entries = append(entries, catalogListingWire{
+				Entry:         encodeCatalogEntry(listing.Entry),
+				LiveInstances: listing.LiveInstanceCount,
+				LiveOwners:    listing.LiveOwnerCount,
+				OwnerLabel:    listing.OwnerDisplayName.String(),
+			})
 		}
 		return catalogListResultWire{Variant: "listed", Entries: entries}
 	case assets.CatalogListRejected:
@@ -673,7 +696,20 @@ func decodeCatalogListResult(wire catalogListResultWire) (assets.CatalogListResu
 			if err != nil {
 				return nil, err
 			}
-			entries = append(entries, assets.CatalogListing{Entry: entry, LiveInstanceCount: listingWire.LiveInstances})
+			var ownerLabel auth.DisplayName
+			if listingWire.OwnerLabel != "" {
+				labelResult, labelMatched := auth.NewDisplayName(listingWire.OwnerLabel).(auth.DisplayNameAccepted)
+				if !labelMatched {
+					return nil, fmt.Errorf("catalog listing owner label is invalid")
+				}
+				ownerLabel = labelResult.Value
+			}
+			entries = append(entries, assets.CatalogListing{
+				Entry:             entry,
+				LiveInstanceCount: listingWire.LiveInstances,
+				LiveOwnerCount:    listingWire.LiveOwners,
+				OwnerDisplayName:  ownerLabel,
+			})
 		}
 		return assets.CatalogListed{Values: entries}, nil
 	case "rejected":
@@ -787,6 +823,30 @@ func decodeWithdrawCollectibleCommand(wire withdrawCollectibleCommandWire) (asse
 		return assets.WithdrawCollectibleStoreCommand{}, err
 	}
 	return assets.WithdrawCollectibleStoreCommand{CollectibleID: collectibleID, Draft: draft}, nil
+}
+
+type releaseCollectibleCommandWire struct {
+	CollectibleID string                `json:"collectible_id"`
+	Draft         eventbridge.DraftWire `json:"draft"`
+}
+
+func encodeReleaseCollectibleCommand(command assets.ReleaseCollectibleStoreCommand) releaseCollectibleCommandWire {
+	return releaseCollectibleCommandWire{
+		CollectibleID: corewire.EncodeCollectibleID(command.CollectibleID),
+		Draft:         eventbridge.EncodeDraft(command.Draft),
+	}
+}
+
+func decodeReleaseCollectibleCommand(wire releaseCollectibleCommandWire) (assets.ReleaseCollectibleStoreCommand, error) {
+	collectibleID, err := corewire.DecodeCollectibleID(wire.CollectibleID)
+	if err != nil {
+		return assets.ReleaseCollectibleStoreCommand{}, err
+	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return assets.ReleaseCollectibleStoreCommand{}, err
+	}
+	return assets.ReleaseCollectibleStoreCommand{CollectibleID: collectibleID, Draft: draft}, nil
 }
 
 type transferToOrganizationCommandWire struct {
@@ -919,6 +979,48 @@ func decodeWithdrawResult(wire withdrawResultWire) (assets.WithdrawResult, error
 		return assets.WithdrawRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
 		return nil, fmt.Errorf("unknown withdraw result variant %q", wire.Variant)
+	}
+}
+
+type releaseResultWire struct {
+	Variant        string                  `json:"variant"`
+	Collectible    *collectibleWire        `json:"collectible,omitempty"`
+	RecordedEvents []eventbridge.DraftWire `json:"recorded_events,omitempty"`
+	Error          *domainwire.DomainError `json:"error,omitempty"`
+}
+
+func encodeReleaseResult(result assets.ReleaseResult) releaseResultWire {
+	switch typed := result.(type) {
+	case assets.CollectibleReleased:
+		collectible := encodeCollectible(typed.Value)
+		return releaseResultWire{Variant: "released", Collectible: &collectible, RecordedEvents: eventbridge.EncodeDrafts(typed.RecordedEvents)}
+	case assets.ReleaseRejected:
+		reason := domainwire.EncodeDomainError(typed.Reason)
+		return releaseResultWire{Variant: "rejected", Error: &reason}
+	default:
+		return releaseResultWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown assets result %T", result))}
+	}
+}
+
+func decodeReleaseResult(wire releaseResultWire) (assets.ReleaseResult, error) {
+	switch wire.Variant {
+	case "released":
+		if wire.Collectible == nil {
+			return nil, fmt.Errorf("release result is missing its collectible")
+		}
+		collectible, err := decodeCollectible(*wire.Collectible)
+		if err != nil {
+			return nil, err
+		}
+		recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+		if err != nil {
+			return nil, err
+		}
+		return assets.CollectibleReleased{Value: collectible, RecordedEvents: recorded}, nil
+	case "rejected":
+		return assets.ReleaseRejected{Reason: decodeReason(wire.Error)}, nil
+	default:
+		return nil, fmt.Errorf("unknown release result variant %q", wire.Variant)
 	}
 }
 

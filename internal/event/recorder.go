@@ -133,6 +133,8 @@ func NotificationRuleFor(kind Kind) NotificationRule {
 		return NotifyAs{Kind: notification.KindCollectibleAwarded}
 	case KindCollectibleWithdrawn:
 		return NotifyAs{Kind: notification.KindCollectibleWithdrawn}
+	case KindCollectibleReleased:
+		return NotifyAs{Kind: notification.KindCollectibleReleased}
 	case KindCreditsSent:
 		return NotifyAs{Kind: notification.KindCreditsReceived}
 	default:

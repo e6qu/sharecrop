@@ -528,6 +528,9 @@ notificationKindLabel kind =
         Notification.NotificationKindCollectibleWithdrawn ->
             "Collectible withdrawn"
 
+        Notification.NotificationKindCollectibleReleased ->
+            "Collectible released"
+
         Notification.NotificationKindCreditsReceived ->
             "Credits received"
 
@@ -618,6 +621,9 @@ notificationSentence actorName subjectTitle metadataJSON kind =
 
         Notification.NotificationKindCollectibleWithdrawn ->
             withdrawingActor actorName ++ " withdrew " ++ titledOr "a collectible" subjectTitle ++ " from your inventory."
+
+        Notification.NotificationKindCollectibleReleased ->
+            withdrawingActor actorName ++ " released " ++ titledOr "a collectible" subjectTitle ++ " back into your inventory."
 
         Notification.NotificationKindCreditsReceived ->
             actor ++ " sent you " ++ credits ++ "."
@@ -727,6 +733,9 @@ eventSentence actorName taskTitle kind =
         Events.DomainEventKindCollectibleWithdrawn ->
             "A collectible was withdrawn."
 
+        Events.DomainEventKindCollectibleReleased ->
+            "A collectible was released back to its holder."
+
         Events.DomainEventKindCreditsSent ->
             actor ++ " sent credits."
 
@@ -833,6 +842,9 @@ domainEventKindLabel kind =
         Events.DomainEventKindCollectibleWithdrawn ->
             "Collectible withdrawn"
 
+        Events.DomainEventKindCollectibleReleased ->
+            "Collectible released"
+
         Events.DomainEventKindCreditsSent ->
             "Credits sent"
 
@@ -908,6 +920,9 @@ domainEventKindTag kind =
 
         Events.DomainEventKindCollectibleWithdrawn ->
             "collectible_withdrawn"
+
+        Events.DomainEventKindCollectibleReleased ->
+            "collectible_released"
 
         Events.DomainEventKindCreditsSent ->
             "credits_sent"

@@ -27,6 +27,7 @@ type NotificationKind
     | NotificationKindTipReceived
     | NotificationKindCollectibleAwarded
     | NotificationKindCollectibleWithdrawn
+    | NotificationKindCollectibleReleased
     | NotificationKindCreditsReceived
 
 notificationKindDecoder : Decoder NotificationKind
@@ -97,6 +98,9 @@ notificationKindDecoder =
 
                     "collectible_withdrawn" ->
                         Decode.succeed NotificationKindCollectibleWithdrawn
+
+                    "collectible_released" ->
+                        Decode.succeed NotificationKindCollectibleReleased
 
                     "credits_received" ->
                         Decode.succeed NotificationKindCreditsReceived
@@ -170,6 +174,9 @@ notificationKindEncoder notificationKind =
 
         NotificationKindCollectibleWithdrawn ->
             Encode.string "collectible_withdrawn"
+
+        NotificationKindCollectibleReleased ->
+            Encode.string "collectible_released"
 
         NotificationKindCreditsReceived ->
             Encode.string "credits_received"

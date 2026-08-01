@@ -10,14 +10,16 @@ import (
 )
 
 type catalogEntryHTTPResponse struct {
-	Slug           string `json:"slug"`
-	Name           string `json:"name"`
-	Kind           string `json:"kind"`
-	TransferPolicy string `json:"transfer_policy"`
-	Art            string `json:"art"`
-	State          string `json:"state"`
-	MaxEditions    int64  `json:"max_editions"`
-	MintedCount    int64  `json:"minted_count"`
+	Slug             string `json:"slug"`
+	Name             string `json:"name"`
+	Kind             string `json:"kind"`
+	TransferPolicy   string `json:"transfer_policy"`
+	Art              string `json:"art"`
+	State            string `json:"state"`
+	MaxEditions      int64  `json:"max_editions"`
+	MintedCount      int64  `json:"minted_count"`
+	LiveOwnerCount   int64  `json:"live_owner_count"`
+	OwnerDisplayName string `json:"owner_display_name"`
 }
 
 func fetchCatalogEntry(t *testing.T, server *httptest.Server, accessToken string, slug string) catalogEntryHTTPResponse {

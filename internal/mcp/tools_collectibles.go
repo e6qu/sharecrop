@@ -19,8 +19,10 @@ const (
 	toolTransferOrgCollectible       = "sharecrop.transfer_org_collectible"
 	toolAddCatalogEntry              = "sharecrop.add_catalog_entry"
 	toolWithdrawCatalogEntry         = "sharecrop.withdraw_catalog_entry"
+	toolReleaseCatalogEntry          = "sharecrop.release_catalog_entry"
 	toolDeleteCatalogEntry           = "sharecrop.delete_catalog_entry"
 	toolWithdrawCollectible          = "sharecrop.withdraw_collectible"
+	toolReleaseCollectible           = "sharecrop.release_collectible"
 	toolDeleteWithdrawnCollectible   = "sharecrop.delete_withdrawn_collectible"
 )
 
@@ -99,14 +101,26 @@ func collectiblesToolDefinitions() []toolDefinition {
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"slug":{"type":"string"}},"required":["slug"]}`),
 		},
 		{
+			Name:        toolReleaseCatalogEntry,
+			Description: "Release a withdrawn catalog entry back to the available state so it can be awarded again; an entry that is not withdrawn is refused with a conflict. Requires platform admin access.",
+			Scope:       agent.ScopePlatformAdmin,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"slug":{"type":"string"}},"required":["slug"]}`),
+		},
+		{
 			Name:        toolDeleteCatalogEntry,
-			Description: "Delete a withdrawn catalog entry that no live instance references; a not-yet-withdrawn entry or one with live instances is refused with a conflict. Requires platform admin access.",
+			Description: "Delete a withdrawn catalog entry that no instance references — live or withdrawn; a not-yet-withdrawn entry or one with remaining instances is refused with a conflict. Requires platform admin access.",
 			Scope:       agent.ScopePlatformAdmin,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"slug":{"type":"string"}},"required":["slug"]}`),
 		},
 		{
 			Name:        toolWithdrawCollectible,
 			Description: "Withdraw a catalog-minted collectible instance from its holder; the former holder is notified through the collectible_withdrawn event. Requires platform admin access.",
+			Scope:       agent.ScopePlatformAdmin,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"collectible_id":{"type":"string"}},"required":["collectible_id"]}`),
+		},
+		{
+			Name:        toolReleaseCollectible,
+			Description: "Release a withdrawn collectible instance back into its holder's inventory (owner unchanged); the holder is notified through the collectible_released event. A non-withdrawn instance, or a unique whose live slot was re-minted while this instance was withdrawn, is refused with a conflict. Requires platform admin access.",
 			Scope:       agent.ScopePlatformAdmin,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"collectible_id":{"type":"string"}},"required":["collectible_id"]}`),
 		},

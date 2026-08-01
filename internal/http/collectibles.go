@@ -41,6 +41,10 @@ type collectibleResponse struct {
 	// Resolved on the list read paths; mutation responses and pre-provenance
 	// rows leave it empty.
 	IssuerDisplayName string `json:"issuer_display_name"`
+	// OwnerDisplayName labels the current owner (user display name,
+	// organization name, or team name, per owner_kind). Resolved on the list
+	// read paths; mutation responses leave it empty.
+	OwnerDisplayName string `json:"owner_display_name"`
 }
 
 type collectiblesResponse struct {
@@ -61,6 +65,11 @@ type catalogEntryResponse struct {
 	MaxEditions int64 `json:"max_editions"`
 	// MintedCount counts the entry's live (non-withdrawn) instances.
 	MintedCount int64 `json:"minted_count"`
+	// LiveOwnerCount counts the distinct owners holding live instances.
+	LiveOwnerCount int64 `json:"live_owner_count"`
+	// OwnerDisplayName labels the holder of a unique entry's live instance;
+	// empty for non-unique entries and unminted slots.
+	OwnerDisplayName string `json:"owner_display_name"`
 }
 
 type collectibleCatalogResponse struct {
@@ -178,6 +187,8 @@ func (server Server) collectibleCatalog(w http.ResponseWriter, r *http.Request) 
 	for index := range listed.Values {
 		entry := catalogEntryToResponse(listed.Values[index].Entry)
 		entry.MintedCount = listed.Values[index].LiveInstanceCount
+		entry.LiveOwnerCount = listed.Values[index].LiveOwnerCount
+		entry.OwnerDisplayName = listed.Values[index].OwnerDisplayName.String()
 		response.Entries = append(response.Entries, entry)
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -287,9 +298,33 @@ func (server Server) withdrawCatalogEntry(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, catalogEntryToResponse(mutated.Value))
 }
 
-// deleteCatalogEntry removes a withdrawn entry that no live instance
-// references (platform admin). A not-yet-withdrawn entry or one with live
-// instances is refused with a conflict.
+// releaseCatalogEntry returns a withdrawn entry to the available state so it
+// can be awarded again (platform admin). An entry that is not withdrawn is
+// refused with a conflict.
+func (server Server) releaseCatalogEntry(w http.ResponseWriter, r *http.Request) {
+	actor, ok := server.requireAdminSubject(w, r)
+	if !ok {
+		return
+	}
+	slugResult := assets.NewCatalogSlug(r.PathValue("slug"))
+	slug, slugMatched := slugResult.(assets.CatalogSlugAccepted)
+	if !slugMatched {
+		writeDomainError(w, slugResult.(assets.CatalogSlugRejected).Reason)
+		return
+	}
+	result := server.assetService.ReleaseCatalogEntry(r.Context(), slug.Value)
+	mutated, matched := result.(assets.CatalogMutated)
+	if !matched {
+		writeDomainError(w, result.(assets.CatalogMutationRejected).Reason)
+		return
+	}
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionAdminCatalogEntryReleased, audit.Subject{Kind: "collectible_catalog_entry", ID: mutated.Value.Slug.String()}, audit.EmptyMetadata())
+	writeJSON(w, http.StatusOK, catalogEntryToResponse(mutated.Value))
+}
+
+// deleteCatalogEntry removes a withdrawn entry that no instance — live or
+// withdrawn — references (platform admin). A not-yet-withdrawn entry or one
+// with remaining instances is refused with a conflict.
 func (server Server) deleteCatalogEntry(w http.ResponseWriter, r *http.Request) {
 	actor, ok := server.requireAdminSubject(w, r)
 	if !ok {
@@ -333,6 +368,31 @@ func (server Server) withdrawCollectible(w http.ResponseWriter, r *http.Request)
 	}
 	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionAdminCollectibleWithdrawn, audit.Subject{Kind: "collectible", ID: withdrawn.Value.ID.String()}, audit.EmptyMetadata())
 	writeJSON(w, http.StatusOK, collectibleToResponse(withdrawn.Value))
+}
+
+// releaseCollectible returns a withdrawn instance to its holder's inventory
+// (platform admin); the holder is notified through the collectible_released
+// event. A non-withdrawn instance, or a unique whose live slot was re-minted
+// while this instance was withdrawn, is refused with a conflict.
+func (server Server) releaseCollectible(w http.ResponseWriter, r *http.Request) {
+	actor, ok := server.requireAdminSubject(w, r)
+	if !ok {
+		return
+	}
+	collectibleIDResult := core.ParseCollectibleID(r.PathValue("collectible_id"))
+	collectibleID, idMatched := collectibleIDResult.(core.CollectibleIDCreated)
+	if !idMatched {
+		writeDomainError(w, collectibleIDResult.(core.CollectibleIDRejected).Reason)
+		return
+	}
+	result := server.assetService.ReleaseCollectible(r.Context(), actor.subject.ID, collectibleID.Value)
+	released, matched := result.(assets.CollectibleReleased)
+	if !matched {
+		writeDomainError(w, result.(assets.ReleaseRejected).Reason)
+		return
+	}
+	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionAdminCollectibleReleased, audit.Subject{Kind: "collectible", ID: released.Value.ID.String()}, audit.EmptyMetadata())
+	writeJSON(w, http.StatusOK, collectibleToResponse(released.Value))
 }
 
 // deleteCollectible hard-deletes a withdrawn instance (platform admin). Every
@@ -708,5 +768,6 @@ func collectibleToResponse(value assets.Collectible) collectibleResponse {
 		CatalogSlug:       catalogSlug,
 		EditionNumber:     editionNumber,
 		IssuerDisplayName: value.IssuerDisplayName.String(),
+		OwnerDisplayName:  value.OwnerDisplayName.String(),
 	}
 }

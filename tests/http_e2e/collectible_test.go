@@ -287,6 +287,7 @@ type collectibleHTTPResponse struct {
 	CatalogSlug       string `json:"catalog_slug"`
 	EditionNumber     int64  `json:"edition_number"`
 	IssuerDisplayName string `json:"issuer_display_name"`
+	OwnerDisplayName  string `json:"owner_display_name"`
 }
 
 func TestDefaultCollectibleCatalogAwardAndTransfer(t *testing.T) {

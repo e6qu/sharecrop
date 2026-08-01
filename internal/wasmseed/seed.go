@@ -400,6 +400,20 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 	if mintResult := assetService.AwardFromCatalog(ctx, maraID, "founders-medal", assets.CollectibleOwnerKindUser, maraID.String(), ""); !isCollectibleMinted(mintResult) {
 		return "seed founders-medal award failed"
 	}
+	// A unique held by another persona (ren), so the catalog gallery shows a
+	// meaningful "owned by" label from the demo actor's seat - mara holds the
+	// Founders' Medal herself, so its owner label just names her.
+	if err := assetService.AddCatalogEntry(ctx, assets.CatalogEntry{
+		Slug: mustCatalogSlug("best-in-show-2026"), Name: mustCollectibleName("Best in Show 2026"),
+		Kind: assets.CollectibleKindUnique, Policy: assets.TransferPolicyTransferableBetweenUsers,
+		Art: "prize-cow", State: assets.CatalogEntryStateAvailable,
+		Cap: assets.EditionCapOf{Limit: 1},
+	}); !isCatalogMutated(err) {
+		return "seed best-in-show catalog entry failed"
+	}
+	if mintResult := assetService.AwardFromCatalog(ctx, maraID, "best-in-show-2026", assets.CollectibleOwnerKindUser, memberIDs["ren"].String(), ""); !isCollectibleMinted(mintResult) {
+		return "seed best-in-show award failed"
+	}
 	if err := assetService.AddCatalogEntry(ctx, assets.CatalogEntry{
 		Slug: mustCatalogSlug("harvest-festival-2026"), Name: mustCollectibleName("Harvest Festival 2026"),
 		Kind: assets.CollectibleKindEdition, Policy: assets.TransferPolicyTransferableBetweenUsers,

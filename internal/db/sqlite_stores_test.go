@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -221,6 +223,91 @@ func TestSavedQueueViewUpsertOnSQLite(t *testing.T) {
 	if listed.Values[0].Query != "state:closed" {
 		t.Fatalf("query = %q, want updated to state:closed", listed.Values[0].Query)
 	}
+}
+
+// TestCollectibleOwnerLabelsAndReleaseOnSQLite proves the demo (SQLite)
+// engine runs the same collectible read and release SQL as Postgres: the
+// list projection resolves the owner display label per owner kind, the
+// catalog listing reports ownership (live owners, unique holder label), and
+// a withdrawn instance releases back to minted.
+func TestCollectibleOwnerLabelsAndReleaseOnSQLite(t *testing.T) {
+	ctx := context.Background()
+	sqlHandle := openSQLiteWithSchema(t)
+	handle := NewSQLite(sqlHandle)
+	store := NewCollectibleStoreFromHandle(handle)
+
+	admin := seedUserForTest(t, sqlHandle, "Admin Adley")
+	holder := seedUserForTest(t, sqlHandle, "Mara Fields")
+	page, pageMatched := core.NewPage(50, 0).(core.PageAccepted)
+	if !pageMatched {
+		t.Fatalf("page rejected")
+	}
+
+	slugAccepted, slugMatched := assets.NewCatalogSlug("cornucopia").(assets.CatalogSlugAccepted)
+	if !slugMatched {
+		t.Fatalf("slug rejected")
+	}
+	idCreated, idMatched := core.NewCollectibleID().(core.CollectibleIDCreated)
+	if !idMatched {
+		t.Fatalf("collectible id rejected")
+	}
+	awarded, awardMatched := store.AwardFromCatalog(ctx, assets.AwardFromCatalogStoreCommand{
+		NewID:     idCreated.Value,
+		Slug:      slugAccepted.Value,
+		OwnerKind: assets.CollectibleOwnerKindUser,
+		OwnerID:   holder.String(),
+		Issuer:    admin,
+	}).(assets.CreateStoreAccepted)
+	if !awardMatched {
+		t.Fatalf("award from catalog rejected on sqlite")
+	}
+
+	listed, listMatched := store.ListCollectibles(ctx, holder, page.Value).(assets.ListStoreListed)
+	if !listMatched || len(listed.Values) != 1 {
+		t.Fatalf("sqlite list = %#v, want the awarded instance", listed)
+	}
+	if listed.Values[0].OwnerDisplayName.String() != "Mara Fields" {
+		t.Fatalf("sqlite owner label = %q, want Mara Fields", listed.Values[0].OwnerDisplayName.String())
+	}
+
+	catalog, catalogMatched := store.ListCatalogEntries(ctx).(assets.CatalogListed)
+	if !catalogMatched {
+		t.Fatalf("sqlite catalog list rejected")
+	}
+	found := false
+	for _, listing := range catalog.Values {
+		if listing.Entry.Slug.String() == "cornucopia" {
+			found = true
+			if listing.LiveInstanceCount != 1 || listing.LiveOwnerCount != 1 || listing.OwnerDisplayName.String() != "Mara Fields" {
+				t.Fatalf("sqlite catalog ownership = %d/%d/%q, want 1/1/Mara Fields", listing.LiveInstanceCount, listing.LiveOwnerCount, listing.OwnerDisplayName.String())
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("sqlite catalog is missing the cornucopia entry")
+	}
+
+	withdrawDraft := draftForTest(t, event.KindCollectibleWithdrawn, admin)
+	if _, matched := store.WithdrawCollectible(ctx, assets.WithdrawCollectibleStoreCommand{CollectibleID: awarded.Value.ID, Draft: withdrawDraft}).(assets.CollectibleWithdrawn); !matched {
+		t.Fatalf("sqlite withdraw rejected")
+	}
+	releaseDraft := draftForTest(t, event.KindCollectibleReleased, admin)
+	released, releaseMatched := store.ReleaseCollectible(ctx, assets.ReleaseCollectibleStoreCommand{CollectibleID: awarded.Value.ID, Draft: releaseDraft}).(assets.CollectibleReleased)
+	if !releaseMatched {
+		t.Fatalf("sqlite release rejected")
+	}
+	if released.Value.State != assets.CollectibleStateMinted {
+		t.Fatalf("sqlite released state = %s, want minted", released.Value.State.String())
+	}
+}
+
+func draftForTest(t *testing.T, kind event.Kind, actor core.UserID) event.Draft {
+	t.Helper()
+	created, matched := event.NewDraft(kind, event.ActorUser{ID: actor}, event.NoSubjectRefs(), event.EmptyMetadata(), event.NewRecipients(actor)).(event.DraftCreated)
+	if !matched {
+		t.Fatalf("event draft rejected")
+	}
+	return created.Value
 }
 
 // TestCreateTaskWithCollectibleEscrowOnSQLite proves task creation with reward

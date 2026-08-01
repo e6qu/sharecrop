@@ -88,6 +88,11 @@ UI minors queue:
 
 Recently finished (details in [WHAT_WE_DID.md](./WHAT_WE_DID.md)):
 
+- Collectible release and ownership visibility: reversible withdrawal for
+  catalog entries and instances (unique slots re-validated on release),
+  stricter entry deletion, collectible_released notifications, and owner
+  labels across collectible and catalog surfaces.
+
 - Economy and outbox seams: commit-ordered event feeds (fence lock), all
   emission on the outbox, fan-out-gated dispatch with a terminal
   dispatch_failed state, direct reservations (approval gate removed),

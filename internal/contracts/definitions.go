@@ -179,6 +179,7 @@ func notificationModule() Module {
 					{Name: NewElmTypeName("NotificationKindTipReceived"), Tag: "tip_received"},
 					{Name: NewElmTypeName("NotificationKindCollectibleAwarded"), Tag: "collectible_awarded"},
 					{Name: NewElmTypeName("NotificationKindCollectibleWithdrawn"), Tag: "collectible_withdrawn"},
+					{Name: NewElmTypeName("NotificationKindCollectibleReleased"), Tag: "collectible_released"},
 					{Name: NewElmTypeName("NotificationKindCreditsReceived"), Tag: "credits_received"},
 				},
 			},
@@ -252,6 +253,7 @@ func eventsModule() Module {
 					{Name: NewElmTypeName("DomainEventKindTipReceived"), Tag: "tip_received"},
 					{Name: NewElmTypeName("DomainEventKindCollectibleAwarded"), Tag: "collectible_awarded"},
 					{Name: NewElmTypeName("DomainEventKindCollectibleWithdrawn"), Tag: "collectible_withdrawn"},
+					{Name: NewElmTypeName("DomainEventKindCollectibleReleased"), Tag: "collectible_released"},
 					{Name: NewElmTypeName("DomainEventKindCreditsSent"), Tag: "credits_sent"},
 				},
 			},
@@ -486,6 +488,10 @@ func collectibleModule() Module {
 					// issuerDisplayName names the minting/awarding user on
 					// list reads; empty on mutation responses.
 					{Name: NewElmValueName("issuerDisplayName"), JSONName: NewJSONFieldName("issuer_display_name"), Type: StringRef{}},
+					// ownerDisplayName labels the current owner (user display
+					// name, organization name, or team name, per owner_kind)
+					// on list reads; empty on mutation responses.
+					{Name: NewElmValueName("ownerDisplayName"), JSONName: NewJSONFieldName("owner_display_name"), Type: StringRef{}},
 				},
 			},
 			Product{
@@ -522,6 +528,13 @@ func collectibleModule() Module {
 					// mintedCount counts the entry's live (non-withdrawn)
 					// instances.
 					{Name: NewElmValueName("mintedCount"), JSONName: NewJSONFieldName("minted_count"), Type: IntRef{}},
+					// liveOwnerCount counts the distinct owners holding live
+					// instances.
+					{Name: NewElmValueName("liveOwnerCount"), JSONName: NewJSONFieldName("live_owner_count"), Type: IntRef{}},
+					// ownerDisplayName labels the holder of a unique entry's
+					// live instance; empty for non-unique entries and
+					// unminted slots.
+					{Name: NewElmValueName("ownerDisplayName"), JSONName: NewJSONFieldName("owner_display_name"), Type: StringRef{}},
 				},
 			},
 			Product{

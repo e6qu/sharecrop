@@ -650,10 +650,13 @@ type Msg
     | AddCatalogEntryClicked
     | CatalogEntryMutated (Result Http.Error Collectible.CollectibleCatalogEntry)
     | WithdrawCatalogEntryClicked String
+    | ReleaseCatalogEntryClicked String
     | DeleteCatalogEntryClicked String
     | CatalogEntryDeleted (Result Http.Error ())
     | WithdrawCollectibleClicked String
     | CollectibleWithdrawnReceived (Result Http.Error Collectible.CollectibleResponse)
+    | ReleaseCollectibleClicked String
+    | CollectibleReleasedReceived (Result Http.Error Collectible.CollectibleResponse)
     | DeleteCollectibleClicked String
     | CollectibleDeleted (Result Http.Error ())
     | OrganizationsReceived (Result Http.Error Organization.OrganizationsResponse)

@@ -143,6 +143,7 @@ type alias CollectibleResponse =
     , catalogSlug : String
     , editionNumber : Int
     , issuerDisplayName : String
+    , ownerDisplayName : String
     }
 
 collectibleResponseDecoder : Decoder CollectibleResponse
@@ -158,11 +159,12 @@ collectibleResponseDecoder =
         (Decode.field "organization_id" Decode.string)
         |> Decode.andThen
             (\finish ->
-                Decode.map4 finish
+                Decode.map5 finish
                     (Decode.field "art" Decode.string)
                     (Decode.field "catalog_slug" Decode.string)
                     (Decode.field "edition_number" Decode.int)
                     (Decode.field "issuer_display_name" Decode.string)
+                    (Decode.field "owner_display_name" Decode.string)
             )
 
 collectibleResponseEncoder : CollectibleResponse -> Encode.Value
@@ -180,6 +182,7 @@ collectibleResponseEncoder collectibleResponse =
         , ( "catalog_slug", Encode.string collectibleResponse.catalogSlug )
         , ( "edition_number", Encode.int collectibleResponse.editionNumber )
         , ( "issuer_display_name", Encode.string collectibleResponse.issuerDisplayName )
+        , ( "owner_display_name", Encode.string collectibleResponse.ownerDisplayName )
         ]
 
 type alias CollectiblesResponse =
@@ -239,6 +242,8 @@ type alias CollectibleCatalogEntry =
     , state : CollectibleCatalogEntryState
     , maxEditions : Int
     , mintedCount : Int
+    , liveOwnerCount : Int
+    , ownerDisplayName : String
     }
 
 collectibleCatalogEntryDecoder : Decoder CollectibleCatalogEntry
@@ -252,6 +257,12 @@ collectibleCatalogEntryDecoder =
         (Decode.field "state" collectibleCatalogEntryStateDecoder)
         (Decode.field "max_editions" Decode.int)
         (Decode.field "minted_count" Decode.int)
+        |> Decode.andThen
+            (\finish ->
+                Decode.map2 finish
+                    (Decode.field "live_owner_count" Decode.int)
+                    (Decode.field "owner_display_name" Decode.string)
+            )
 
 collectibleCatalogEntryEncoder : CollectibleCatalogEntry -> Encode.Value
 collectibleCatalogEntryEncoder collectibleCatalogEntry =
@@ -264,6 +275,8 @@ collectibleCatalogEntryEncoder collectibleCatalogEntry =
         , ( "state", collectibleCatalogEntryStateEncoder collectibleCatalogEntry.state )
         , ( "max_editions", Encode.int collectibleCatalogEntry.maxEditions )
         , ( "minted_count", Encode.int collectibleCatalogEntry.mintedCount )
+        , ( "live_owner_count", Encode.int collectibleCatalogEntry.liveOwnerCount )
+        , ( "owner_display_name", Encode.string collectibleCatalogEntry.ownerDisplayName )
         ]
 
 type alias CollectibleCatalogResponse =

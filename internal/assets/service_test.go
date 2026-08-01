@@ -19,7 +19,7 @@ func TestParseCollectibleKindRoundTrips(t *testing.T) {
 }
 
 func TestParseCollectibleStateRoundTrips(t *testing.T) {
-	for _, state := range []CollectibleState{CollectibleStateMinted, CollectibleStateEscrowed, CollectibleStateAwarded} {
+	for _, state := range []CollectibleState{CollectibleStateMinted, CollectibleStateEscrowed, CollectibleStateAwarded, CollectibleStateWithdrawn} {
 		accepted, matched := ParseCollectibleState(state.String()).(CollectibleStateAccepted)
 		if !matched || accepted.Value != state {
 			t.Fatalf("ParseCollectibleState(%q) did not round trip", state.String())
@@ -151,6 +151,15 @@ func (store *memoryStore) AwardFromCatalog(_ context.Context, command AwardFromC
 func (store *memoryStore) WithdrawCollectible(_ context.Context, command WithdrawCollectibleStoreCommand) WithdrawResult {
 	store.record(command.Draft)
 	return CollectibleWithdrawn{Value: Collectible{ID: command.CollectibleID, State: CollectibleStateWithdrawn, Catalog: NoCatalogRef{}, Edition: NoEditionNumber{}, Issuer: NoIssuer{}}, RecordedEvents: []event.Draft{command.Draft}}
+}
+
+func (store *memoryStore) ReleaseCatalogEntry(_ context.Context, _ CatalogSlug) CatalogMutationResult {
+	return CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (store *memoryStore) ReleaseCollectible(_ context.Context, command ReleaseCollectibleStoreCommand) ReleaseResult {
+	store.record(command.Draft)
+	return CollectibleReleased{Value: Collectible{ID: command.CollectibleID, State: CollectibleStateMinted, Catalog: NoCatalogRef{}, Edition: NoEditionNumber{}, Issuer: NoIssuer{}}, RecordedEvents: []event.Draft{command.Draft}}
 }
 
 func (store *memoryStore) DeleteWithdrawnCollectible(_ context.Context, _ core.CollectibleID) DeleteCollectibleResult {

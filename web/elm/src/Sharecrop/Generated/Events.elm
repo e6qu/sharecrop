@@ -28,6 +28,7 @@ type DomainEventKind
     | DomainEventKindTipReceived
     | DomainEventKindCollectibleAwarded
     | DomainEventKindCollectibleWithdrawn
+    | DomainEventKindCollectibleReleased
     | DomainEventKindCreditsSent
 
 domainEventKindDecoder : Decoder DomainEventKind
@@ -101,6 +102,9 @@ domainEventKindDecoder =
 
                     "collectible_withdrawn" ->
                         Decode.succeed DomainEventKindCollectibleWithdrawn
+
+                    "collectible_released" ->
+                        Decode.succeed DomainEventKindCollectibleReleased
 
                     "credits_sent" ->
                         Decode.succeed DomainEventKindCreditsSent
@@ -177,6 +181,9 @@ domainEventKindEncoder domainEventKind =
 
         DomainEventKindCollectibleWithdrawn ->
             Encode.string "collectible_withdrawn"
+
+        DomainEventKindCollectibleReleased ->
+            Encode.string "collectible_released"
 
         DomainEventKindCreditsSent ->
             Encode.string "credits_sent"

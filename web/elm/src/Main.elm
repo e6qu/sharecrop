@@ -1920,6 +1920,9 @@ update msg model =
         WithdrawCatalogEntryClicked slug ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | catalogMessage = Nothing }), Api.postWithdrawCatalogEntry state.accessToken slug ))
 
+        ReleaseCatalogEntryClicked slug ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | catalogMessage = Nothing }), Api.postReleaseCatalogEntry state.accessToken slug ))
+
         DeleteCatalogEntryClicked slug ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | catalogMessage = Nothing }), Api.deleteCatalogEntryCmd state.accessToken slug ))
 
@@ -1946,6 +1949,22 @@ update msg model =
                 )
 
         CollectibleWithdrawnReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | withdrawMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
+        ReleaseCollectibleClicked collectibleId ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | withdrawMessage = Nothing }), Api.postReleaseCollectible state.accessToken collectibleId ))
+
+        CollectibleReleasedReceived (Ok collectible) ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | withdrawMessage = Just (SuccessNote ("Released '" ++ collectible.name ++ "' back to its holder.")) })
+                    , Cmd.batch [ Api.fetchCollectibles state.accessToken, Api.fetchCollectibleCatalog state.accessToken ]
+                    )
+                )
+
+        CollectibleReleasedReceived (Err error) ->
+            -- Carries the server's own conflict reason when a release is
+            -- refused (e.g. a unique whose slot was re-minted meanwhile).
             ( Api.updateLoggedIn model (\state -> { state | withdrawMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         DeleteCollectibleClicked collectibleId ->
@@ -3544,7 +3563,8 @@ mintSendKey state =
 
 
 {-| The confirmation for an admin catalog mutation, phrased by the state the
-entry landed in (an add leaves it available; a withdraw marks it withdrawn).
+entry landed in (an add or a release leaves it available; a withdraw marks it
+withdrawn).
 -}
 catalogMutationLabel : Collectible.CollectibleCatalogEntry -> String
 catalogMutationLabel entry =

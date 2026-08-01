@@ -30,10 +30,15 @@
 - **Admin-controlled collectible catalog**: the default catalog lives in the
   database (seeded with the original 25). Platform admins add entries (art
   from the fixed sprite registry, kind-coherent edition caps), withdraw
-  entries (no longer awardable), delete withdrawn entries without live
-  instances, withdraw individual catalog-minted collectibles from holders
-  (notified), and delete withdrawn instances — REST + MCP + the Collectibles
-  page, all audited. Uniqueness is engine-enforced: `unique` entries have at
+  entries (no longer awardable) and release them back to circulation,
+  delete withdrawn entries only when no instances reference them (live or
+  withdrawn), withdraw individual catalog-minted collectibles from holders
+  and release them back (releasing a unique re-checks its slot and
+  conflicts if re-minted; holders are notified of both directions), and
+  delete withdrawn instances — REST + MCP + the Collectibles page, all
+  audited. Ownership is visible: collectible surfaces show the owner's
+  display label, unique catalog entries show who owns the single instance,
+  editions show live-owner counts. Uniqueness is engine-enforced: `unique` entries have at
   most one live instance, editions are numbered against a per-entry cap,
   custom mints are unique per issuer+name. New mints default to
   `transferable_between_users`; collectible provenance (catalog slug,

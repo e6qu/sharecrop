@@ -118,9 +118,11 @@ type AssetService interface {
 	ListCatalog(context.Context) assets.CatalogListResult
 	AddCatalogEntry(context.Context, assets.CatalogEntry) assets.CatalogMutationResult
 	WithdrawCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult
+	ReleaseCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult
 	DeleteCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult
 	AwardFromCatalog(context.Context, core.UserID, string, string, string, string) assets.MintResult
 	WithdrawCollectible(context.Context, core.UserID, core.CollectibleID) assets.WithdrawResult
+	ReleaseCollectible(context.Context, core.UserID, core.CollectibleID) assets.ReleaseResult
 	DeleteWithdrawnCollectible(context.Context, core.CollectibleID) assets.DeleteCollectibleResult
 	ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult
 	ListByOwner(context.Context, string, string, core.Page) assets.ListResult
@@ -417,8 +419,10 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/collectibles/{collectible_id}/transfer", server.transferCollectible)
 	mux.HandleFunc("POST /api/admin/collectible-catalog", server.addCatalogEntry)
 	mux.HandleFunc("POST /api/admin/collectible-catalog/{slug}/withdraw", server.withdrawCatalogEntry)
+	mux.HandleFunc("POST /api/admin/collectible-catalog/{slug}/release", server.releaseCatalogEntry)
 	mux.HandleFunc("DELETE /api/admin/collectible-catalog/{slug}", server.deleteCatalogEntry)
 	mux.HandleFunc("POST /api/admin/collectibles/{collectible_id}/withdraw", server.withdrawCollectible)
+	mux.HandleFunc("POST /api/admin/collectibles/{collectible_id}/release", server.releaseCollectible)
 	mux.HandleFunc("DELETE /api/admin/collectibles/{collectible_id}", server.deleteCollectible)
 	mux.HandleFunc("GET /api/admin/operations", server.operationsStatus)
 	mux.HandleFunc("GET /api/admin/platform-admins", server.listPlatformAdmins)
