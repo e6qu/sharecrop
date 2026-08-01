@@ -369,6 +369,7 @@ func decodeRevokeResult(wire revokeResultWire) (webhook.RevokeStoreResult, error
 type deliveriesResultWire struct {
 	Variant    string                  `json:"variant"`
 	Deliveries []deliveryWire          `json:"deliveries,omitempty"`
+	Total      int64                   `json:"total,omitempty"`
 	Error      *domainwire.DomainError `json:"error,omitempty"`
 }
 
@@ -379,7 +380,7 @@ func encodeDeliveriesResult(result webhook.ListDeliveriesStoreResult) deliveries
 		for index := range typed.Values {
 			values = append(values, encodeDelivery(typed.Values[index]))
 		}
-		return deliveriesResultWire{Variant: "listed", Deliveries: values}
+		return deliveriesResultWire{Variant: "listed", Deliveries: values, Total: typed.Total}
 	case webhook.ListDeliveriesStoreRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return deliveriesResultWire{Variant: "rejected", Error: &reason}
@@ -399,7 +400,7 @@ func decodeDeliveriesResult(wire deliveriesResultWire) (webhook.ListDeliveriesSt
 			}
 			values = append(values, value)
 		}
-		return webhook.ListDeliveriesStoreListed{Values: values}, nil
+		return webhook.ListDeliveriesStoreListed{Values: values, Total: wire.Total}, nil
 	case "rejected":
 		if wire.Error == nil {
 			return nil, fmt.Errorf("rejected deliveries result is missing its error")

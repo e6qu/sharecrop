@@ -19,11 +19,11 @@ func notificationTestHandler(t *testing.T) http.Handler {
 	service := notification.NewService(notification.NewMemoryStore())
 	actor := core.NewUserID().(core.UserIDCreated).Value
 
-	first, matched := service.Notify(context.Background(), stableTestUserID, actor, notification.KindSubmissionCreated, notification.Subject{Kind: "submission", ID: "submission-1"}, notification.EmptyMetadata()).(notification.NotificationCreated)
+	first, matched := service.Notify(context.Background(), stableTestUserID, actor, notification.KindSubmissionCreated, notification.Subject{Kind: "submission", ID: "submission-1"}, notification.EmptyMetadata(), notification.NoSourceEvent{}).(notification.NotificationCreated)
 	if !matched {
 		t.Fatalf("seed first notification rejected")
 	}
-	if _, matched := service.Notify(context.Background(), stableTestUserID, actor, notification.KindTaskFunded, notification.Subject{Kind: "task", ID: "task-1"}, notification.EmptyMetadata()).(notification.NotificationCreated); !matched {
+	if _, matched := service.Notify(context.Background(), stableTestUserID, actor, notification.KindTaskFunded, notification.Subject{Kind: "task", ID: "task-1"}, notification.EmptyMetadata(), notification.NoSourceEvent{}).(notification.NotificationCreated); !matched {
 		t.Fatalf("seed second notification rejected")
 	}
 	if _, matched := service.MarkRead(context.Background(), stableTestUserID, first.Value.ID).(notification.NotificationRead); !matched {

@@ -40,6 +40,8 @@ type moderationReportSummary struct {
 type moderationReportsPayload struct {
 	Reports    []moderationReportSummary `json:"reports"`
 	NextOffset int                       `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 type privacyRequestSummary struct {
@@ -221,7 +223,7 @@ func (server Server) callListAdminModerationReports(ctx context.Context, subject
 	for index := range listed.Values[:visible] {
 		summaries = append(summaries, moderationReportToSummary(listed.Values[index]))
 	}
-	return marshalPayload(moderationReportsPayload{Reports: summaries, NextOffset: nextOffset})
+	return marshalPayload(moderationReportsPayload{Reports: summaries, NextOffset: nextOffset, Total: listed.Total})
 }
 
 func (server Server) callTriageModerationReport(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {

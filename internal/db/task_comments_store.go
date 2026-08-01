@@ -7,18 +7,31 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
-func (store TaskStore) CreateTaskComment(ctx context.Context, comment task.TaskComment) task.CreateTaskCommentStoreResult {
+func (store TaskStore) CreateTaskComment(ctx context.Context, comment task.TaskComment, draft event.Draft) task.CreateTaskCommentStoreResult {
+	tx, txErr := store.db.Begin(ctx)
+	if txErr != nil {
+		return task.CreateTaskCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create task comment transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	var createdAt time.Time
-	err := store.db.QueryRow(ctx, `
+	err := tx.QueryRow(ctx, `
 		insert into task_comments (id, task_id, author_user_id, body)
 		values ($1, $2, $3, $4)
 		returning created_at
 	`, comment.ID.String(), comment.TaskID.String(), comment.AuthorID.String(), comment.Body.String()).Scan(&createdAt)
 	if err != nil {
 		return task.CreateTaskCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "create task comment failed")}
+	}
+	if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+		return task.CreateTaskCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record task comment event failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return task.CreateTaskCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit create task comment transaction failed")}
 	}
 	comment.CreatedAt = createdAt
 	authorName, nameReason := fetchUserDisplayName(ctx, store.db, comment.AuthorID)

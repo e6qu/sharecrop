@@ -25,6 +25,9 @@ type AwardOrganizationCollectibleStoreCommand struct {
 	OrganizationID  core.OrganizationID
 	CollectibleID   core.CollectibleID
 	RecipientUserID core.UserID
+	// Draft is the collectible_awarded event recorded inside the award
+	// transaction.
+	Draft event.Draft
 }
 
 // GiftStoreCommand carries a validated collectible tip (a voluntary transfer of
@@ -33,6 +36,10 @@ type GiftStoreCommand struct {
 	FromUserID    core.UserID
 	ToUserID      core.UserID
 	CollectibleID core.CollectibleID
+	// Draft is the collectible_awarded event recorded inside the gift
+	// transaction; an idempotent replay (already-owned collectible) records
+	// nothing.
+	Draft event.Draft
 }
 
 // FundRewardStoreCommand carries a validated collectible-reward funding request.
@@ -57,17 +64,16 @@ func NewService(store Store, recorder event.Recorder) Service {
 	return Service{store: store, recorder: recorder}
 }
 
-// emitCollectibleAwarded emits the collectible_awarded event after a committed
-// transfer. Emission is post-commit best-effort: a rejected emission never
-// fails the transfer that already committed.
-func (service Service) emitCollectibleAwarded(ctx context.Context, actor event.Actor, subject event.Subject, recipients event.Recipients) {
-	_ = service.recorder.Emit(ctx, event.EmitCommand{
-		Kind:       event.KindCollectibleAwarded,
-		Actor:      actor,
-		Subject:    subject,
-		Metadata:   event.EmptyMetadata(),
-		Recipients: recipients,
-	})
+// collectibleAwardedDraft builds the collectible_awarded draft a transfer
+// records inside its store transaction.
+func collectibleAwardedDraft(actor event.Actor, subject event.Subject, recipients event.Recipients) (event.Draft, *core.DomainError) {
+	draftResult := event.NewDraft(event.KindCollectibleAwarded, actor, subject, event.EmptyMetadata(), recipients)
+	created, matched := draftResult.(event.DraftCreated)
+	if !matched {
+		reason := draftResult.(event.DraftRejected).Reason
+		return event.Draft{}, &reason
+	}
+	return created.Value, nil
 }
 
 type MintResult interface {
@@ -198,6 +204,10 @@ type GiftResult interface {
 
 type CollectibleGifted struct {
 	Value Collectible
+	// RecordedEvents are the event drafts recorded inside the transfer
+	// transaction; empty on an idempotent replay (the collectible already
+	// belonged to the recipient).
+	RecordedEvents []event.Draft
 }
 
 type GiftRejected struct {
@@ -214,19 +224,25 @@ func (GiftRejected) giftResult() {}
 // ownership, org match, and membership are enforced in the store
 // transaction.
 func (service Service) AwardOrganizationCollectible(ctx context.Context, organizationID core.OrganizationID, collectibleID core.CollectibleID, recipientUserID core.UserID) GiftResult {
+	// The awarding admin's user id never reaches this service (the HTTP
+	// layer authorizes the award), so the organization's award is recorded
+	// as the system actor with the recipient as the audience.
+	subject := event.NoSubjectRefs()
+	subject.Collectible = event.CollectibleSubject{ID: collectibleID}
+	subject.Organization = event.OrganizationSubject{ID: organizationID}
+	draft, draftProblem := collectibleAwardedDraft(event.ActorSystem{}, subject, event.NewRecipients(recipientUserID))
+	if draftProblem != nil {
+		return GiftRejected{Reason: *draftProblem}
+	}
+
 	result := service.store.AwardOrganizationCollectible(ctx, AwardOrganizationCollectibleStoreCommand{
 		OrganizationID:  organizationID,
 		CollectibleID:   collectibleID,
 		RecipientUserID: recipientUserID,
+		Draft:           draft,
 	})
-	if _, gifted := result.(CollectibleGifted); gifted {
-		// The awarding admin's user id never reaches this service (the HTTP
-		// layer authorizes the award), so the organization's award is recorded
-		// as the system actor with the recipient as the audience.
-		subject := event.NoSubjectRefs()
-		subject.Collectible = event.CollectibleSubject{ID: collectibleID}
-		subject.Organization = event.OrganizationSubject{ID: organizationID}
-		service.emitCollectibleAwarded(ctx, event.ActorSystem{}, subject, event.NewRecipients(recipientUserID))
+	if gifted, matched := result.(CollectibleGifted); matched {
+		service.recorder.Dispatch(ctx, gifted.RecordedEvents...)
 	}
 	return result
 }
@@ -235,15 +251,21 @@ func (service Service) AwardOrganizationCollectible(ctx context.Context, organiz
 // (a review tip). Ownership, availability, and transfer policy are enforced in
 // the store transaction.
 func (service Service) GiftCollectible(ctx context.Context, from core.UserID, to core.UserID, collectibleID core.CollectibleID) GiftResult {
+	subject := event.NoSubjectRefs()
+	subject.Collectible = event.CollectibleSubject{ID: collectibleID}
+	draft, draftProblem := collectibleAwardedDraft(event.ActorUser{ID: from}, subject, event.NewRecipients(to, from))
+	if draftProblem != nil {
+		return GiftRejected{Reason: *draftProblem}
+	}
+
 	result := service.store.GiftCollectible(ctx, GiftStoreCommand{
 		FromUserID:    from,
 		ToUserID:      to,
 		CollectibleID: collectibleID,
+		Draft:         draft,
 	})
-	if _, gifted := result.(CollectibleGifted); gifted {
-		subject := event.NoSubjectRefs()
-		subject.Collectible = event.CollectibleSubject{ID: collectibleID}
-		service.emitCollectibleAwarded(ctx, event.ActorUser{ID: from}, subject, event.NewRecipients(to, from))
+	if gifted, matched := result.(CollectibleGifted); matched {
+		service.recorder.Dispatch(ctx, gifted.RecordedEvents...)
 	}
 	return result
 }

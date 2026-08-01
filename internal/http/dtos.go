@@ -141,6 +141,8 @@ func (moderationReportResponse) writableResponse() {}
 type moderationReportsResponse struct {
 	Reports    []moderationReportResponse `json:"reports"`
 	NextOffset int                        `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 func (moderationReportsResponse) writableResponse() {}
@@ -420,6 +422,13 @@ type taskListItemResponse struct {
 	// CreatorDisplayName names the user who created the task, on every
 	// listing.
 	CreatorDisplayName string `json:"creator_display_name"`
+	// HolderDisplayName names the user holding the active reservation when
+	// one exists and the reservation is user-assigned; empty otherwise.
+	HolderDisplayName string `json:"holder_display_name"`
+	// Funded reports whether the task's declared credit reward is currently
+	// escrowed: reward_funded, reward_unfunded, or no_credit_reward for
+	// tasks that declare no credit reward.
+	Funded string `json:"funded"`
 	// PendingReviewCount is the number of submissions still awaiting review
 	// (state "submitted"). It is populated only for tasks the caller created
 	// and is 0 on every other row, so a listing never leaks another
@@ -430,6 +439,8 @@ type taskListItemResponse struct {
 type tasksResponse struct {
 	Tasks      []taskListItemResponse `json:"tasks"`
 	NextOffset int                    `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 type reservationResponse struct {
@@ -485,6 +496,8 @@ type submissionResponse struct {
 type submissionsResponse struct {
 	Submissions []submissionResponse `json:"submissions"`
 	NextOffset  int                  `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 type notificationResponse struct {
@@ -508,6 +521,8 @@ type notificationResponse struct {
 type notificationsResponse struct {
 	Notifications []notificationResponse `json:"notifications"`
 	NextOffset    int                    `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 type notificationUnreadCountResponse struct {
@@ -578,6 +593,8 @@ type ledgerEntryResponse struct {
 type ledgerListResponse struct {
 	Entries    []ledgerEntryResponse `json:"entries"`
 	NextOffset int                   `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 type taskFundResponse struct {

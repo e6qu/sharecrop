@@ -1,12 +1,12 @@
 //go:build !wasip1
 
-// Package webhookdispatch is the host-only webhook delivery engine: it pumps
-// new domain events into pending delivery rows and dispatches due deliveries
-// with signed HTTPS POSTs, retrying on a bounded backoff schedule. It is
-// imported ONLY by cmd/sharecrop (a later task wires RunOnce into the
-// lifecycle runner) and talks to Postgres through struct-only methods on
-// db.WebhookStore, so nothing here can ever be reached from the WASI guest
-// or the browser build.
+// Package webhookdispatch is the host-only webhook delivery engine: it
+// claims due pending delivery rows (created by the per-event dispatch step
+// in db.EventStore.Dispatch) and dispatches them with signed HTTPS POSTs,
+// retrying on a bounded backoff schedule. It is imported ONLY by
+// cmd/sharecrop (the lifecycle runner calls RunOnce) and talks to Postgres
+// through struct-only methods on db.WebhookStore, so nothing here can ever
+// be reached from the WASI guest or the browser build.
 package webhookdispatch
 
 import (
@@ -32,8 +32,16 @@ const (
 	// PumpInterval is the recommended cadence for the lifecycle runner to
 	// call RunOnce.
 	PumpInterval = 5 * time.Second
-	// claimBatchSize bounds how many due deliveries one RunOnce dispatches.
+	// claimBatchSize is how many due deliveries one claim locks. It stays
+	// small so a single claim transaction holds few row locks and a crashed
+	// dispatcher strands little work, while RunOnce drains a backlog by
+	// claiming repeatedly until a claim comes back short.
 	claimBatchSize = 10
+	// maxClaimBatchesPerRun caps how many claim-and-deliver rounds one
+	// RunOnce performs (claimBatchSize * maxClaimBatchesPerRun deliveries),
+	// so a deep backlog cannot monopolize the lifecycle runner's sweep slot;
+	// the next tick continues the drain.
+	maxClaimBatchesPerRun = 50
 	// requestTimeout bounds each delivery POST.
 	requestTimeout = 10 * time.Second
 	// responseBodyReadLimit caps how much of a receiver's response body is
@@ -97,10 +105,8 @@ type RunResult interface {
 }
 
 type RunCompleted struct {
-	ExpandedEvents     int
-	InsertedDeliveries int
-	Attempted          int
-	Delivered          int
+	Attempted int
+	Delivered int
 }
 
 type RunRejected struct {
@@ -111,35 +117,32 @@ func (RunCompleted) runResult() {}
 
 func (RunRejected) runResult() {}
 
-// RunOnce performs one pump-and-dispatch pass: expand new domain events into
-// pending deliveries, claim a due batch, and attempt each claimed delivery.
-// Per-delivery failures are recorded on the delivery row (retry schedule or
-// dead), never surfaced as a run failure.
+// RunOnce performs one dispatch pass: claim a batch of due deliveries,
+// attempt each, and keep claiming until a claim comes back short of the
+// batch size (the backlog is drained) or the per-run batch cap is reached.
+// Delivery rows are created by the event dispatch step (db.EventStore
+// Dispatch), not here. Per-delivery failures are recorded on the delivery
+// row (retry schedule or dead), never surfaced as a run failure.
 func (dispatcher Dispatcher) RunOnce(ctx context.Context) RunResult {
-	pumpResult := dispatcher.store.PumpEvents(ctx)
-	pumped, pumpMatched := pumpResult.(db.PumpEventsCompleted)
-	if !pumpMatched {
-		return RunRejected{Reason: pumpResult.(db.PumpEventsRejected).Reason}
-	}
-
-	claimResult := dispatcher.store.ClaimDueDeliveries(ctx, claimBatchSize)
-	claimed, claimMatched := claimResult.(db.ClaimDueDeliveriesListed)
-	if !claimMatched {
-		return RunRejected{Reason: claimResult.(db.ClaimDueDeliveriesRejected).Reason}
-	}
-
+	attempted := 0
 	delivered := 0
-	for _, delivery := range claimed.Values {
-		if dispatcher.attemptDelivery(ctx, delivery) {
-			delivered++
+	for batch := 0; batch < maxClaimBatchesPerRun; batch++ {
+		claimResult := dispatcher.store.ClaimDueDeliveries(ctx, claimBatchSize)
+		claimed, claimMatched := claimResult.(db.ClaimDueDeliveriesListed)
+		if !claimMatched {
+			return RunRejected{Reason: claimResult.(db.ClaimDueDeliveriesRejected).Reason}
+		}
+		attempted += len(claimed.Values)
+		for _, delivery := range claimed.Values {
+			if dispatcher.attemptDelivery(ctx, delivery) {
+				delivered++
+			}
+		}
+		if len(claimed.Values) < claimBatchSize {
+			break
 		}
 	}
-	return RunCompleted{
-		ExpandedEvents:     pumped.ExpandedEvents,
-		InsertedDeliveries: pumped.InsertedDeliveries,
-		Attempted:          len(claimed.Values),
-		Delivered:          delivered,
-	}
+	return RunCompleted{Attempted: attempted, Delivered: delivered}
 }
 
 // attemptDelivery performs one signed POST and records the outcome. The

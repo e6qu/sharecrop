@@ -6,6 +6,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
 )
@@ -49,7 +50,7 @@ func lockUserAccount(ctx context.Context, tx Tx, userID core.UserID) accountLock
 // entry (dropping spendable) and inserts the stateless task_funds row (raising
 // allocated). It is shared by user and organization funding so the mechanics
 // live in one place.
-func completeFunding(ctx context.Context, tx Tx, account accountLocked, taskID core.TaskID, amount ledger.CreditAmount, entryID core.LedgerEntryID, key ledger.IdempotencyKey, insufficientMessage string) ledger.FundResult {
+func completeFunding(ctx context.Context, tx Tx, account accountLocked, taskID core.TaskID, amount ledger.CreditAmount, entryID core.LedgerEntryID, key ledger.IdempotencyKey, insufficientMessage string, draft event.Draft) ledger.FundResult {
 	var fundExists bool
 	if err := tx.QueryRow(ctx, "select exists(select 1 from task_funds where task_id = $1)", taskID.String()).Scan(&fundExists); err != nil {
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check existing task fund failed")}
@@ -73,15 +74,23 @@ func completeFunding(ctx context.Context, tx Tx, account accountLocked, taskID c
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert task fund ledger entry failed")}
 	}
 
+	if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record task funded event failed")}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit fund task transaction failed")}
 	}
 
-	return ledger.TaskFunded{Fund: ledger.TaskFund{
-		TaskID:          taskID,
-		FunderAccountID: account.parsedID,
-		CreditAmount:    amount,
-	}}
+	return ledger.TaskFunded{
+		Fund: ledger.TaskFund{
+			TaskID:          taskID,
+			FunderAccountID: account.parsedID,
+			CreditAmount:    amount,
+		},
+		Execution:      ledger.FirstExecution{},
+		RecordedEvents: []event.Draft{draft},
+	}
 }
 
 func lockOrganizationAccount(ctx context.Context, tx Tx, organizationID core.OrganizationID) accountLockResult {
@@ -103,10 +112,11 @@ func lockOrganizationAccount(ctx context.Context, tx Tx, organizationID core.Org
 
 func lockTaskOwnedByOrganization(ctx context.Context, tx Tx, taskID core.TaskID, organizationID core.OrganizationID) taskLockResult {
 	var state string
+	var rawCreatedBy string
 	var rawOrganizationID string
 	var rewardKind string
 	var rewardCreditAmount int64
-	scanErr := tx.QueryRow(ctx, "select state, coalesce(organization_id::text, ''), reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawOrganizationID, &rewardKind, &rewardCreditAmount)
+	scanErr := tx.QueryRow(ctx, "select state, created_by_user_id::text, coalesce(organization_id::text, ''), reward_kind, coalesce(reward_credit_amount, 0) from tasks where id = $1 for update", taskID.String()).Scan(&state, &rawCreatedBy, &rawOrganizationID, &rewardKind, &rewardCreditAmount)
 	if errors.Is(scanErr, ErrNoRows) {
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
@@ -116,7 +126,7 @@ func lockTaskOwnedByOrganization(ctx context.Context, tx Tx, taskID core.TaskID,
 	if rawOrganizationID != organizationID.String() {
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "task is not owned by the organization")}
 	}
-	return taskLocked{state: state, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
+	return taskLocked{state: state, rawCreatedBy: rawCreatedBy, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
 }
 
 type taskLockResult interface {
@@ -125,6 +135,7 @@ type taskLockResult interface {
 
 type taskLocked struct {
 	state              string
+	rawCreatedBy       string
 	rewardKind         string
 	rewardCreditAmount int64
 }
@@ -152,7 +163,7 @@ func lockTaskOwnedBy(ctx context.Context, tx Tx, taskID core.TaskID, requester c
 	if rawCreatedBy != requester.String() {
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner can "+action+" the task")}
 	}
-	return taskLocked{state: state, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
+	return taskLocked{state: state, rawCreatedBy: rawCreatedBy, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
 }
 
 // lockTaskForReview locks a task for a review action. The direct task creator is
@@ -175,12 +186,12 @@ func lockTaskForReview(ctx context.Context, tx Tx, taskID core.TaskID, requester
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock task failed")}
 	}
 	if rawCreatedBy == requester.String() {
-		return taskLocked{state: state, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
+		return taskLocked{state: state, rawCreatedBy: rawCreatedBy, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
 	}
 	if rawOrganizationID != "" {
 		check := reviewerOrganizationPermission(ctx, tx, rawOrganizationID, requester)
 		if _, granted := check.(org.PermissionGranted); granted {
-			return taskLocked{state: state, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
+			return taskLocked{state: state, rawCreatedBy: rawCreatedBy, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
 		}
 	}
 	return taskLockRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner or an organization reviewer can "+action+" the task")}
@@ -305,7 +316,9 @@ func findFundForKey(ctx context.Context, tx Tx, key string, taskID core.TaskID, 
 	if !builtMatched {
 		return ledger.FundRejected{Reason: fundResult.(fundBuildRejected).reason}
 	}
-	return ledger.TaskFunded{Fund: built.value}
+	// The original execution already recorded and dispatched the task_funded
+	// event; a replay records nothing.
+	return ledger.TaskFunded{Fund: built.value, Execution: ledger.IdempotentReplay{}, RecordedEvents: []event.Draft{}}
 }
 
 type payoutResult interface {
@@ -674,7 +687,7 @@ func idempotentAccept(ctx context.Context, tx Tx, command ledger.AcceptStoreComm
 			outcome = ledger.CreditPayout{WorkerUserID: workerID, Amount: amountAccepted.Value}
 		}
 	}
-	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: outcome, Tip: ledger.NoTip{}}
+	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: outcome, Tip: ledger.NoTip{}, Execution: ledger.IdempotentReplay{}, RecordedEvents: []event.Draft{}}
 }
 
 // parseReviewWorker converts the reviewed submission's stored author id into
@@ -795,4 +808,68 @@ func parseTaskReference(rawTaskID string) taskReferenceResult {
 		return taskReferenceParseRejected{reason: result.(core.TaskIDRejected).Reason}
 	}
 	return taskReferenceParsed{value: ledger.TaskReferenced{TaskID: taskID.Value}}
+}
+
+// supersedeCompetingSubmissions moves every OTHER submission on the task
+// still in 'submitted' to the terminal 'superseded' state (the accept closed
+// the task, so the competing work can no longer be reviewed) and returns one
+// submission_superseded draft per superseded row, addressed to its
+// submitter. Rejected and changes_requested submissions are untouched. It
+// runs only on a fresh accept, so a replayed accept never re-supersedes.
+func supersedeCompetingSubmissions(ctx context.Context, tx Tx, taskID core.TaskID, acceptedSubmissionID core.SubmissionID, requester core.UserID) ([]event.Draft, *core.DomainError) {
+	rows, err := tx.Query(ctx, `
+		update submissions
+		set state = 'superseded', state_recorded_at = now()
+		where task_id = $1 and id <> $2 and state = 'submitted'
+		returning id::text, user_id::text
+	`, taskID.String(), acceptedSubmissionID.String())
+	if err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "supersede competing submissions failed")
+		return nil, &reason
+	}
+	type supersededRow struct {
+		rawSubmissionID string
+		rawSubmitterID  string
+	}
+	superseded := make([]supersededRow, 0)
+	for rows.Next() {
+		var row supersededRow
+		if err := rows.Scan(&row.rawSubmissionID, &row.rawSubmitterID); err != nil {
+			rows.Close()
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "scan superseded submission failed")
+			return nil, &reason
+		}
+		superseded = append(superseded, row)
+	}
+	rowsErr := rows.Err()
+	rows.Close()
+	if rowsErr != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read superseded submissions failed")
+		return nil, &reason
+	}
+
+	drafts := make([]event.Draft, 0, len(superseded))
+	for _, row := range superseded {
+		submissionIDResult, submissionIDMatched := core.ParseSubmissionID(row.rawSubmissionID).(core.SubmissionIDCreated)
+		if !submissionIDMatched {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "superseded submission id is invalid")
+			return nil, &reason
+		}
+		submitterID, submitterProblem := parseReviewWorker(row.rawSubmitterID)
+		if submitterProblem != nil {
+			return nil, submitterProblem
+		}
+		subject := event.NoSubjectRefs()
+		subject.Task = event.TaskSubject{ID: taskID}
+		subject.Submission = event.SubmissionSubject{ID: submissionIDResult.Value}
+		draftResult := event.NewDraft(event.KindSubmissionSuperseded, event.ActorUser{ID: requester}, subject,
+			event.TaskMetadata(taskID), event.NewRecipients(submitterID))
+		created, matched := draftResult.(event.DraftCreated)
+		if !matched {
+			reason := draftResult.(event.DraftRejected).Reason
+			return nil, &reason
+		}
+		drafts = append(drafts, created.Value)
+	}
+	return drafts, nil
 }

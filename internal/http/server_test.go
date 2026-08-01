@@ -1005,7 +1005,7 @@ func (testLedgerService) FundTask(_ context.Context, _ core.UserID, taskID core.
 	return ledger.TaskFunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: amount}}
 }
 
-func (testLedgerService) FundTaskFromOrganization(_ context.Context, _ core.OrganizationID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
+func (testLedgerService) FundTaskFromOrganization(_ context.Context, _ core.UserID, _ core.OrganizationID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
 	return ledger.TaskFunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: amount}}
 }
 

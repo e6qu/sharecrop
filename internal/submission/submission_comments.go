@@ -102,13 +102,17 @@ func (service Service) AddSubmissionComment(ctx context.Context, actor auth.User
 		return SubmissionCommentRejected{Reason: idResult.(core.SubmissionCommentIDRejected).Reason}
 	}
 	comment := SubmissionComment{ID: created.Value, SubmissionID: value.ID, AuthorID: actor.ID, Body: body}
-	storeResult := service.store.CreateSubmissionComment(ctx, comment)
+	draft, draftProblem := submissionEventDraft(event.KindSubmissionCommented, actor.ID, value.TaskID, value.ID,
+		event.NewRecipients(taskValue.CreatedBy, value.SubmitterID, actor.ID))
+	if draftProblem != nil {
+		return SubmissionCommentRejected{Reason: *draftProblem}
+	}
+	storeResult := service.store.CreateSubmissionComment(ctx, comment, draft)
 	accepted, storedMatched := storeResult.(CreateSubmissionCommentStoreAccepted)
 	if !storedMatched {
 		return SubmissionCommentRejected{Reason: storeResult.(CreateSubmissionCommentStoreRejected).Reason}
 	}
-	service.emitSubmissionEvent(ctx, event.KindSubmissionCommented, actor.ID, value.TaskID, value.ID,
-		event.NewRecipients(taskValue.CreatedBy, value.SubmitterID, actor.ID))
+	service.recorder.Dispatch(ctx, draft)
 	return SubmissionCommentAdded{Value: accepted.Value, TaskID: value.TaskID, SubmitterID: value.SubmitterID, TaskCreatorID: taskValue.CreatedBy}
 }
 

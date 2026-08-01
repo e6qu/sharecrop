@@ -134,6 +134,7 @@ func TestRequiredScopeForKindIsTotal(t *testing.T) {
 		"submission_accepted":          agent.ScopeSubmissionsRead,
 		"submission_changes_requested": agent.ScopeSubmissionsRead,
 		"submission_rejected":          agent.ScopeSubmissionsRead,
+		"submission_superseded":        agent.ScopeSubmissionsRead,
 		"submission_commented":         agent.ScopeSubmissionsRead,
 		"payout_received":              agent.ScopeLedgerRead,
 		"credit_granted":               agent.ScopeLedgerRead,

@@ -8,6 +8,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -116,7 +117,7 @@ func (store TaskStore) FindTask(ctx context.Context, taskID core.TaskID) task.Fi
 	return task.FindTaskStoreAccepted{Value: values.values[0].value, CreatorDisplayName: values.values[0].creatorDisplayName}
 }
 
-func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, state task.State) task.ChangeTaskStateStoreResult {
+func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, state task.State, plan event.Plan) task.ChangeTaskStateStoreResult {
 	// The invariant checks and the state write run in one transaction, with the
 	// task row locked and the UPDATE predicated on the observed prior state, so
 	// a concurrent Cancel+Fund or Open+Refund cannot interleave between the
@@ -128,7 +129,8 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var priorState string
-	scanErr := tx.QueryRow(ctx, "select state from tasks where id = $1 for update", taskID.String()).Scan(&priorState)
+	var rawCreatedBy string
+	scanErr := tx.QueryRow(ctx, "select state, created_by_user_id::text from tasks where id = $1 for update", taskID.String()).Scan(&priorState, &rawCreatedBy)
 	if errors.Is(scanErr, ErrNoRows) {
 		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
@@ -170,6 +172,23 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 	if commandTag != 1 {
 		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task state was not changed")}
 	}
+
+	// The plan's draft is recorded in this same transaction, with the task
+	// creator (resolved under the row lock above) merged into its
+	// recipients.
+	recorded := []event.Draft{}
+	if record, planMatched := plan.(event.Record); planMatched {
+		creatorID, creatorProblem := parseReviewWorker(rawCreatedBy)
+		if creatorProblem != nil {
+			return task.ChangeTaskStateStoreRejected{Reason: *creatorProblem}
+		}
+		draft := record.Draft.WithRecipients(creatorID)
+		if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+			return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record task state event failed")}
+		}
+		recorded = []event.Draft{draft}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit change task state transaction failed")}
 	}
@@ -180,7 +199,7 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 		rejected := found.(task.FindTaskStoreRejected)
 		return task.ChangeTaskStateStoreRejected{Reason: rejected.Reason}
 	}
-	return task.ChangeTaskStateStoreAccepted{Value: value.Value}
+	return task.ChangeTaskStateStoreAccepted{Value: value.Value, RecordedEvents: recorded}
 }
 
 type openableRewardResult interface {
@@ -307,6 +326,11 @@ func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, filt
 		return task.ListTasksStoreRejected{Reason: rejected.reason}
 	}
 
+	var total int64
+	if err := store.db.QueryRow(ctx, query.countSQL, query.countArguments).Scan(&total); err != nil {
+		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "count tasks failed")}
+	}
+
 	rows, err := store.db.Query(ctx, query.sql, query.arguments)
 	if err != nil {
 		return task.ListTasksStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list tasks failed")}
@@ -319,7 +343,7 @@ func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, filt
 		rejected := valuesResult.(taskListItemRowsRejected)
 		return task.ListTasksStoreRejected{Reason: rejected.reason}
 	}
-	return task.ListTasksStoreAccepted{Values: values.values}
+	return task.ListTasksStoreAccepted{Values: values.values, Total: total}
 }
 
 func (store TaskStore) CreateReservation(ctx context.Context, reservationID core.TaskReservationID, command task.ReservationCommand) task.CreateReservationStoreResult {
@@ -396,6 +420,10 @@ func (store TaskStore) CreateReservation(ctx context.Context, reservationID core
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task already has an active reservation")}
 	}
 
+	if err := recordEventDraftInTx(ctx, tx, command.Draft); err != nil {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record reservation event failed")}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit create reservation transaction failed")}
 	}
@@ -408,14 +436,20 @@ func (store TaskStore) CreateReservation(ctx context.Context, reservationID core
 	return task.CreateReservationStoreAccepted{Value: found.value}
 }
 
-func (store TaskStore) ChangeReservationState(ctx context.Context, taskID core.TaskID, reservationID core.TaskReservationID, state task.ReservationState) task.ChangeReservationStateStoreResult {
+func (store TaskStore) ChangeReservationState(ctx context.Context, taskID core.TaskID, reservationID core.TaskReservationID, state task.ReservationState, plan event.Plan) task.ChangeReservationStateStoreResult {
 	if err := store.releaseExpiredReservations(ctx); err != nil {
 		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
 	}
 
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin change reservation state transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	// Bind the mutation to the owning task so a reservation belonging to another
 	// task can never be flipped via a task the actor happens to own (IDOR).
-	commandTag, err := store.db.Exec(ctx, `
+	commandTag, err := tx.Exec(ctx, `
 		update task_reservations
 		set state = $2, state_recorded_at = now()
 		where id = $1 and task_id = $3 and state in ('requested', 'active')
@@ -427,12 +461,36 @@ func (store TaskStore) ChangeReservationState(ctx context.Context, taskID core.T
 		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation is not pending or active")}
 	}
 
+	// The plan's draft is recorded in this same transaction, with the
+	// reservation holder (resolved from the just-updated row) merged into
+	// its recipients.
+	recorded := []event.Draft{}
+	if record, planMatched := plan.(event.Record); planMatched {
+		var rawHolder string
+		if err := tx.QueryRow(ctx, "select requested_by_user_id::text from task_reservations where id = $1", reservationID.String()).Scan(&rawHolder); err != nil {
+			return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read reservation holder failed")}
+		}
+		holderID, holderProblem := parseReviewWorker(rawHolder)
+		if holderProblem != nil {
+			return task.ChangeReservationStateStoreRejected{Reason: *holderProblem}
+		}
+		draft := record.Draft.WithRecipients(holderID)
+		if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+			return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record reservation event failed")}
+		}
+		recorded = []event.Draft{draft}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit change reservation state transaction failed")}
+	}
+
 	result := store.findReservation(ctx, reservationID)
 	found, matched := result.(reservationFound)
 	if !matched {
 		return task.ChangeReservationStateStoreRejected{Reason: result.(reservationMissing).reason}
 	}
-	return task.ChangeReservationStateStoreAccepted{Value: found.value}
+	return task.ChangeReservationStateStoreAccepted{Value: found.value, RecordedEvents: recorded}
 }
 
 func (store TaskStore) ListReservations(ctx context.Context, taskID core.TaskID, page core.Page) task.ListReservationsStoreResult {
@@ -791,15 +849,32 @@ func taskListSelectSQL() string {
 				from submissions
 				where submissions.task_id = tasks.id
 				and submissions.state = 'submitted'
-			), 0)
+			), 0),
+			case when holder.id is null then '' else ` + displayNameSQL("holder") + ` end,
+			` + taskFundedExistsSQL + taskListFromSQL()
+}
+
+// taskListFromSQL is the list read's FROM/JOIN block, shared by the page
+// select and the total count so both always see the same row set (the where
+// clauses reference the joined visibility and active-reservation tables).
+func taskListFromSQL() string {
+	return `
 		from tasks
 		join task_visibility_scopes on task_visibility_scopes.task_id = tasks.id
 		join users as creator on creator.id = tasks.created_by_user_id
 		left join task_reservations as active_reservation
 			on active_reservation.task_id = tasks.id
 			and active_reservation.state = 'active'
+		left join users as holder on holder.id = active_reservation.user_id
 	`
 }
+
+// taskFundedExistsSQL reports whether a task_funds escrow row backs the task
+// (a single EXISTS subquery, shared by the list column and the funded
+// filter).
+const taskFundedExistsSQL = `exists(
+	select 1 from task_funds where task_funds.task_id = tasks.id
+)`
 
 type listQueryResult interface {
 	listQueryResult()
@@ -808,6 +883,11 @@ type listQueryResult interface {
 type listQueryAccepted struct {
 	sql       string
 	arguments NamedArgs
+	// countSQL counts every row matching the same scope and filters,
+	// ignoring limit/offset; countArguments is the same argument set without
+	// the paging keys.
+	countSQL       string
+	countArguments NamedArgs
 }
 
 type listQueryRejected struct {
@@ -819,10 +899,7 @@ func (listQueryAccepted) listQueryResult() {}
 func (listQueryRejected) listQueryResult() {}
 
 func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core.Page) listQueryResult {
-	arguments := NamedArgs{
-		"limit":  page.Limit(),
-		"offset": page.Offset(),
-	}
+	arguments := NamedArgs{}
 	var where string
 	switch typed := scope.(type) {
 	case task.PublicListScope:
@@ -930,6 +1007,23 @@ func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task created filter is invalid")}
 	}
 
+	switch fundedFilter := filters.Funded.(type) {
+	case task.FundedEquals:
+		switch fundedFilter.Value {
+		case task.FundedStateRewardFunded:
+			where += " and tasks.reward_kind in ('credit', 'bundle') and " + taskFundedExistsSQL
+		case task.FundedStateRewardUnfunded:
+			where += " and tasks.reward_kind in ('credit', 'bundle') and not " + taskFundedExistsSQL
+		case task.FundedStateNoCreditReward:
+			where += " and tasks.reward_kind not in ('credit', 'bundle')"
+		default:
+			return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task funded filter is invalid")}
+		}
+	case task.AnyFundedFilter:
+	default:
+		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task funded filter is invalid")}
+	}
+
 	orderBy := " order by tasks.created_at desc, tasks.id desc"
 	switch filters.Sort {
 	case task.SortNewest:
@@ -948,9 +1042,17 @@ func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task sort is invalid")}
 	}
 
+	countArguments := make(NamedArgs, len(arguments))
+	for name, value := range arguments {
+		countArguments[name] = value
+	}
+	arguments["limit"] = page.Limit()
+	arguments["offset"] = page.Offset()
 	return listQueryAccepted{
-		sql:       taskListSelectSQL() + where + orderBy + " limit @limit offset @offset",
-		arguments: arguments,
+		sql:            taskListSelectSQL() + where + orderBy + " limit @limit offset @offset",
+		arguments:      arguments,
+		countSQL:       "select count(*)" + taskListFromSQL() + where,
+		countArguments: countArguments,
 	}
 }
 
@@ -1011,7 +1113,9 @@ func scanTaskListItemRow(rows Rows) taskListItemRowResult {
 	var rawActiveAssigneeTeamID string
 	var rawCreatorDisplayName string
 	var pendingReviewCount int64
-	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments, &row.expiresAt, &rawActiveAssigneeKind, &rawActiveAssigneeUserID, &rawActiveAssigneeOrganizationID, &rawActiveAssigneeTeamID, &rawCreatorDisplayName, &pendingReviewCount); err != nil {
+	var rawHolderDisplayName string
+	var fundedExists bool
+	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments, &row.expiresAt, &rawActiveAssigneeKind, &rawActiveAssigneeUserID, &rawActiveAssigneeOrganizationID, &rawActiveAssigneeTeamID, &rawCreatorDisplayName, &pendingReviewCount, &rawHolderDisplayName, &fundedExists); err != nil {
 		return taskListItemRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
 	}
 	taskResult := row.parse()
@@ -1029,7 +1133,22 @@ func scanTaskListItemRow(rows Rows) taskListItemRowResult {
 	if !creatorNameMatched {
 		return taskListItemRowRejected{reason: creatorNameResult.(auth.DisplayNameRejected).Reason}
 	}
-	return taskListItemRowAccepted{value: task.ListItem{Task: taskAccepted.value, ActiveAssignee: activeAccepted.value, CreatorDisplayName: creatorName.Value, PendingReviewCount: pendingReviewCount}}
+	var holderName task.HolderNameRef = task.NoHolderName{}
+	if rawHolderDisplayName != "" {
+		holderNameResult, holderNameMatched := auth.NewDisplayName(rawHolderDisplayName).(auth.DisplayNameAccepted)
+		if !holderNameMatched {
+			return taskListItemRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "reservation holder display name is invalid")}
+		}
+		holderName = task.HolderNamed{DisplayName: holderNameResult.Value}
+	}
+	return taskListItemRowAccepted{value: task.ListItem{
+		Task:               taskAccepted.value,
+		ActiveAssignee:     activeAccepted.value,
+		CreatorDisplayName: creatorName.Value,
+		HolderDisplayName:  holderName,
+		PendingReviewCount: pendingReviewCount,
+		Funded:             task.FundedStateFor(taskAccepted.value.Reward, fundedExists),
+	}}
 }
 
 type activeAssigneeResult interface {

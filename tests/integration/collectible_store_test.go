@@ -9,6 +9,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -141,6 +142,7 @@ func TestWithinOrganizationCollectibleTipRequiresSharedActiveMembership(t *testi
 		FromUserID:    owner,
 		ToUserID:      worker,
 		CollectibleID: collectibleID,
+		Draft:         testEventDraft(t, event.KindCollectibleAwarded, owner),
 	})
 	gifted, matched := result.(assets.CollectibleGifted)
 	if !matched {
@@ -155,6 +157,7 @@ func TestWithinOrganizationCollectibleTipRequiresSharedActiveMembership(t *testi
 		FromUserID:    owner,
 		ToUserID:      outsider,
 		CollectibleID: deniedCollectibleID,
+		Draft:         testEventDraft(t, event.KindCollectibleAwarded, owner),
 	})
 	if _, matched := denied.(assets.GiftRejected); !matched {
 		t.Fatalf("gift to outsider = %T, want GiftRejected", denied)

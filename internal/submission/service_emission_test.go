@@ -24,6 +24,7 @@ func TestSubmitEmitsSubmissionCreatedToOwnerAndSubmitter(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
 	events := eventtest.NewCapturingStore()
+	store.events = events
 	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.RecorderOver(events))
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
@@ -56,6 +57,7 @@ func TestAddSubmissionCommentEmitsSubmissionCommented(t *testing.T) {
 	store := newSubmissionMemoryStore()
 	taskStore := newSubmissionTaskStore(t, task.PublicVisibility{}, `{"kind":"freeform"}`)
 	events := eventtest.NewCapturingStore()
+	store.events = events
 	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.RecorderOver(events))
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 	created, matched := service.Submit(context.Background(), command).(SubmissionCreated)

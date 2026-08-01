@@ -26,6 +26,16 @@ type Route struct {
 	ResponseMediaType string
 	RequestType       string
 	ResponseType      string
+	// SuccessStatuses are the 2xx/3xx status codes the handler actually
+	// writes (see status_resolve.go), ascending; empty means the handler did
+	// not match a status-writing pattern and defaults to 200 in the document.
+	SuccessStatuses []int
+	// ErrorStatuses are the 4xx status codes the handler can produce,
+	// ascending, including 401 for every auth-gated route.
+	ErrorStatuses []int
+	// EmitsErrors reports whether the handler can write the shared error
+	// body at all; it controls the `default` -> ErrorResponse entry.
+	EmitsErrors bool
 }
 
 type ExtractResult interface {
@@ -79,6 +89,7 @@ func Extract(sources map[string][]byte) ExtractResult {
 	formBodyFuncs := collectFormBodyFuncs(files)
 	responseMediaTypes := collectResponseMediaTypes(files)
 	requestTypeByFunc, responseTypeByFunc := resolveDTOTypes(files)
+	successByFunc, errorsByFunc, emitsErrorsByFunc := resolveResponseStatuses(files)
 	structs := collectStructShapes(files)
 
 	routesByKey := map[string]Route{}
@@ -95,6 +106,13 @@ func Extract(sources map[string][]byte) ExtractResult {
 			route.ResponseMediaType = responseMediaTypes[route.OperationID]
 			route.RequestType = requestTypeByFunc[route.OperationID]
 			route.ResponseType = responseTypeByFunc[route.OperationID]
+			route.SuccessStatuses = successByFunc[route.OperationID]
+			route.ErrorStatuses = errorsByFunc[route.OperationID]
+			route.EmitsErrors = emitsErrorsByFunc[route.OperationID]
+			if route.RequiresAuth {
+				route.ErrorStatuses = withStatus(route.ErrorStatuses, 401)
+				route.EmitsErrors = true
+			}
 			routesByKey[key] = route
 		}
 	}

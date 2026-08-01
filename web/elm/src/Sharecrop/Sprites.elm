@@ -1,10 +1,18 @@
 module Sharecrop.Sprites exposing (pixel, slugs)
 
-{-| Hand-crafted pixel-art collectible sprites rendered with pure CSS.
+{-| Hand-crafted pixel-art sprites rendered with pure CSS.
 
 No image files are used: each sprite is authored as a list of equal-length
 rows where every character is a palette key. A single helper turns those rows
 plus a per-sprite palette into a CSS grid of colored cells.
+
+Two families live here:
+
+  - the 25 collectible-catalog sprites, whose slugs are part of the API
+    contract (`slugs`) and must not be renamed, and
+  - UI sprites for the garden-gnome identity (`gnome`, `gnome-hero`,
+    `gnome-watering`, `gnome-dozing`, `gnome-signpost`), which are purely
+    presentational and can evolve freely.
 
 @docs pixel, slugs
 
@@ -245,12 +253,73 @@ nightField =
 
 
 
+-- Gnome accents. The hat crimson is deliberately a deeper, bluer red than
+-- the alert red (#c0392b) and the farm-danger brick (#8f2318), so a gnome
+-- hat in the chrome never reads as an error state.
+
+
+hatRed : String
+hatRed =
+    "#9e1b32"
+
+
+hatRedDark : String
+hatRedDark =
+    "#6f1224"
+
+
+tunicBlue : String
+tunicBlue =
+    "#3f6fae"
+
+
+tunicBlueDark : String
+tunicBlueDark =
+    "#2b4d7d"
+
+
+skin : String
+skin =
+    "#e9b58c"
+
+
+beard : String
+beard =
+    "#f4efe2"
+
+
+beardShade : String
+beardShade =
+    "#d9d2c0"
+
+
+mushroomCream : String
+mushroomCream =
+    "#f3e6c3"
+
+
+
 -- SPRITE LOOKUP
 
 
 sprite : String -> Maybe ( List String, List ( Char, String ) )
 sprite slug =
     case slug of
+        "gnome" ->
+            Just gnomeBrand
+
+        "gnome-hero" ->
+            Just gnomeHero
+
+        "gnome-watering" ->
+            Just gnomeWatering
+
+        "gnome-dozing" ->
+            Just gnomeDozing
+
+        "gnome-signpost" ->
+            Just gnomeSignpost
+
         "harvest-star" ->
             Just harvestStar
 
@@ -354,6 +423,154 @@ placeholderRows =
     , "kgggggggggk."
     , "kkkkkkkkkkkk"
     ]
+
+
+
+-- UI SPRITES: the garden-gnome identity. Shared palette letters across the
+-- family: k ink outline, r/R hat crimson + shade, s skin, e ink eyes (same
+-- as k, kept separate for readability), w/W beard + shade, b/B tunic blue +
+-- shade, d dark boot brown, g/G foliage, m mushroom cream, o spot white,
+-- u water blue.
+
+
+gnomePalette : List ( Char, String )
+gnomePalette =
+    [ ( 'k', ink )
+    , ( 'r', hatRed )
+    , ( 'R', hatRedDark )
+    , ( 's', skin )
+    , ( 'e', ink )
+    , ( 'w', beard )
+    , ( 'W', beardShade )
+    , ( 'b', tunicBlue )
+    , ( 'B', tunicBlueDark )
+    , ( 'd', brownDark )
+    , ( 'g', green )
+    , ( 'G', greenLight )
+    , ( 'm', mushroomCream )
+    , ( 'o', white )
+    , ( 'u', blue )
+    , ( 'M', grey )
+    , ( 'z', grey )
+    ]
+
+
+{-| The brand mark: a front-facing gnome, designed to stay readable at the
+nav bar's 24px (12 cells x 2px). The pointy hat takes over half the height,
+the beard is one solid light mass, and the tunic and boots are a short base.
+-}
+gnomeBrand : ( List String, List ( Char, String ) )
+gnomeBrand =
+    ( [ ".....kk....."
+      , "....krrk...."
+      , "....krrk...."
+      , "...krrrrk..."
+      , "...kRrrrk..."
+      , "..krrrrrrk.."
+      , ".krrrrRrrrk."
+      , "..ksessesk.."
+      , ".kwwwsswwwk."
+      , ".kwWwwwwWwk."
+      , "..kwwbbwwk.."
+      , "...kkddkk..."
+      ]
+    , gnomePalette
+    )
+
+
+{-| The auth-screen hero: the brand gnome at full height next to a spotted
+mushroom, on a strip of grass.
+-}
+gnomeHero : ( List String, List ( Char, String ) )
+gnomeHero =
+    ( [ "......kk............"
+      , ".....krrk..........."
+      , ".....krrk..........."
+      , "....krrrrk.........."
+      , "....kRrrrk.........."
+      , "...krrrrrrk........."
+      , "...krrrrRrk....kk..."
+      , "..krrrrrrrrk..krrk.."
+      , ".krrrrrRrrrrk.krrk.."
+      , "..ksesssesk..krrrrk."
+      , ".kwwwsssswwk.krorrk."
+      , ".kwwwwwwwwwkkrrrrok."
+      , ".kwWwwwwwWwkkkkkkkk."
+      , "..kwwbbbbwk..kmmk..."
+      , "...kbbbbbbk..kmmk..."
+      , "gG.kddkkddk.GkmmkgG."
+      ]
+    , gnomePalette
+    )
+
+
+{-| Empty task lists: a gnome watering a seedling — nothing has grown here
+yet, but someone is on it.
+-}
+gnomeWatering : ( List String, List ( Char, String ) )
+gnomeWatering =
+    ( [ "....kk............"
+      , "...krrk..........."
+      , "...krrk..........."
+      , "..krrrrk.........."
+      , "..krrRrk.........."
+      , ".kkkkkkkk........."
+      , ".kwssesk.........."
+      , ".kwwwwwk...kkkk..."
+      , ".kwwwwwk..kMMMMk.."
+      , ".kbbbbbbkMMMMMMkk."
+      , "..kbbbk..kMMMMk.u."
+      , "..kbbbk...kkkk.u.."
+      , "...kdkdk....gGgG.."
+      , "..........kddddddk"
+      ]
+    , gnomePalette
+    )
+
+
+{-| Empty inbox: a gnome dozing against a big spotted mushroom, nothing to
+deal with right now.
+-}
+gnomeDozing : ( List String, List ( Char, String ) )
+gnomeDozing =
+    ( [ ".............zzzz."
+      , "..kkkkkk.......z.."
+      , ".krrrrrrk.....z..."
+      , "krrorrrrrok..zzzz."
+      , "krrrrrorrrk......."
+      , "kkkkkkkkkkk..kk..."
+      , "...kmmk.....krrk.."
+      , "...kmmk....krrrrk."
+      , "...kmmk....kRrrrk."
+      , "...kmmk...krrrrrrk"
+      , "...kmmk...kwwwwwk."
+      , "...kmmk..kwwbbwwk."
+      , "..kkmmkk.kbbkkdkdk"
+      ]
+    , gnomePalette
+    )
+
+
+{-| Empty integrations/webhooks and org lists: a gnome beside a signpost —
+nothing is pointed anywhere yet.
+-}
+gnomeSignpost : ( List String, List ( Char, String ) )
+gnomeSignpost =
+    ( [ "..kkkkkkk...kk...."
+      , "..kmmmmmk..krrk..."
+      , "..kkkkkkk..krrk..."
+      , "....kdk...krrrrk.."
+      , "..kkkkkkk.kRrrrk.."
+      , "..kmmmmmkkrrrrrrk."
+      , "..kkkkkkkkrrRrrrk."
+      , "....kdk..kkkkkkkk."
+      , "....kdk..ksessesk."
+      , "....kdk..kwwwwwwk."
+      , "....kdk..kwbbbbwk."
+      , "...kkdkk..kdkkdk.."
+      ]
+    , gnomePalette
+    )
 
 
 

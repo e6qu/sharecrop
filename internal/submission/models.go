@@ -40,6 +40,10 @@ var (
 	StateAccepted         = State{value: "accepted"}
 	StateRejected         = State{value: "rejected"}
 	StateChangesRequested = State{value: "changes_requested"}
+	// StateSuperseded is terminal: the task's accept closed the task while
+	// this submission was still awaiting review, so it can no longer be
+	// reviewed.
+	StateSuperseded = State{value: "superseded"}
 )
 
 type StateResult interface {
@@ -70,6 +74,8 @@ func ParseState(raw string) StateResult {
 		return StateParsed{Value: StateRejected}
 	case StateChangesRequested.value:
 		return StateParsed{Value: StateChangesRequested}
+	case StateSuperseded.value:
+		return StateParsed{Value: StateSuperseded}
 	default:
 		return StateParseRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "submission state is invalid")}
 	}

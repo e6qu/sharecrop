@@ -20,8 +20,8 @@ func newUserID(t *testing.T) core.UserID {
 
 func TestParseKindRoundTripsEveryKind(t *testing.T) {
 	kinds := AllKinds()
-	if len(kinds) != 20 {
-		t.Fatalf("AllKinds() has %d kinds, want 20", len(kinds))
+	if len(kinds) != 21 {
+		t.Fatalf("AllKinds() has %d kinds, want 21", len(kinds))
 	}
 	for _, kind := range kinds {
 		parsed, matched := ParseKind(kind.String()).(KindParsed)
@@ -40,7 +40,7 @@ func TestParseKindRoundTripsEveryKind(t *testing.T) {
 func TestNotificationRuleIsTotalAndFeedOnlyKindsAreExplicit(t *testing.T) {
 	feedOnly := map[string]bool{KindTaskOpened.String(): true}
 	for _, kind := range AllKinds() {
-		rule := notificationRuleFor(kind)
+		rule := NotificationRuleFor(kind)
 		switch typed := rule.(type) {
 		case NoNotification:
 			if !feedOnly[kind.String()] {
@@ -93,6 +93,7 @@ func TestActorUserIDResolvesSystem(t *testing.T) {
 type fakeEventStore struct {
 	appended   []Event
 	recipients []Recipients
+	dispatched []core.DomainEventID
 }
 
 func (store *fakeEventStore) Append(_ context.Context, value Event, recipients Recipients) AppendStoreResult {
@@ -101,7 +102,16 @@ func (store *fakeEventStore) Append(_ context.Context, value Event, recipients R
 	return AppendStoreAccepted{Value: WithoutEnrichment(StoredEvent{Event: value, Cursor: CursorFromSequence(int64(len(store.appended)))})}
 }
 
+func (store *fakeEventStore) Dispatch(_ context.Context, id core.DomainEventID) DispatchStoreResult {
+	store.dispatched = append(store.dispatched, id)
+	return DispatchStoreCompleted{}
+}
+
 func (store *fakeEventStore) ListForRecipient(context.Context, core.UserID, CursorFilter, core.Page) ListStoreResult {
+	return ListStoreAccepted{Values: nil}
+}
+
+func (store *fakeEventStore) ListForOrganization(context.Context, core.OrganizationID, CursorFilter, core.Page) ListStoreResult {
 	return ListStoreAccepted{Values: nil}
 }
 
@@ -173,6 +183,12 @@ func TestEmitAppendsAndFansOutToRecipientsExceptActor(t *testing.T) {
 	if created.Subject.Kind != "task" || created.Subject.ID != taskID.Value.String() {
 		t.Fatalf("notification subject = %+v", created.Subject)
 	}
+	if _, sourced := created.Source.(notification.FromEvent); !sourced {
+		t.Fatalf("notification must be keyed by its source event")
+	}
+	if len(eventStore.dispatched) != 1 || eventStore.dispatched[0] != eventStore.appended[0].ID {
+		t.Fatalf("emit must dispatch the appended event inline")
+	}
 }
 
 func TestEmitFeedOnlyKindCreatesNoNotification(t *testing.T) {
@@ -202,7 +218,7 @@ func TestNotificationSubjectPrefersMostSpecificRef(t *testing.T) {
 	subject := NoSubjectRefs()
 	subject.Task = TaskSubject{ID: taskID.Value}
 	subject.Submission = SubmissionSubject{ID: submissionID.Value}
-	mapped := notificationSubjectFor(subject)
+	mapped := NotificationSubjectFor(subject)
 	if mapped.Kind != "submission" || mapped.ID != submissionID.Value.String() {
 		t.Fatalf("subject = %+v, want submission ref", mapped)
 	}

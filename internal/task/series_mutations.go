@@ -203,20 +203,19 @@ func (service Service) AddSeriesComment(ctx context.Context, actor auth.UserSubj
 		AuthorID: actor.ID,
 		Body:     body,
 	}
-	storeResult := service.store.CreateSeriesComment(ctx, comment)
+	subject := event.NoSubjectRefs()
+	subject.Series = event.SeriesSubject{ID: series.ID}
+	draft, draftProblem := draftOrProblem(event.NewDraft(event.KindSeriesCommented, event.ActorUser{ID: actor.ID}, subject,
+		event.EmptyMetadata(), event.NewRecipients(series.CreatedBy, actor.ID)))
+	if draftProblem != nil {
+		return SeriesCommentRejected{Reason: *draftProblem}
+	}
+	storeResult := service.store.CreateSeriesComment(ctx, comment, draft)
 	accepted, accepted_ := storeResult.(CreateSeriesCommentStoreAccepted)
 	if !accepted_ {
 		return SeriesCommentRejected{Reason: storeResult.(CreateSeriesCommentStoreRejected).Reason}
 	}
-	subject := event.NoSubjectRefs()
-	subject.Series = event.SeriesSubject{ID: series.ID}
-	_ = service.recorder.Emit(ctx, event.EmitCommand{
-		Kind:       event.KindSeriesCommented,
-		Actor:      event.ActorUser{ID: actor.ID},
-		Subject:    subject,
-		Metadata:   event.EmptyMetadata(),
-		Recipients: event.NewRecipients(series.CreatedBy, actor.ID),
-	})
+	service.recorder.Dispatch(ctx, draft)
 	return SeriesCommentAdded{Value: accepted.Value}
 }
 

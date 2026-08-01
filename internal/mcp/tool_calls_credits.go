@@ -25,6 +25,8 @@ type ledgerEntrySummary struct {
 type ledgerEntriesPayload struct {
 	Entries    []ledgerEntrySummary `json:"entries"`
 	NextOffset int                  `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 // creditGrantPayload mirrors REST's creditGrantResponse field names.
@@ -77,7 +79,7 @@ func (server Server) callListLedger(ctx context.Context, subject auth.UserSubjec
 			Note:   entry.Note,
 		})
 	}
-	return marshalPayload(ledgerEntriesPayload{Entries: entries, NextOffset: nextOffset})
+	return marshalPayload(ledgerEntriesPayload{Entries: entries, NextOffset: nextOffset, Total: listed.Total})
 }
 
 // callGrantCredits is the platform-admin manual credit grant over MCP,

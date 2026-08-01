@@ -6,6 +6,7 @@ package eventtest
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
@@ -31,8 +32,26 @@ func (store *CapturingStore) Append(_ context.Context, value event.Event, recipi
 	return event.AppendStoreAccepted{Value: event.WithoutEnrichment(event.StoredEvent{Event: value, Cursor: event.CursorFromSequence(int64(len(store.appended)))})}
 }
 
+func (store *CapturingStore) Dispatch(context.Context, core.DomainEventID) event.DispatchStoreResult {
+	return event.DispatchStoreCompleted{}
+}
+
 func (store *CapturingStore) ListForRecipient(context.Context, core.UserID, event.CursorFilter, core.Page) event.ListStoreResult {
 	return event.ListStoreAccepted{Values: []event.StoredEvent{}}
+}
+
+func (store *CapturingStore) ListForOrganization(context.Context, core.OrganizationID, event.CursorFilter, core.Page) event.ListStoreResult {
+	return event.ListStoreAccepted{Values: []event.StoredEvent{}}
+}
+
+// Record captures a draft that a store-mutation test double "recorded" in
+// its transaction, so emission assertions cover in-transaction outbox drafts
+// the same way they cover direct appends.
+func (store *CapturingStore) Record(draft event.Draft) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.appended = append(store.appended, draft.Event(time.Now()))
+	store.recipients = append(store.recipients, draft.Recipients)
 }
 
 // Appended returns a copy of the captured events in emission order.

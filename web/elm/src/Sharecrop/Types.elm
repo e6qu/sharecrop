@@ -131,6 +131,7 @@ type alias LoggedInModel =
     , entries : List Ledger.LedgerEntryResponse
     , ledgerOffset : Int
     , ledgerNextOffset : Int
+    , ledgerTotal : Int
     , unreadCount : Int
     , inboxUnreadOnly : Bool
     , activityEvents : List Events.EventResponse
@@ -175,6 +176,7 @@ type alias LoggedInModel =
     , taskStateFilter : List String
     , taskListOffset : Int
     , taskListNextOffset : Int
+    , taskListTotal : Int
     , taskListQuery : String
     , taskListTypeFilter : String
     , taskListSort : String
@@ -186,8 +188,10 @@ type alias LoggedInModel =
     , agentMessage : Maybe Note
     , discoveryTasks : List Task.TaskListItemResponse
     , discoveryIncludeReserved : Bool
+    , discoveryFundedOnly : Bool
     , discoveryOffset : Int
     , discoveryNextOffset : Int
+    , discoveryTotal : Int
     , discoveryQuery : String
     , detail : Maybe PublicTaskDetail
     , detailError : Maybe String
@@ -203,6 +207,7 @@ type alias LoggedInModel =
     , submitAttachments : List SelectedAttachment
     , submitMessage : Maybe Note
     , moderationReason : Moderation.ModerationReason
+    , moderationSubject : ModerationSubject
     , moderationDetails : String
     , moderationMessage : Maybe Note
     , reviewNote : String
@@ -232,6 +237,7 @@ type alias LoggedInModel =
     , orgLedger : List Ledger.LedgerEntryResponse
     , orgLedgerOffset : Int
     , orgLedgerNextOffset : Int
+    , orgLedgerTotal : Int
     , orgAuditEvents : List Admin.AuditEventResponse
     , orgAuditMessage : Maybe Note
     , orgTeams : List Team.TeamResponse
@@ -246,6 +252,7 @@ type alias LoggedInModel =
     , orgTaskSort : String
     , orgTaskOffset : Int
     , orgTaskNextOffset : Int
+    , orgTaskTotal : Int
     , orgTaskMessage : Maybe Note
     , orgTaskSavedViewName : String
     , orgTaskSavedViews : List QueueView
@@ -267,6 +274,7 @@ type alias LoggedInModel =
     , userSubmissions : List Submission.SubmissionResponse
     , userSubmissionsOffset : Int
     , userSubmissionsNextOffset : Int
+    , userSubmissionsTotal : Int
     , pendingRevisionTaskID : Maybe String
     , pendingRevisionResponse : String
     , seriesDetail : Maybe SeriesDetailData
@@ -288,6 +296,7 @@ type alias LoggedInModel =
     , teamWorkSort : String
     , teamWorkOffset : Int
     , teamWorkNextOffset : Int
+    , teamWorkTotal : Int
     , teamWorkMessage : Maybe Note
     , teamWorkSavedViewName : String
     , teamWorkSavedViews : List QueueView
@@ -346,6 +355,7 @@ type alias LoggedInModel =
     , adminModerationStateFilter : String
     , adminModerationOffset : Int
     , adminModerationNextOffset : Int
+    , adminModerationTotal : Int
     , adminModerationResolutionNote : String
     , adminPrivacyRequests : List Privacy.PrivacyRequestResponse
     , adminPrivacyOffset : Int
@@ -365,6 +375,7 @@ type alias LoggedInModel =
     , notifications : List Notification.NotificationResponse
     , notificationsOffset : Int
     , notificationsNextOffset : Int
+    , notificationsTotal : Int
     , inboxMessage : Maybe Note
     }
 
@@ -416,6 +427,7 @@ type alias Model =
     , resetPassword : String
     , authError : Maybe String
     , authNotice : Maybe String
+    , sessionNotice : Maybe String
     , session : Session
     }
 
@@ -520,6 +532,7 @@ type Msg
     | LogoutClicked
     | LogoutReceived (Result Http.Error String)
     | DiscoveryIncludeReservedChanged Bool
+    | DiscoveryFundedOnlyChanged Bool
     | DiscoveryQueryChanged String
     | PreviousDiscoveryPageClicked
     | NextDiscoveryPageClicked
@@ -546,6 +559,8 @@ type Msg
     | SubmitReceived (Result Http.Error Submission.SubmissionCreatedResponse)
     | ModerationReasonChanged Moderation.ModerationReason
     | ModerationDetailsChanged String
+    | FileDisputeClicked String
+    | ReportSubjectClearedClicked
     | ReportTaskClicked String
     | ModerationReportReceived (Result Http.Error Moderation.ModerationReportResponse)
     | ReviewNoteChanged String
@@ -717,6 +732,7 @@ type Msg
     | SubmitRawModeToggled Bool
     | SessionRefreshTick Time.Posix
     | SessionRefreshed (Result Http.Error Auth.AuthResponse)
+    | SessionEnded
     | OperationsReceived (Result Http.Error Admin.OperationsResponse)
     | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
     | PreviousAuditEventsPageClicked
@@ -875,6 +891,16 @@ allVisibilityTags =
 type Note
     = SuccessNote String
     | FailureNote String
+
+
+{-| What a moderation report on the task-detail page is about: the task
+itself (the default), or one specific submission — the shape a worker's
+dispute takes. Modeled as a union rather than an optional id so the report
+form always knows exactly which subject it will send.
+-}
+type ModerationSubject
+    = ReportAboutTask
+    | ReportAboutSubmission String
 
 
 -- pageSize is the limit sent with every paginated list request. Views use it

@@ -302,6 +302,53 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 		return submitResult.(submission.SubmitRejected).Reason.Description()
 	}
 
+	// task-disputed: a ren-owned public task where MARA's own submission was
+	// rejected, so the single-actor demo can show the rejected state and the
+	// worker-side "File a dispute" affordance (and its Playwright test can
+	// walk a dispute into the admin moderation queue).
+	disputedTask := taskService.Create(ctx, task.CreateCommand{
+		Actor: renSubject, Owner: task.UserOwner{UserID: memberIDs["ren"]},
+		Title:       seedTitle("Tag 12 product photos with alt text"),
+		Description: seedDescription("Write a one-sentence alt text for each of the 12 listed product photos."),
+		Type:        task.TaskTypeGeneral, Reference: task.ReferenceURL{},
+		Reward: task.NoRewardSpec{}, Participation: task.ParticipationPolicyOpen,
+		AssigneeScope: task.AssigneeScopeUser, ReservationTTL: task.DefaultReservationTTL(),
+		Visibility: task.PublicVisibility{}, Placement: task.StandalonePlacement{},
+		ResponseSchema: seedSchema(`{"kind":"freeform"}`),
+		Payload:        task.JSONDataPayload{Source: seedPayload(`{"photos":["p-01.jpg","p-02.jpg","p-03.jpg"]}`)},
+	})
+	disputedCreated, matched := disputedTask.(task.TaskCreated)
+	if !matched {
+		return disputedTask.(task.CreateRejected).Reason.Description()
+	}
+	if result := taskService.Open(ctx, renSubject, disputedCreated.Value.ID); !isTaskStateChanged(result) {
+		return "open task-disputed failed"
+	}
+	disputedResponse := submission.NewResponseSource(`{"alt_texts":["Product photo","Product photo","Product photo"]}`)
+	disputedResponseAccepted, matched := disputedResponse.(submission.ResponseSourceAccepted)
+	if !matched {
+		return "seed disputed submission response was rejected"
+	}
+	disputedSubmit := submissionService.Submit(ctx, submission.SubmitCommand{
+		TaskID:         disputedCreated.Value.ID,
+		SubmitterID:    maraID,
+		ResponseSource: disputedResponseAccepted.Value,
+		Attachments:    []attachment.Attachment{},
+	})
+	disputedSubmitted, matched := disputedSubmit.(submission.SubmissionCreated)
+	if !matched {
+		return disputedSubmit.(submission.SubmitRejected).Reason.Description()
+	}
+	rejectNoteResult := submission.NewRequiredReviewNote("Every photo got the same generic sentence - each alt text must describe its own photo.")
+	rejectNote, matched := rejectNoteResult.(submission.ReviewNoteAccepted)
+	if !matched {
+		return "seed reject note was rejected"
+	}
+	rejectResult := ledgerService.RejectSubmission(ctx, memberIDs["ren"], disputedCreated.Value.ID, disputedSubmitted.Value.ID, mustIdempotencyKey("seed-reject-disputed"), rejectNote.Value, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{})
+	if _, matched := rejectResult.(ledger.SubmissionRejected); !matched {
+		return "seed reject of the disputed submission failed"
+	}
+
 	// task-approvals: an approval-required task owned by mara with a pending
 	// reservation request from sol, so the owner Approve/Decline controls
 	// have something real to act on.

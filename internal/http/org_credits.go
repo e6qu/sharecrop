@@ -24,7 +24,7 @@ func (server Server) fundTaskFromOrganization(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	result := server.ledgerService.FundTaskFromOrganization(r.Context(), organizationID.Value, taskID, amount, key)
+	result := server.ledgerService.FundTaskFromOrganization(r.Context(), actor.ID, organizationID.Value, taskID, amount, key)
 	funded, matched := result.(ledger.TaskFunded)
 	if !matched {
 		writeDomainError(w, result.(ledger.FundRejected).Reason)
@@ -69,7 +69,7 @@ func (server Server) organizationCreditsLedger(w http.ResponseWriter, r *http.Re
 	}
 
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
-	response := ledgerListResponse{Entries: make([]ledgerEntryResponse, 0, visible), NextOffset: nextOffset}
+	response := ledgerListResponse{Entries: make([]ledgerEntryResponse, 0, visible), NextOffset: nextOffset, Total: listed.Total}
 	for index := range listed.Values[:visible] {
 		response.Entries = append(response.Entries, ledgerEntryToResponse(listed.Values[index]))
 	}

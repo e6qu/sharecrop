@@ -6831,3 +6831,45 @@ tasks/submissions/reservations/comments, a native UTC datetime expiry input,
 credential copy buttons and worker/reviewer scope presets, webhook audience
 choice with delivery-signature verification instructions, the admin grant
 form, holder-aware reservation copy, and "Page N" pagers.
+
+# Agent loop hardening (outbox, superseded work, disputes, gnome identity)
+
+One branch packed the recorded follow-ups, the remaining review findings that
+were fixes rather than product decisions, a test-hardening pass, and a visual
+identity overhaul, in six tested stages.
+
+Durability: domain events moved from post-commit best-effort emission to an
+in-transaction outbox — the event row and its recipients commit with the
+mutation, notification fan-out and webhook expansion run as an idempotent
+post-commit dispatch, and a runner sweep re-dispatches stale recorded rows
+after a crash. Idempotent replays stopped re-emitting events. The webhook
+pump gained a drain loop. The guest-side rate-limit bridge fails closed.
+The webhook pump cursor table was dropped.
+
+Work outcomes: accepting a submission now supersedes competing submitted
+submissions (state, event, and notification per loser); rejected workers file
+structured disputes (moderation reason `dispute`, submission subject) from
+REST, MCP, and the browser; organization funding carries the acting user;
+refunds notify the released reservation holder.
+
+Agent loop: the event feed admits agent and org credentials
+(`notifications_read`) with `wait` long-polling capped for the edge; MCP
+gained `sharecrop.list_events`; task listings gained the funded filter and
+funded/creator/holder/pending-review enrichment on both surfaces; pager-backed
+lists report `total`; OpenAPI declares handler-derived status codes and a
+shared error schema.
+
+UI: forced sign-out on `unauthenticated`, session-persistent activity cursor,
+superseded chips with an explanation, dispute filing from rejected rows,
+"Page N of M" pagers, funded badges and a funded-only discovery filter,
+holder names on reserved rows — and the garden-gnome identity: gnome brand
+mark and auth hero, gnome-scene empty states replacing the scarecrow, gnome
+accent palette with sage-shifted chrome, favicons, and landing hero.
+
+Testing: 300-subscription fan-out drain, three-replica exactly-once
+dispatch/pump/expiry races, outbox crash-recovery legs, a two-actor live
+browser flow (discover→reserve→submit→poll→accept→payout across two
+sessions), a verified reference webhook receiver
+(`tools/webhook_receiver_sample.ts`), and a migration rehearsal script
+(`tools/rehearse_migrations.sh`; 000046 measured ~1 s against 20k users /
+100k events).

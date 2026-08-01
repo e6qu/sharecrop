@@ -49,7 +49,7 @@ func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
-	response := ledgerListResponse{Entries: make([]ledgerEntryResponse, 0, visible), NextOffset: nextOffset}
+	response := ledgerListResponse{Entries: make([]ledgerEntryResponse, 0, visible), NextOffset: nextOffset, Total: listed.Total}
 	for index := range listed.Values[:visible] {
 		response.Entries = append(response.Entries, ledgerEntryToResponse(listed.Values[index]))
 	}

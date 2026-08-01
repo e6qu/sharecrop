@@ -5,6 +5,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -298,9 +299,10 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to tip")}
 	}
 	// Idempotent replay: if the collectible already belongs to the recipient, a
-	// retried accept (after a lost response) treats the gift as already done.
+	// retried accept (after a lost response) treats the gift as already done
+	// and records no new event.
 	if collectible.value.OwnerKind == assets.CollectibleOwnerKindUser && collectible.value.OwnerID == command.ToUserID.String() {
-		return assets.CollectibleGifted{Value: collectible.value}
+		return assets.CollectibleGifted{Value: collectible.value, RecordedEvents: []event.Draft{}}
 	}
 	if collectible.value.OwnerKind != assets.CollectibleOwnerKindUser || collectible.value.OwnerID != command.FromUserID.String() {
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to tip")}
@@ -320,6 +322,9 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, owner_kind = 'user', state_recorded_at = now() where id = $1", command.CollectibleID.String(), command.ToUserID.String()); err != nil {
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer collectible failed")}
 	}
+	if err := recordEventDraftInTx(ctx, tx, command.Draft); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record collectible gift event failed")}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit gift collectible failed")}
 	}
@@ -327,7 +332,7 @@ func (store CollectibleStore) GiftCollectible(ctx context.Context, command asset
 	gifted := collectible.value
 	gifted.OwnerKind = assets.CollectibleOwnerKindUser
 	gifted.OwnerID = command.ToUserID.String()
-	return assets.CollectibleGifted{Value: gifted}
+	return assets.CollectibleGifted{Value: gifted, RecordedEvents: []event.Draft{command.Draft}}
 }
 
 func (store CollectibleStore) AwardOrganizationCollectible(ctx context.Context, command assets.AwardOrganizationCollectibleStoreCommand) assets.GiftResult {
@@ -365,6 +370,9 @@ func (store CollectibleStore) AwardOrganizationCollectible(ctx context.Context, 
 	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, owner_kind = 'user', organization_id = null, state_recorded_at = now() where id = $1", command.CollectibleID.String(), command.RecipientUserID.String()); err != nil {
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer organization collectible failed")}
 	}
+	if err := recordEventDraftInTx(ctx, tx, command.Draft); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record collectible award event failed")}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit award organization collectible failed")}
 	}
@@ -373,7 +381,7 @@ func (store CollectibleStore) AwardOrganizationCollectible(ctx context.Context, 
 	awarded.OwnerKind = assets.CollectibleOwnerKindUser
 	awarded.OwnerID = command.RecipientUserID.String()
 	awarded.OrganizationID = ""
-	return assets.CollectibleGifted{Value: awarded}
+	return assets.CollectibleGifted{Value: awarded, RecordedEvents: []event.Draft{command.Draft}}
 }
 
 func requireSharedCollectibleOrganization(ctx context.Context, tx Tx, collectible assets.Collectible, from core.UserID, to core.UserID) (core.DomainError, bool) {

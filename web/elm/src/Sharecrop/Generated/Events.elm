@@ -21,6 +21,7 @@ type DomainEventKind
     | DomainEventKindSubmissionAccepted
     | DomainEventKindSubmissionChangesRequested
     | DomainEventKindSubmissionRejected
+    | DomainEventKindSubmissionSuperseded
     | DomainEventKindSubmissionCommented
     | DomainEventKindPayoutReceived
     | DomainEventKindCreditGranted
@@ -77,6 +78,9 @@ domainEventKindDecoder =
 
                     "submission_rejected" ->
                         Decode.succeed DomainEventKindSubmissionRejected
+
+                    "submission_superseded" ->
+                        Decode.succeed DomainEventKindSubmissionSuperseded
 
                     "submission_commented" ->
                         Decode.succeed DomainEventKindSubmissionCommented
@@ -144,6 +148,9 @@ domainEventKindEncoder domainEventKind =
 
         DomainEventKindSubmissionRejected ->
             Encode.string "submission_rejected"
+
+        DomainEventKindSubmissionSuperseded ->
+            Encode.string "submission_superseded"
 
         DomainEventKindSubmissionCommented ->
             Encode.string "submission_commented"
@@ -515,17 +522,20 @@ webhookDeliveryResponseEncoder webhookDeliveryResponse =
 type alias WebhookDeliveriesResponse =
     { deliveries : List WebhookDeliveryResponse
     , nextOffset : Int
+    , total : Int
     }
 
 webhookDeliveriesResponseDecoder : Decoder WebhookDeliveriesResponse
 webhookDeliveriesResponseDecoder =
-    Decode.map2 WebhookDeliveriesResponse
+    Decode.map3 WebhookDeliveriesResponse
         (Decode.field "deliveries" (Decode.list webhookDeliveryResponseDecoder))
         (Decode.field "next_offset" Decode.int)
+        (Decode.field "total" Decode.int)
 
 webhookDeliveriesResponseEncoder : WebhookDeliveriesResponse -> Encode.Value
 webhookDeliveriesResponseEncoder webhookDeliveriesResponse =
     Encode.object
         [ ( "deliveries", Encode.list webhookDeliveryResponseEncoder webhookDeliveriesResponse.deliveries )
         , ( "next_offset", Encode.int webhookDeliveriesResponse.nextOffset )
+        , ( "total", Encode.int webhookDeliveriesResponse.total )
         ]

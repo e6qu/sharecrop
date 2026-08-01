@@ -11,7 +11,7 @@ func TestNotifySkipsSelfNotification(t *testing.T) {
 	user := newUserID(t)
 	service := NewService(NewMemoryStore())
 
-	result := service.Notify(context.Background(), user, user, KindSubmissionCreated, Subject{Kind: "submission", ID: "submission-1"}, EmptyMetadata())
+	result := service.Notify(context.Background(), user, user, KindSubmissionCreated, Subject{Kind: "submission", ID: "submission-1"}, EmptyMetadata(), NoSourceEvent{})
 	if _, skipped := result.(NotificationSkipped); !skipped {
 		t.Fatalf("expected self notification to be skipped, got %T", result)
 	}
@@ -27,7 +27,7 @@ func TestNotifyListAndMarkRead(t *testing.T) {
 	actor := newUserID(t)
 	service := NewService(NewMemoryStore())
 
-	result := service.Notify(context.Background(), recipient, actor, KindSubmissionAccepted, Subject{Kind: "submission", ID: "submission-1"}, Metadata{JSON: `{"task_id":"task-1"}`})
+	result := service.Notify(context.Background(), recipient, actor, KindSubmissionAccepted, Subject{Kind: "submission", ID: "submission-1"}, Metadata{JSON: `{"task_id":"task-1"}`}, NoSourceEvent{})
 	created, matched := result.(NotificationCreated)
 	if !matched {
 		t.Fatalf("notify rejected: %T", result)
@@ -97,12 +97,12 @@ func TestListUnreadFilterAndCountUnread(t *testing.T) {
 	actor := newUserID(t)
 	service := NewService(NewMemoryStore())
 
-	first := service.Notify(context.Background(), recipient, actor, KindSubmissionCreated, Subject{Kind: "submission", ID: "submission-1"}, EmptyMetadata())
+	first := service.Notify(context.Background(), recipient, actor, KindSubmissionCreated, Subject{Kind: "submission", ID: "submission-1"}, EmptyMetadata(), NoSourceEvent{})
 	created, matched := first.(NotificationCreated)
 	if !matched {
 		t.Fatalf("first notify rejected: %T", first)
 	}
-	if _, matched := service.Notify(context.Background(), recipient, actor, KindTaskFunded, Subject{Kind: "task", ID: "task-1"}, EmptyMetadata()).(NotificationCreated); !matched {
+	if _, matched := service.Notify(context.Background(), recipient, actor, KindTaskFunded, Subject{Kind: "task", ID: "task-1"}, EmptyMetadata(), NoSourceEvent{}).(NotificationCreated); !matched {
 		t.Fatalf("second notify rejected")
 	}
 	if _, matched := service.MarkRead(context.Background(), recipient, created.Value.ID).(NotificationRead); !matched {

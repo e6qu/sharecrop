@@ -83,6 +83,10 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 		return submission.CreateSubmissionStoreRejected{Reason: *nameReason}
 	}
 
+	if err := recordEventDraftInTx(ctx, tx, command.Draft); err != nil {
+		return submission.CreateSubmissionStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record submission event failed")}
+	}
+
 	// Read the row's created_at back so the returned read model carries the
 	// stored fact rather than a fabricated Go-side timestamp.
 	var rawCreatedAt string
@@ -156,6 +160,12 @@ func (store SubmissionStore) FindSubmission(ctx context.Context, submissionID co
 }
 
 func (store SubmissionStore) ListForSubmitter(ctx context.Context, submitterID core.UserID, page core.Page) submission.ListSubmissionsStoreResult {
+	var total int64
+	if err := store.db.QueryRow(ctx,
+		"select count(*) from submissions where submissions.user_id = $1",
+		submitterID.String()).Scan(&total); err != nil {
+		return submission.ListSubmissionsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "count submitter submissions failed")}
+	}
 	rows, err := store.db.Query(ctx, submissionSelectSQL()+`
 		where submissions.user_id = $1
 		order by submissions.created_at
@@ -171,10 +181,16 @@ func (store SubmissionStore) ListForSubmitter(ctx context.Context, submitterID c
 	if !matched {
 		return submission.ListSubmissionsStoreRejected{Reason: valuesResult.(submissionRowsRejected).reason}
 	}
-	return submission.ListSubmissionsStoreAccepted{Values: values.values}
+	return submission.ListSubmissionsStoreAccepted{Values: values.values, Total: total}
 }
 
 func (store SubmissionStore) ListForTask(ctx context.Context, taskID core.TaskID, page core.Page) submission.ListSubmissionsStoreResult {
+	var total int64
+	if err := store.db.QueryRow(ctx,
+		"select count(*) from submissions where submissions.task_id = $1",
+		taskID.String()).Scan(&total); err != nil {
+		return submission.ListSubmissionsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "count submissions failed")}
+	}
 	rows, err := store.db.Query(ctx, submissionSelectSQL()+`
 		where submissions.task_id = $1
 		order by submissions.created_at
@@ -191,7 +207,7 @@ func (store SubmissionStore) ListForTask(ctx context.Context, taskID core.TaskID
 		rejected := valuesResult.(submissionRowsRejected)
 		return submission.ListSubmissionsStoreRejected{Reason: rejected.reason}
 	}
-	return submission.ListSubmissionsStoreAccepted{Values: values.values}
+	return submission.ListSubmissionsStoreAccepted{Values: values.values, Total: total}
 }
 
 type insertRowsResult interface {

@@ -153,7 +153,7 @@ func TestListWebhookDeliveriesForOwnSubscription(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("deliveries status = %d (%s)", response.Code, response.Body.String())
 	}
-	if response.Body.String() != "{\"deliveries\":[],\"next_offset\":0}\n" {
+	if response.Body.String() != "{\"deliveries\":[],\"next_offset\":0,\"total\":0}\n" {
 		t.Fatalf("deliveries body = %q", response.Body.String())
 	}
 }

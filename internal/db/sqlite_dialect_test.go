@@ -51,10 +51,11 @@ func seedUserForTest(t *testing.T, handle *sql.DB, name string) core.UserID {
 	return id
 }
 
-// TestNewSchemaDDLOnSQLite proves the 000037-000041 migrations translate to
-// SQLite: the bigserial event cursor auto-assigns monotonically (rowid alias),
-// ledger idempotency keys are unique per account rather than globally, the
-// webhook pump cursor and system actor rows are seeded, and the task
+// TestNewSchemaDDLOnSQLite proves the newer migrations translate to SQLite:
+// the bigserial event cursor auto-assigns monotonically (rowid alias), ledger
+// idempotency keys are unique per account rather than globally, the outbox
+// dispatch-state column defaults to recorded (000046) while the old webhook
+// pump cursor table is gone, the system actor row is seeded, and the task
 // expires_at column exists.
 func TestNewSchemaDDLOnSQLite(t *testing.T) {
 	ctx := context.Background()
@@ -92,14 +93,25 @@ func TestNewSchemaDDLOnSQLite(t *testing.T) {
 		t.Fatalf("same key on the same account must be rejected")
 	}
 
-	var lastSeq int64
+	// The outbox migration (000046) adds the dispatch-state enum with a
+	// 'recorded' default and drops the old webhook pump cursor table.
+	var dispatchState string
 	if err := handle.QueryRowContext(ctx,
-		"select last_seq from webhook_pump_cursor where singleton = 1",
-	).Scan(&lastSeq); err != nil {
-		t.Fatalf("webhook pump cursor not seeded: %v", err)
+		"select dispatch_state from domain_events where id = 'event-1'",
+	).Scan(&dispatchState); err != nil {
+		t.Fatalf("read dispatch state: %v", err)
 	}
-	if lastSeq != 0 {
-		t.Fatalf("pump cursor last_seq = %d, want 0", lastSeq)
+	if dispatchState != "recorded" {
+		t.Fatalf("dispatch_state = %q, want recorded", dispatchState)
+	}
+	var pumpCursorExists int
+	if err := handle.QueryRowContext(ctx,
+		"select count(*) from sqlite_master where type = 'table' and name = 'webhook_pump_cursor'",
+	).Scan(&pumpCursorExists); err != nil {
+		t.Fatalf("check pump cursor table: %v", err)
+	}
+	if pumpCursorExists != 0 {
+		t.Fatalf("webhook_pump_cursor must be dropped by the outbox migration")
 	}
 
 	var systemEmail string

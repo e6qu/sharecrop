@@ -81,6 +81,7 @@ initialModel flags key url =
     , resetPassword = ""
     , authError = Nothing
     , authNotice = Nothing
+    , sessionNotice = Nothing
     , session = LoggedOut
     }
 
@@ -99,6 +100,7 @@ emptyLoggedIn response =
     , entries = []
     , ledgerOffset = 0
     , ledgerNextOffset = 0
+    , ledgerTotal = 0
     , unreadCount = 0
     , inboxUnreadOnly = False
     , activityEvents = []
@@ -143,6 +145,7 @@ emptyLoggedIn response =
     , taskStateFilter = []
     , taskListOffset = 0
     , taskListNextOffset = 0
+    , taskListTotal = 0
     , taskListQuery = ""
     , taskListTypeFilter = ""
     , taskListSort = "newest"
@@ -154,8 +157,10 @@ emptyLoggedIn response =
     , agentMessage = Nothing
     , discoveryTasks = []
     , discoveryIncludeReserved = False
+    , discoveryFundedOnly = False
     , discoveryOffset = 0
     , discoveryNextOffset = 0
+    , discoveryTotal = 0
     , discoveryQuery = ""
     , detail = Nothing
     , detailError = Nothing
@@ -171,6 +176,7 @@ emptyLoggedIn response =
     , submitAttachments = []
     , submitMessage = Nothing
     , moderationReason = Moderation.ModerationReasonPolicy
+    , moderationSubject = ReportAboutTask
     , moderationDetails = ""
     , moderationMessage = Nothing
     , reviewNote = ""
@@ -200,6 +206,7 @@ emptyLoggedIn response =
     , orgLedger = []
     , orgLedgerOffset = 0
     , orgLedgerNextOffset = 0
+    , orgLedgerTotal = 0
     , orgAuditEvents = []
     , orgAuditMessage = Nothing
     , orgTeams = []
@@ -214,6 +221,7 @@ emptyLoggedIn response =
     , orgTaskSort = "newest"
     , orgTaskOffset = 0
     , orgTaskNextOffset = 0
+    , orgTaskTotal = 0
     , orgTaskMessage = Nothing
     , orgTaskSavedViewName = ""
     , orgTaskSavedViews = []
@@ -235,6 +243,7 @@ emptyLoggedIn response =
     , userSubmissions = []
     , userSubmissionsOffset = 0
     , userSubmissionsNextOffset = 0
+    , userSubmissionsTotal = 0
     , pendingRevisionTaskID = Nothing
     , pendingRevisionResponse = ""
     , seriesDetail = Nothing
@@ -256,6 +265,7 @@ emptyLoggedIn response =
     , teamWorkSort = "newest"
     , teamWorkOffset = 0
     , teamWorkNextOffset = 0
+    , teamWorkTotal = 0
     , teamWorkMessage = Nothing
     , teamWorkSavedViewName = ""
     , teamWorkSavedViews = []
@@ -314,6 +324,7 @@ emptyLoggedIn response =
     , adminModerationStateFilter = "open"
     , adminModerationOffset = 0
     , adminModerationNextOffset = 0
+    , adminModerationTotal = 0
     , adminModerationResolutionNote = ""
     , adminPrivacyRequests = []
     , adminPrivacyOffset = 0
@@ -333,6 +344,7 @@ emptyLoggedIn response =
     , notifications = []
     , notificationsOffset = 0
     , notificationsNextOffset = 0
+    , notificationsTotal = 0
     , inboxMessage = Nothing
     }
 
@@ -642,6 +654,7 @@ enterPageFields page state =
                 , taskListTypeFilter = ""
                 , taskListSort = "newest"
                 , discoveryIncludeReserved = False
+                , discoveryFundedOnly = False
                 , discoveryOffset = 0
                 , discoveryQuery = ""
                 , userSubmissions = []
@@ -671,10 +684,11 @@ enterPageFields page state =
             { state | page = page, operations = Nothing, auditEvents = [], auditEventsOffset = 0, platformAdmins = [], platformAdminsOffset = 0, adminSelectedUserId = "", adminModerationReports = [], adminModerationStateFilter = "open", adminModerationOffset = 0, adminModerationResolutionNote = "", adminPrivacyRequests = [], adminPrivacyOffset = 0, adminPrivacyResolutionNote = "", adminRetentionRedactedFieldCount = Nothing, grantTargetKind = "user", grantTargetId = "", grantAmount = "", grantNote = "", grantKey = "", grantMessage = Nothing, auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
 
         OverviewPage ->
-            -- The activity feed restarts from the top of the stream on every
-            -- entry; a stale cursor from a previous visit would silently skip
-            -- everything that happened while the page was away.
-            { state | page = page, activityEvents = [], activityCursor = "" }
+            -- The feed cursor and rows survive route changes: a revisit
+            -- resumes after the last event already shown (routeLoadCmd passes
+            -- the kept cursor) instead of re-reading the stream from its
+            -- start. appendActivityEvents dedupes and caps the render list.
+            { state | page = page }
 
         AgentsPage ->
             { state | page = page, webhookURL = "", webhookKinds = [], webhookAudience = Events.WebhookAudienceRecipient, webhookFilterTaskType = "", webhookFilterMinReward = "", webhookMessage = Nothing, newWebhookSecret = Nothing, activeWebhookDeliveriesID = Nothing, webhookDeliveries = [] }
@@ -695,7 +709,7 @@ enterPageFields page state =
             -- ownerControlsCard) always target *this* task when submitted,
             -- regardless of whatever task was last selected on the standalone
             -- Funding/Collectibles pages.
-            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitFieldValues = Dict.empty, submitRawMode = revisionDraftFor taskId state /= "", submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = Ledger.BanSelectionNone, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing, fundNonce = state.fundNonce + 1, awardTaskId = taskId, awardMessage = Nothing }
+            { state | page = page, detail = Nothing, detailError = Nothing, reservations = [], reservationOrganizationId = "", reservationTeamId = "", reservationMessage = Nothing, reservationSecret = Nothing, submissions = [], submitInput = revisionDraftFor taskId state, submitFieldValues = Dict.empty, submitRawMode = revisionDraftFor taskId state /= "", submitAttachments = [], submitMessage = Nothing, moderationReason = Moderation.ModerationReasonPolicy, moderationSubject = ReportAboutTask, moderationDetails = "", moderationMessage = Nothing, reviewNote = "", reviewPartialCredit = "", reviewTip = "", reviewTipCollectibleId = "", reviewBan = Ledger.BanSelectionNone, reviewMessage = Nothing, taskComments = [], taskCommentBody = "", taskCommentMessage = Nothing, submissionComments = [], activeSubmissionCommentsID = Nothing, submissionCommentBody = "", submissionCommentMessage = Nothing, taskAgentToken = Nothing, taskActionMessage = Nothing, pendingRevisionTaskID = Nothing, pendingRevisionResponse = "", fundTaskId = taskId, fundAmount = "", fundMessage = Nothing, fundNonce = state.fundNonce + 1, awardTaskId = taskId, awardMessage = Nothing }
 
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
@@ -748,13 +762,13 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | now = posix }), Cmd.none )
 
         RegisterClicked ->
-            ( { model | authError = Nothing, authNotice = Nothing }, Api.postAuth "/api/auth/register" model )
+            ( { model | authError = Nothing, authNotice = Nothing, sessionNotice = Nothing }, Api.postAuth "/api/auth/register" model )
 
         LoginClicked ->
-            ( { model | authError = Nothing, authNotice = Nothing }, Api.postAuth "/api/auth/login" model )
+            ( { model | authError = Nothing, authNotice = Nothing, sessionNotice = Nothing }, Api.postAuth "/api/auth/login" model )
 
         GuestClicked ->
-            ( { model | authError = Nothing, authNotice = Nothing }, Api.postGuest )
+            ( { model | authError = Nothing, authNotice = Nothing, sessionNotice = Nothing }, Api.postGuest )
 
         AuthReceived (Ok response) ->
             let
@@ -766,16 +780,16 @@ update msg model =
             -- deep link (a task, org, or profile URL) would otherwise stay
             -- on "Loading..." forever, since loadAfterAuth only fetches the
             -- shared dashboard data.
-            ( { model | password = "", registerName = "", authError = Nothing, session = LoggedIn { state | accountEmail = model.email } }
-            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken response.subjectID model.route, ElmTask.perform NowReceived Time.now ]
+            ( { model | password = "", registerName = "", authError = Nothing, sessionNotice = Nothing, session = LoggedIn { state | accountEmail = model.email } }
+            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken response.subjectID "" model.route, ElmTask.perform NowReceived Time.now ]
             )
 
         AuthReceived (Err error) ->
             ( { model | authError = Just (httpErrorLabel error) }, Cmd.none )
 
         RefreshReceived (Ok response) ->
-            ( { model | session = LoggedIn (loggedInForPage response model.route) }
-            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken response.subjectID model.route, ElmTask.perform NowReceived Time.now ]
+            ( { model | sessionNotice = Nothing, session = LoggedIn (loggedInForPage response model.route) }
+            , Cmd.batch [ Api.loadAfterAuth response.accessToken, Api.routeLoadCmd response.accessToken response.subjectID "" model.route, ElmTask.perform NowReceived Time.now ]
             )
 
         RefreshReceived (Err _) ->
@@ -787,6 +801,28 @@ update msg model =
 
         SessionRefreshTick _ ->
             ( model, Api.postSessionRefresh )
+
+        SessionEnded ->
+            -- Some signed-in request came back `unauthenticated`: the token
+            -- is expired, revoked, or tampered with. Clear the session and
+            -- land on the auth screen with a factual notice instead of
+            -- letting every later click fail into fake empty states. The
+            -- notice is skipped when there is no session to end (a stray
+            -- late response after an ordinary logout).
+            case model.session of
+                LoggedIn _ ->
+                    if model.shauth then
+                        ( { model | session = LoggedOut, authError = Nothing }
+                        , Nav.load "/api/auth/shauth"
+                        )
+
+                    else
+                        ( { model | session = LoggedOut, authError = Nothing, sessionNotice = Just Api.sessionEndedNotice }
+                        , Nav.pushUrl model.key "#/"
+                        )
+
+                LoggedOut ->
+                    ( model, Cmd.none )
 
         SessionRefreshed (Ok response) ->
             -- Swap only the rotated token (and any changed role) into the
@@ -846,7 +882,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | balance = Api.balanceFromResult result }), Cmd.none )
 
         LedgerReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | entries = Api.entriesFromResult result, ledgerNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | entries = Api.entriesFromResult result, ledgerNextOffset = nextOffsetFromResult .nextOffset result, ledgerTotal = totalFromResult result }), Cmd.none )
 
         PreviousLedgerPageClicked ->
             Api.withSession model
@@ -869,7 +905,7 @@ update msg model =
                 )
 
         TasksReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | tasks = Api.tasksFromResult result, taskListNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | tasks = Api.tasksFromResult result, taskListNextOffset = nextOffsetFromResult .nextOffset result, taskListTotal = totalFromResult result }), Cmd.none )
 
         TaskStateFilterToggled value ->
             let
@@ -1290,7 +1326,15 @@ update msg model =
                         nextState =
                             { state | discoveryIncludeReserved = value, discoveryOffset = 0 }
                     in
-                    ( Api.updateLoggedIn model (\_ -> nextState), Api.fetchDiscovery state.accessToken value 0 )
+                    ( Api.updateLoggedIn model (\_ -> nextState), Api.fetchDiscovery state.accessToken value state.discoveryFundedOnly 0 )
+                )
+
+        DiscoveryFundedOnlyChanged value ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | discoveryFundedOnly = value, discoveryOffset = 0 })
+                    , Api.fetchDiscovery state.accessToken state.discoveryIncludeReserved value 0
+                    )
                 )
 
         DiscoveryQueryChanged value ->
@@ -1303,7 +1347,7 @@ update msg model =
                         offset =
                             max 0 (state.discoveryOffset - Api.selectorPageSize)
                     in
-                    ( Api.updateLoggedIn model (\current -> { current | discoveryOffset = offset }), Api.fetchDiscovery state.accessToken state.discoveryIncludeReserved offset )
+                    ( Api.updateLoggedIn model (\current -> { current | discoveryOffset = offset }), Api.fetchDiscovery state.accessToken state.discoveryIncludeReserved state.discoveryFundedOnly offset )
                 )
 
         NextDiscoveryPageClicked ->
@@ -1313,11 +1357,11 @@ update msg model =
                         offset =
                             state.discoveryOffset + Api.selectorPageSize
                     in
-                    ( Api.updateLoggedIn model (\current -> { current | discoveryOffset = offset }), Api.fetchDiscovery state.accessToken state.discoveryIncludeReserved offset )
+                    ( Api.updateLoggedIn model (\current -> { current | discoveryOffset = offset }), Api.fetchDiscovery state.accessToken state.discoveryIncludeReserved state.discoveryFundedOnly offset )
                 )
 
         DiscoveryReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | discoveryTasks = Api.tasksFromResult result, discoveryNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | discoveryTasks = Api.tasksFromResult result, discoveryNextOffset = nextOffsetFromResult .nextOffset result, discoveryTotal = totalFromResult result }), Cmd.none )
 
         DiscoveryViewClicked taskId ->
             ( Api.updateLoggedIn model
@@ -1497,11 +1541,30 @@ update msg model =
         ModerationDetailsChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | moderationDetails = value }), Cmd.none )
 
+        FileDisputeClicked submissionId ->
+            -- Preset the report form to a dispute about this submission; the
+            -- form opens via its subject-derived open flag (see
+            -- moderationReportCard) and submits through the same
+            -- ReportTaskClicked path.
+            ( Api.updateLoggedIn model
+                (\state ->
+                    { state
+                        | moderationReason = Moderation.ModerationReasonDispute
+                        , moderationSubject = ReportAboutSubmission submissionId
+                        , moderationMessage = Nothing
+                    }
+                )
+            , Cmd.none
+            )
+
+        ReportSubjectClearedClicked ->
+            ( Api.updateLoggedIn model (\state -> { state | moderationSubject = ReportAboutTask }), Cmd.none )
+
         ReportTaskClicked taskId ->
             Api.withSession model
                 (\state ->
                     ( Api.updateLoggedIn model (\current -> { current | moderationMessage = Nothing })
-                    , Api.reportTask state.accessToken taskId state.moderationReason state.moderationDetails
+                    , Api.reportTask state.accessToken taskId state.moderationSubject state.moderationReason state.moderationDetails
                     )
                 )
 
@@ -1720,7 +1783,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | orgBalance = Api.balanceFromResult result }), Cmd.none )
 
         OrgLedgerReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | orgLedger = Api.entriesFromResult result, orgLedgerNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgLedger = Api.entriesFromResult result, orgLedgerNextOffset = nextOffsetFromResult .nextOffset result, orgLedgerTotal = totalFromResult result }), Cmd.none )
 
         PreviousOrgLedgerPageClicked ->
             Api.withSession model
@@ -1946,7 +2009,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | userWork = Api.tasksFromResult result }), Cmd.none )
 
         UserSubmissionsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | userSubmissions = Api.submissionsFromResult result, userSubmissionsNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | userSubmissions = Api.submissionsFromResult result, userSubmissionsNextOffset = nextOffsetFromResult .nextOffset result, userSubmissionsTotal = totalFromResult result }), Cmd.none )
 
         PreviousUserSubmissionsPageClicked ->
             Api.withSession model
@@ -2091,10 +2154,10 @@ update msg model =
                 (\state ->
                     case result of
                         Ok response ->
-                            { state | teamWork = response.tasks, teamWorkNextOffset = response.nextOffset, teamWorkMessage = Nothing }
+                            { state | teamWork = response.tasks, teamWorkNextOffset = response.nextOffset, teamWorkTotal = response.total, teamWorkMessage = Nothing }
 
                         Err error ->
-                            { state | teamWork = [], teamWorkNextOffset = 0, teamWorkMessage = Just (FailureNote (httpErrorLabel error)) }
+                            { state | teamWork = [], teamWorkNextOffset = 0, teamWorkTotal = 0, teamWorkMessage = Just (FailureNote (httpErrorLabel error)) }
                 )
             , Cmd.none
             )
@@ -2252,10 +2315,10 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | teamMemberMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgTasksReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgTasks = response.tasks, orgTaskNextOffset = response.nextOffset, orgTaskMessage = Nothing }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgTasks = response.tasks, orgTaskNextOffset = response.nextOffset, orgTaskTotal = response.total, orgTaskMessage = Nothing }), Cmd.none )
 
         OrgTasksReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | orgTasks = [], orgTaskNextOffset = 0, orgTaskMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgTasks = [], orgTaskNextOffset = 0, orgTaskTotal = 0, orgTaskMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgTaskQueryChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | orgTaskQuery = value }), Cmd.none )
@@ -2754,10 +2817,10 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AdminModerationReportsReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = response.reports, adminModerationNextOffset = response.nextOffset, adminMessage = Nothing }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = response.reports, adminModerationNextOffset = response.nextOffset, adminModerationTotal = response.total, adminMessage = Nothing }), Cmd.none )
 
         AdminModerationReportsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = [], adminModerationNextOffset = 0, adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | adminModerationReports = [], adminModerationNextOffset = 0, adminModerationTotal = 0, adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         AdminModerationStateFilterChanged value ->
             Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | adminModerationStateFilter = value, adminModerationOffset = 0 }), Api.fetchAdminModerationReports state.accessToken value 0 ))
@@ -2946,10 +3009,10 @@ update msg model =
                 )
 
         NotificationsReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | notifications = response.notifications, notificationsNextOffset = response.nextOffset, inboxMessage = Nothing }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | notifications = response.notifications, notificationsNextOffset = response.nextOffset, notificationsTotal = response.total, inboxMessage = Nothing }), Cmd.none )
 
         NotificationsReceived (Err error) ->
-            ( Api.updateLoggedIn model (\state -> { state | notifications = [], notificationsNextOffset = 0, inboxMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | notifications = [], notificationsNextOffset = 0, notificationsTotal = 0, inboxMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         PreviousNotificationsPageClicked ->
             Api.withSession model
@@ -3144,7 +3207,7 @@ update msg model =
             case model.session of
                 LoggedIn state ->
                     ( { model | route = page, session = LoggedIn (enterPage page state) }
-                    , Api.routeLoadCmd state.accessToken state.subjectId page
+                    , Api.routeLoadCmd state.accessToken state.subjectId state.activityCursor page
                     )
 
                 LoggedOut ->
@@ -3199,6 +3262,19 @@ nextOffsetFromResult toNextOffset result =
     case result of
         Ok response ->
             toNextOffset response
+
+        Err _ ->
+            0
+
+
+{-| The total row count carried by a counted list response, or 0 when the
+request failed (the pager then reads "Page 1 of 1" over an empty list).
+-}
+totalFromResult : Result Http.Error { response | total : Int } -> Int
+totalFromResult result =
+    case result of
+        Ok response ->
+            response.total
 
         Err _ ->
             0

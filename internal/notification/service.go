@@ -21,8 +21,29 @@ type Notification struct {
 	SubjectTitle     SubjectTitleRef
 	State            State
 	Metadata         Metadata
-	CreatedAt        time.Time
+	// Source names the domain event whose dispatch created this row. The
+	// store deduplicates on (event, recipient), so the inline dispatch and
+	// the recovery sweep can both fan out the same event without duplicating
+	// an inbox row. NoSourceEvent covers rows created before the outbox.
+	Source    EventRef
+	CreatedAt time.Time
 }
+
+// EventRef names the domain event a notification derives from, or its
+// explicit absence.
+type EventRef interface {
+	eventRef()
+}
+
+type NoSourceEvent struct{}
+
+type FromEvent struct {
+	ID core.DomainEventID
+}
+
+func (NoSourceEvent) eventRef() {}
+
+func (FromEvent) eventRef() {}
 
 // SubjectTitleRef names the notification's subject when it is a task, so
 // inbox rows can show "on <task title>" without a per-row task fetch.
@@ -51,6 +72,7 @@ var (
 	KindSubmissionAccepted         = Kind{value: "submission_accepted"}
 	KindSubmissionChangesRequested = Kind{value: "submission_changes_requested"}
 	KindSubmissionRejected         = Kind{value: "submission_rejected"}
+	KindSubmissionSuperseded       = Kind{value: "submission_superseded"}
 	KindSubmissionCommented        = Kind{value: "submission_commented"}
 	KindTaskFunded                 = Kind{value: "task_funded"}
 	KindTaskCancelled              = Kind{value: "task_cancelled"}
@@ -76,6 +98,7 @@ func AllKinds() []Kind {
 		KindSubmissionAccepted,
 		KindSubmissionChangesRequested,
 		KindSubmissionRejected,
+		KindSubmissionSuperseded,
 		KindSubmissionCommented,
 		KindTaskFunded,
 		KindTaskCancelled,
@@ -229,7 +252,7 @@ func (NotificationSkipped) notifyResult() {}
 
 func (NotifyRejected) notifyResult() {}
 
-func (service Service) Notify(ctx context.Context, recipient core.UserID, actor core.UserID, kind Kind, subject Subject, metadata Metadata) NotifyResult {
+func (service Service) Notify(ctx context.Context, recipient core.UserID, actor core.UserID, kind Kind, subject Subject, metadata Metadata, source EventRef) NotifyResult {
 	if recipient == actor {
 		return NotificationSkipped{}
 	}
@@ -247,6 +270,7 @@ func (service Service) Notify(ctx context.Context, recipient core.UserID, actor 
 		SubjectTitle: NoSubjectTitle{},
 		State:        StateUnread,
 		Metadata:     metadata,
+		Source:       source,
 		CreatedAt:    service.now().UTC(),
 	}
 	storeResult := service.store.Create(ctx, value)
@@ -262,6 +286,8 @@ type ListResult interface {
 
 type NotificationsListed struct {
 	Values []Notification
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
 }
 
 type ListRejected struct {
@@ -278,7 +304,7 @@ func (service Service) List(ctx context.Context, recipient core.UserID, filter S
 	if !matched {
 		return ListRejected{Reason: result.(ListStoreRejected).Reason}
 	}
-	return NotificationsListed{Values: listed.Values}
+	return NotificationsListed{Values: listed.Values, Total: listed.Total}
 }
 
 type CountResult interface {

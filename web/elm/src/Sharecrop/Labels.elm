@@ -429,6 +429,9 @@ submissionStateLabel state =
         Submission.SubmissionStateChangesRequested ->
             "changes requested"
 
+        Submission.SubmissionStateSuperseded ->
+            "superseded"
+
 
 kindLabel : Ledger.LedgerEntryKind -> String
 kindLabel kind =
@@ -469,6 +472,9 @@ notificationKindLabel kind =
 
         Notification.NotificationKindSubmissionRejected ->
             "Submission rejected"
+
+        Notification.NotificationKindSubmissionSuperseded ->
+            "Submission superseded"
 
         Notification.NotificationKindSubmissionCommented ->
             "Submission comment"
@@ -545,6 +551,9 @@ notificationSentence actorName subjectTitle kind =
 
         Notification.NotificationKindSubmissionRejected ->
             actor ++ " rejected your submission to " ++ task ++ "."
+
+        Notification.NotificationKindSubmissionSuperseded ->
+            "Your submission to " ++ task ++ " was superseded by an accepted submission."
 
         Notification.NotificationKindSubmissionCommented ->
             actor ++ " commented on a submission to " ++ task ++ "."
@@ -650,6 +659,9 @@ eventSentence actorName taskTitle kind =
         Events.DomainEventKindSubmissionRejected ->
             actor ++ " rejected a submission to " ++ task ++ "."
 
+        Events.DomainEventKindSubmissionSuperseded ->
+            "A submission to " ++ task ++ " was superseded by an accepted submission."
+
         Events.DomainEventKindSubmissionCommented ->
             actor ++ " commented on a submission to " ++ task ++ "."
 
@@ -745,6 +757,9 @@ domainEventKindLabel kind =
         Events.DomainEventKindSubmissionRejected ->
             "Submission rejected"
 
+        Events.DomainEventKindSubmissionSuperseded ->
+            "Submission superseded"
+
         Events.DomainEventKindSubmissionCommented ->
             "Submission commented"
 
@@ -811,6 +826,9 @@ domainEventKindTag kind =
 
         Events.DomainEventKindSubmissionRejected ->
             "submission_rejected"
+
+        Events.DomainEventKindSubmissionSuperseded ->
+            "submission_superseded"
 
         Events.DomainEventKindSubmissionCommented ->
             "submission_commented"

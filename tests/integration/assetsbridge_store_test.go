@@ -10,6 +10,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/assets/assetstest"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/wasibridge/assetsbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
 )
@@ -69,6 +70,7 @@ func TestAssetsBridgeDualRun(t *testing.T) {
 			FromUserID:    owner,
 			ToUserID:      recipient,
 			CollectibleID: collectible.ID,
+			Draft:         testEventDraft(t, event.KindCollectibleAwarded, owner),
 		}).(assets.CollectibleGifted)
 		if !matched {
 			t.Fatalf("bridge GiftCollectible did not report CollectibleGifted")

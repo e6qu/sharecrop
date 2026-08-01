@@ -29,6 +29,18 @@ const (
 	privacyRetentionSweepInterval  = time.Hour
 	rateLimitEvictionSweepInterval = 5 * time.Minute
 	mcpSessionSweepInterval        = 10 * time.Minute
+
+	// The event dispatch sweep is the crash-recovery half of the outbox: it
+	// re-dispatches events whose mutation committed but whose inline
+	// dispatch was lost. It runs on a short cycle so lost notifications and
+	// webhook deliveries surface quickly, and only touches recorded rows
+	// older than a grace period so it never races a mutation whose inline
+	// dispatch is still in flight.
+	eventDispatchSweepInterval = 30 * time.Second
+	eventDispatchGracePeriod   = 10 * time.Second
+	// eventDispatchSweepBatch bounds one recovery pass; the next tick
+	// continues where it left off.
+	eventDispatchSweepBatch = 200
 )
 
 // buildLifecycleRunner assembles the host-side lifecycle runner over the
@@ -88,6 +100,13 @@ func buildLifecycleRunner(logger *slog.Logger, pool *pgxpool.Pool, recorder even
 			},
 		},
 		{
+			Name:     "event_dispatch",
+			Interval: eventDispatchSweepInterval,
+			Run: func(ctx context.Context) error {
+				return sweepRecordedEvents(ctx, db.NewEventStore(pool), recorder)
+			},
+		},
+		{
 			Name:     "webhook_pump",
 			Interval: webhookdispatch.PumpInterval,
 			Run: func(ctx context.Context) error {
@@ -99,6 +118,21 @@ func buildLifecycleRunner(logger *slog.Logger, pool *pgxpool.Pool, recorder even
 			},
 		},
 	})
+}
+
+// sweepRecordedEvents dispatches stale recorded events: rows the outbox
+// committed whose inline dispatch (inbox fan-out, webhook expansion) was
+// lost to a crash. Dispatch is idempotent per event, so racing a slow inline
+// dispatch is harmless.
+func sweepRecordedEvents(ctx context.Context, eventStore db.EventStore, recorder event.Recorder) error {
+	cutoff := time.Now().UTC().Add(-eventDispatchGracePeriod)
+	result := eventStore.ListRecordedBefore(ctx, cutoff, eventDispatchSweepBatch)
+	listed, matched := result.(db.RecordedEventsListed)
+	if !matched {
+		return errors.New(result.(db.ListRecordedRejected).Reason.Description())
+	}
+	recorder.Dispatch(ctx, listed.Values...)
+	return nil
 }
 
 // sweepDueReservations releases expired reservations and emits one

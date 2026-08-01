@@ -8,8 +8,10 @@ import (
 	"fmt"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/eventbridge"
 )
 
 // Method names namespace each task.Store method on the wire.
@@ -47,8 +49,9 @@ type findTaskArgs struct {
 }
 
 type changeTaskStateArgs struct {
-	TaskID string `json:"taskid"`
-	State  string `json:"state"`
+	TaskID string               `json:"taskid"`
+	State  string               `json:"state"`
+	Plan   eventbridge.PlanWire `json:"plan"`
 }
 
 type listTasksArgs struct {
@@ -97,7 +100,8 @@ type reorderSeriesArgs struct {
 }
 
 type createSeriesCommentArgs struct {
-	SeriesComment seriesCommentWire `json:"seriescomment"`
+	SeriesComment seriesCommentWire     `json:"seriescomment"`
+	Draft         eventbridge.DraftWire `json:"draft"`
 }
 
 type listSeriesCommentsArgs struct {
@@ -106,7 +110,8 @@ type listSeriesCommentsArgs struct {
 }
 
 type createTaskCommentArgs struct {
-	TaskComment taskCommentWire `json:"taskcomment"`
+	TaskComment taskCommentWire       `json:"taskcomment"`
+	Draft       eventbridge.DraftWire `json:"draft"`
 }
 
 type listTaskCommentsArgs struct {
@@ -120,9 +125,10 @@ type createReservationArgs struct {
 }
 
 type changeReservationStateArgs struct {
-	TaskID           string `json:"taskid"`
-	ReservationID    string `json:"reservationid"`
-	ReservationState string `json:"reservationstate"`
+	TaskID           string               `json:"taskid"`
+	ReservationID    string               `json:"reservationid"`
+	ReservationState string               `json:"reservationstate"`
+	Plan             eventbridge.PlanWire `json:"plan"`
 }
 
 type listReservationsArgs struct {
@@ -181,7 +187,11 @@ func Dispatch(ctx context.Context, store task.Store, method string, args []byte)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeChangeTaskStateResult(store.ChangeTaskState(ctx, argTaskID, argState)))
+		argPlan, err := eventbridge.DecodePlan(decoded.Plan)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeChangeTaskStateResult(store.ChangeTaskState(ctx, argTaskID, argState, argPlan)))
 	case methodListTasks:
 		var decoded listTasksArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -317,7 +327,11 @@ func Dispatch(ctx context.Context, store task.Store, method string, args []byte)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeCreateSeriesCommentResult(store.CreateSeriesComment(ctx, argSeriesComment)))
+		argDraft, err := eventbridge.DecodeDraft(decoded.Draft)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeCreateSeriesCommentResult(store.CreateSeriesComment(ctx, argSeriesComment, argDraft)))
 	case methodListSeriesComments:
 		var decoded listSeriesCommentsArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -341,7 +355,11 @@ func Dispatch(ctx context.Context, store task.Store, method string, args []byte)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeCreateTaskCommentResult(store.CreateTaskComment(ctx, argTaskComment)))
+		argDraft, err := eventbridge.DecodeDraft(decoded.Draft)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeCreateTaskCommentResult(store.CreateTaskComment(ctx, argTaskComment, argDraft)))
 	case methodListTaskComments:
 		var decoded listTaskCommentsArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -387,7 +405,11 @@ func Dispatch(ctx context.Context, store task.Store, method string, args []byte)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeChangeReservationStateResult(store.ChangeReservationState(ctx, argTaskID, argReservationID, argReservationState)))
+		argPlan, err := eventbridge.DecodePlan(decoded.Plan)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeChangeReservationStateResult(store.ChangeReservationState(ctx, argTaskID, argReservationID, argReservationState, argPlan)))
 	case methodListReservations:
 		var decoded listReservationsArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -477,8 +499,8 @@ func (g GuestStore) FindTask(ctx context.Context, argTaskID core.TaskID) task.Fi
 	return result
 }
 
-func (g GuestStore) ChangeTaskState(ctx context.Context, argTaskID core.TaskID, argState task.State) task.ChangeTaskStateStoreResult {
-	args, err := json.Marshal(changeTaskStateArgs{TaskID: corewire.EncodeTaskID(argTaskID), State: encodeState(argState)})
+func (g GuestStore) ChangeTaskState(ctx context.Context, argTaskID core.TaskID, argState task.State, argPlan event.Plan) task.ChangeTaskStateStoreResult {
+	args, err := json.Marshal(changeTaskStateArgs{TaskID: corewire.EncodeTaskID(argTaskID), State: encodeState(argState), Plan: eventbridge.EncodePlan(argPlan)})
 	if err != nil {
 		return task.ChangeTaskStateStoreRejected{Reason: guestError(err)}
 	}
@@ -677,8 +699,8 @@ func (g GuestStore) ReorderSeries(ctx context.Context, argSeriesID core.TaskSeri
 	return result
 }
 
-func (g GuestStore) CreateSeriesComment(ctx context.Context, argSeriesComment task.SeriesComment) task.CreateSeriesCommentStoreResult {
-	args, err := json.Marshal(createSeriesCommentArgs{SeriesComment: encodeSeriesComment(argSeriesComment)})
+func (g GuestStore) CreateSeriesComment(ctx context.Context, argSeriesComment task.SeriesComment, argDraft event.Draft) task.CreateSeriesCommentStoreResult {
+	args, err := json.Marshal(createSeriesCommentArgs{SeriesComment: encodeSeriesComment(argSeriesComment), Draft: eventbridge.EncodeDraft(argDraft)})
 	if err != nil {
 		return task.CreateSeriesCommentStoreRejected{Reason: guestError(err)}
 	}
@@ -717,8 +739,8 @@ func (g GuestStore) ListSeriesComments(ctx context.Context, argSeriesID core.Tas
 	return result
 }
 
-func (g GuestStore) CreateTaskComment(ctx context.Context, argTaskComment task.TaskComment) task.CreateTaskCommentStoreResult {
-	args, err := json.Marshal(createTaskCommentArgs{TaskComment: encodeTaskComment(argTaskComment)})
+func (g GuestStore) CreateTaskComment(ctx context.Context, argTaskComment task.TaskComment, argDraft event.Draft) task.CreateTaskCommentStoreResult {
+	args, err := json.Marshal(createTaskCommentArgs{TaskComment: encodeTaskComment(argTaskComment), Draft: eventbridge.EncodeDraft(argDraft)})
 	if err != nil {
 		return task.CreateTaskCommentStoreRejected{Reason: guestError(err)}
 	}
@@ -777,8 +799,8 @@ func (g GuestStore) CreateReservation(ctx context.Context, argReservationID core
 	return result
 }
 
-func (g GuestStore) ChangeReservationState(ctx context.Context, argTaskID core.TaskID, argReservationID core.TaskReservationID, argReservationState task.ReservationState) task.ChangeReservationStateStoreResult {
-	args, err := json.Marshal(changeReservationStateArgs{TaskID: corewire.EncodeTaskID(argTaskID), ReservationID: corewire.EncodeTaskReservationID(argReservationID), ReservationState: encodeReservationState(argReservationState)})
+func (g GuestStore) ChangeReservationState(ctx context.Context, argTaskID core.TaskID, argReservationID core.TaskReservationID, argReservationState task.ReservationState, argPlan event.Plan) task.ChangeReservationStateStoreResult {
+	args, err := json.Marshal(changeReservationStateArgs{TaskID: corewire.EncodeTaskID(argTaskID), ReservationID: corewire.EncodeTaskReservationID(argReservationID), ReservationState: encodeReservationState(argReservationState), Plan: eventbridge.EncodePlan(argPlan)})
 	if err != nil {
 		return task.ChangeReservationStateStoreRejected{Reason: guestError(err)}
 	}

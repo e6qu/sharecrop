@@ -385,6 +385,43 @@ taskReservationStateEncoder taskReservationState =
             Encode.string "submitted"
 
 
+type TaskFundedState
+    = TaskFundedStateRewardFunded
+    | TaskFundedStateRewardUnfunded
+    | TaskFundedStateNoCreditReward
+
+taskFundedStateDecoder : Decoder TaskFundedState
+taskFundedStateDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "reward_funded" ->
+                        Decode.succeed TaskFundedStateRewardFunded
+
+                    "reward_unfunded" ->
+                        Decode.succeed TaskFundedStateRewardUnfunded
+
+                    "no_credit_reward" ->
+                        Decode.succeed TaskFundedStateNoCreditReward
+
+                    _ ->
+                        Decode.fail "invalid TaskFundedState"
+            )
+
+taskFundedStateEncoder : TaskFundedState -> Encode.Value
+taskFundedStateEncoder taskFundedState =
+    case taskFundedState of
+        TaskFundedStateRewardFunded ->
+            Encode.string "reward_funded"
+
+        TaskFundedStateRewardUnfunded ->
+            Encode.string "reward_unfunded"
+
+        TaskFundedStateNoCreditReward ->
+            Encode.string "no_credit_reward"
+
+
 type alias TaskListItemResponse =
     { id : String
     , ownerKind : TaskOwnerKind
@@ -404,6 +441,8 @@ type alias TaskListItemResponse =
     , activeAssigneeKind : String
     , activeAssigneeID : String
     , creatorDisplayName : String
+    , holderDisplayName : String
+    , funded : TaskFundedState
     , pendingReviewCount : Int
     }
 
@@ -432,9 +471,11 @@ taskListItemResponseDecoder =
             )
         |> Decode.andThen
             (\finish ->
-                Decode.map3 finish
+                Decode.map5 finish
                     (Decode.field "active_assignee_id" Decode.string)
                     (Decode.field "creator_display_name" Decode.string)
+                    (Decode.field "holder_display_name" Decode.string)
+                    (Decode.field "funded" taskFundedStateDecoder)
                     (Decode.field "pending_review_count" Decode.int)
             )
 
@@ -459,6 +500,8 @@ taskListItemResponseEncoder taskListItemResponse =
         , ( "active_assignee_kind", Encode.string taskListItemResponse.activeAssigneeKind )
         , ( "active_assignee_id", Encode.string taskListItemResponse.activeAssigneeID )
         , ( "creator_display_name", Encode.string taskListItemResponse.creatorDisplayName )
+        , ( "holder_display_name", Encode.string taskListItemResponse.holderDisplayName )
+        , ( "funded", taskFundedStateEncoder taskListItemResponse.funded )
         , ( "pending_review_count", Encode.int taskListItemResponse.pendingReviewCount )
         ]
 
@@ -636,19 +679,22 @@ taskCommentResponseEncoder taskCommentResponse =
 type alias TasksResponse =
     { tasks : List TaskListItemResponse
     , nextOffset : Int
+    , total : Int
     }
 
 tasksResponseDecoder : Decoder TasksResponse
 tasksResponseDecoder =
-    Decode.map2 TasksResponse
+    Decode.map3 TasksResponse
         (Decode.field "tasks" (Decode.list taskListItemResponseDecoder))
         (Decode.field "next_offset" Decode.int)
+        (Decode.field "total" Decode.int)
 
 tasksResponseEncoder : TasksResponse -> Encode.Value
 tasksResponseEncoder tasksResponse =
     Encode.object
         [ ( "tasks", Encode.list taskListItemResponseEncoder tasksResponse.tasks )
         , ( "next_offset", Encode.int tasksResponse.nextOffset )
+        , ( "total", Encode.int tasksResponse.total )
         ]
 
 type alias UserProfileResponse =

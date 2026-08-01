@@ -8,12 +8,18 @@ import (
 	"github.com/e6qu/sharecrop/internal/notification"
 )
 
-// Recorder is the single emission point for domain events. It appends the
-// event with its recipient set and fans out inbox notifications for the kinds
-// that warrant one. Services hold a Recorder and call Emit after their
-// mutation commits; a failed emission never un-commits the mutation (the same
-// exposure the previous handler-level notify calls had — a strict outbox is a
-// recorded follow-up).
+// Recorder is the emission and dispatch point for domain events.
+//
+// Durable mutations record their event drafts inside the store transaction
+// that performs the mutation (the in-transaction outbox); the service then
+// calls Dispatch with the recorded drafts to run the post-commit side
+// effects inline: inbox fan-out, webhook delivery expansion, and marking the
+// event dispatched. A crash between commit and dispatch leaves the event in
+// the recorded state, and the lifecycle runner's dispatch sweep replays the
+// same idempotent step.
+//
+// Emit remains for background sweeps whose store mutations do not carry a
+// draft: it appends the event (recorded) and dispatches it inline.
 type Recorder struct {
 	store         Store
 	notifications notification.Service
@@ -51,47 +57,57 @@ func (EventEmitted) emitResult() {}
 
 func (EmitRejected) emitResult() {}
 
+// Emit appends one event to the stream and dispatches it inline. It is used
+// by the lifecycle sweeps (reservation/task expiry), whose store mutations
+// commit before the event exists; service mutations record their drafts
+// in-transaction instead and call Dispatch.
 func (recorder Recorder) Emit(ctx context.Context, command EmitCommand) EmitResult {
-	idResult := core.NewDomainEventID()
-	created, matched := idResult.(core.DomainEventIDCreated)
+	draftResult := NewDraft(command.Kind, command.Actor, command.Subject, command.Metadata, command.Recipients)
+	created, matched := draftResult.(DraftCreated)
 	if !matched {
-		return EmitRejected{Reason: idResult.(core.DomainEventIDRejected).Reason}
+		return EmitRejected{Reason: draftResult.(DraftRejected).Reason}
 	}
+	draft := created.Value
 
-	value := Event{
-		ID:         created.Value,
-		Kind:       command.Kind,
-		Actor:      command.Actor,
-		Subject:    command.Subject,
-		Metadata:   command.Metadata,
-		OccurredAt: recorder.now().UTC(),
-	}
-	appendResult := recorder.store.Append(ctx, value, command.Recipients)
+	appendResult := recorder.store.Append(ctx, draft.Event(recorder.now()), draft.Recipients)
 	appended, appendMatched := appendResult.(AppendStoreAccepted)
 	if !appendMatched {
 		return EmitRejected{Reason: appendResult.(AppendStoreRejected).Reason}
 	}
 
-	recorder.fanOutNotifications(ctx, command)
+	recorder.Dispatch(ctx, draft)
 	return EventEmitted{Value: appended.Value}
+}
+
+// Dispatch runs the post-commit dispatch step for events already recorded in
+// a mutation's transaction: inbox fan-out for the kinds that map to a
+// notification, then the store-side effects (webhook expansion, marking
+// dispatched). Every part is idempotent per event — notifications are keyed
+// by event id, webhook deliveries by (subscription, event), and the state
+// flip only touches recorded rows — so an inline dispatch racing the
+// recovery sweep produces no duplicates. Failures are deliberately not
+// surfaced: the event row is already durable, and the sweep retries.
+func (recorder Recorder) Dispatch(ctx context.Context, drafts ...Draft) {
+	for _, draft := range drafts {
+		recorder.fanOutNotifications(ctx, draft)
+		_ = recorder.store.Dispatch(ctx, draft.ID)
+	}
 }
 
 // fanOutNotifications creates inbox rows for the recipients of kinds that map
 // to a notification. notification.Service itself skips the actor, so the
-// actor's own feed entry never becomes a self-notification. Notification
-// failures are deliberately not surfaced: the event is already durable, and
-// the inbox is a derived convenience view of it.
-func (recorder Recorder) fanOutNotifications(ctx context.Context, command EmitCommand) {
-	rule := notificationRuleFor(command.Kind)
+// actor's own feed entry never becomes a self-notification.
+func (recorder Recorder) fanOutNotifications(ctx context.Context, draft Draft) {
+	rule := NotificationRuleFor(draft.Kind)
 	notify, matched := rule.(NotifyAs)
 	if !matched {
 		return
 	}
-	actor := ActorUserID(command.Actor)
-	subject := notificationSubjectFor(command.Subject)
-	metadata := notification.Metadata{JSON: command.Metadata.JSON}
-	for _, recipient := range command.Recipients.Users {
-		_ = recorder.notifications.Notify(ctx, recipient, actor, notify.Kind, subject, metadata)
+	actor := ActorUserID(draft.Actor)
+	subject := NotificationSubjectFor(draft.Subject)
+	metadata := notification.Metadata{JSON: draft.Metadata.JSON}
+	for _, recipient := range draft.Recipients.Users {
+		_ = recorder.notifications.Notify(ctx, recipient, actor, notify.Kind, subject, metadata, notification.FromEvent{ID: draft.ID})
 	}
 }
 
@@ -110,10 +126,11 @@ func (NoNotification) notificationRule() {}
 
 func (NotifyAs) notificationRule() {}
 
-// notificationRuleFor is total over AllKinds (a test enforces it). task_opened
+// NotificationRuleFor is total over AllKinds (a test enforces it). task_opened
 // is feed-only: opening your own task notifies nobody, and workers discover
-// open tasks through the marketplace, not their inbox.
-func notificationRuleFor(kind Kind) NotificationRule {
+// open tasks through the marketplace, not their inbox. Exported because the
+// recorder and tests both consult the mapping.
+func NotificationRuleFor(kind Kind) NotificationRule {
 	switch kind {
 	case KindTaskOpened:
 		return NoNotification{}
@@ -145,6 +162,8 @@ func notificationRuleFor(kind Kind) NotificationRule {
 		return NotifyAs{Kind: notification.KindSubmissionChangesRequested}
 	case KindSubmissionRejected:
 		return NotifyAs{Kind: notification.KindSubmissionRejected}
+	case KindSubmissionSuperseded:
+		return NotifyAs{Kind: notification.KindSubmissionSuperseded}
 	case KindSubmissionCommented:
 		return NotifyAs{Kind: notification.KindSubmissionCommented}
 	case KindPayoutReceived:
@@ -160,11 +179,11 @@ func notificationRuleFor(kind Kind) NotificationRule {
 	}
 }
 
-// notificationSubjectFor picks the most specific reference as the inbox
+// NotificationSubjectFor picks the most specific reference as the inbox
 // subject: submission > collectible > task > series > organization. Every
 // emitted kind sets at least one reference (the recorder test enforces the
 // mapping is meaningful for each kind).
-func notificationSubjectFor(subject Subject) notification.Subject {
+func NotificationSubjectFor(subject Subject) notification.Subject {
 	if ref, matched := subject.Submission.(SubmissionSubject); matched {
 		return notification.Subject{Kind: "submission", ID: ref.ID.String()}
 	}

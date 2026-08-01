@@ -13,16 +13,25 @@
    ink (#2a2118, 9.17:1); cards sit on parchment. Semantic tones derive from
    the sprite accents (green, blue #4a90d9, orange #e8772e, red #c0392b,
    gold #f2c14e) darkened/tinted until each text-on-soft pair clears WCAG AA
-   4.5:1 — the measured ratios live on Ui.badgeToneClass. */
+   4.5:1 — the measured ratios live on Ui.badgeToneClass.
+
+   The gnome identity pass moved the neutral chrome from brown toward sage:
+   muted text is #565e46 (measured 5.76:1 on surface #f4ecd0, 6.29:1 on
+   raised #fbf6e3, 6.67:1 on field #fffdf2 — all above the brown #6b5d44 it
+   replaced) and the soft dividers are a sage tan. Browns remain in the
+   sprites where they mean soil and wood. The gnome hat crimson (#9e1b32,
+   Sprites.hatRed) is deliberately deeper and bluer than farm-danger
+   (#8f2318) and the sprite alert red (#c0392b), so hats never read as
+   errors. */
 @theme {
   --color-farm-page: #b3cf86;
   --color-farm-surface: #f4ecd0;
   --color-farm-surface-raised: #fbf6e3;
   --color-farm-field: #fffdf2;
   --color-farm-ink: #2a2118;
-  --color-farm-muted: #6b5d44;
+  --color-farm-muted: #565e46;
   --color-farm-line: #2a2118;
-  --color-farm-line-soft: #d8cba6;
+  --color-farm-line-soft: #cbcfa6;
   --color-farm-cream: #fff7e0;
   --color-farm-accent: #3a7d1e;
   --color-farm-accent-strong: #245a10;
@@ -72,10 +81,10 @@
 
 @layer base {
   /* Tailwind v4's preflight renders ::placeholder at 50% of the text color,
-     which fails WCAG AA. Pin placeholders to the opaque muted ink, which
-     measures 6.29:1 on the #fffdf2 field background. */
+     which fails WCAG AA. Pin placeholders to the opaque muted sage, which
+     measures 6.67:1 on the #fffdf2 field background. */
   ::placeholder {
-    color: #6b5d44;
+    color: #565e46;
     opacity: 1;
   }
 

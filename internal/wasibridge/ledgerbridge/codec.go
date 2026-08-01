@@ -17,6 +17,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/eventbridge"
 )
 
 // ---- scalar value types ----
@@ -314,14 +315,35 @@ func decodeBanSelection(wire selectionWire) (ledger.BanSelection, error) {
 	}
 }
 
+// ---- execution / recorded drafts (shared by mutation results) ----
+
+func encodeExecution(execution ledger.Execution) string {
+	if _, matched := execution.(ledger.IdempotentReplay); matched {
+		return "replay"
+	}
+	return "first"
+}
+
+func decodeExecution(raw string) (ledger.Execution, error) {
+	switch raw {
+	case "first":
+		return ledger.FirstExecution{}, nil
+	case "replay":
+		return ledger.IdempotentReplay{}, nil
+	default:
+		return nil, fmt.Errorf("unknown execution variant %q", raw)
+	}
+}
+
 // ---- command structs ----
 
 type fundCommandWire struct {
-	EntryID        string `json:"entry_id"`
-	FunderUserID   string `json:"funder_user_id"`
-	TaskID         string `json:"task_id"`
-	Amount         int64  `json:"amount"`
-	IdempotencyKey string `json:"idempotency_key"`
+	EntryID        string                `json:"entry_id"`
+	FunderUserID   string                `json:"funder_user_id"`
+	TaskID         string                `json:"task_id"`
+	Amount         int64                 `json:"amount"`
+	IdempotencyKey string                `json:"idempotency_key"`
+	Draft          eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeFundCommand(command ledger.FundStoreCommand) fundCommandWire {
@@ -331,6 +353,7 @@ func encodeFundCommand(command ledger.FundStoreCommand) fundCommandWire {
 		TaskID:         corewire.EncodeTaskID(command.TaskID),
 		Amount:         encodeCreditAmount(command.Amount),
 		IdempotencyKey: encodeIdempotencyKey(command.IdempotencyKey),
+		Draft:          eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -355,21 +378,28 @@ func decodeFundCommand(wire fundCommandWire) (ledger.FundStoreCommand, error) {
 	if err != nil {
 		return ledger.FundStoreCommand{}, err
 	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return ledger.FundStoreCommand{}, err
+	}
 	return ledger.FundStoreCommand{
 		EntryID:        entryID,
 		FunderUserID:   funderUserID,
 		TaskID:         taskID,
 		Amount:         amount,
 		IdempotencyKey: key,
+		Draft:          draft,
 	}, nil
 }
 
 type orgFundCommandWire struct {
-	EntryID        string `json:"entry_id"`
-	OrganizationID string `json:"organization_id"`
-	TaskID         string `json:"task_id"`
-	Amount         int64  `json:"amount"`
-	IdempotencyKey string `json:"idempotency_key"`
+	EntryID        string                `json:"entry_id"`
+	OrganizationID string                `json:"organization_id"`
+	TaskID         string                `json:"task_id"`
+	Amount         int64                 `json:"amount"`
+	IdempotencyKey string                `json:"idempotency_key"`
+	ActingUserID   string                `json:"acting_user_id"`
+	Draft          eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeOrgFundCommand(command ledger.OrganizationFundStoreCommand) orgFundCommandWire {
@@ -379,6 +409,8 @@ func encodeOrgFundCommand(command ledger.OrganizationFundStoreCommand) orgFundCo
 		TaskID:         corewire.EncodeTaskID(command.TaskID),
 		Amount:         encodeCreditAmount(command.Amount),
 		IdempotencyKey: encodeIdempotencyKey(command.IdempotencyKey),
+		ActingUserID:   corewire.EncodeUserID(command.ActingUserID),
+		Draft:          eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -403,27 +435,38 @@ func decodeOrgFundCommand(wire orgFundCommandWire) (ledger.OrganizationFundStore
 	if err != nil {
 		return ledger.OrganizationFundStoreCommand{}, err
 	}
+	actingUserID, err := corewire.DecodeUserID(wire.ActingUserID)
+	if err != nil {
+		return ledger.OrganizationFundStoreCommand{}, err
+	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return ledger.OrganizationFundStoreCommand{}, err
+	}
 	return ledger.OrganizationFundStoreCommand{
 		EntryID:        entryID,
 		OrganizationID: organizationID,
 		TaskID:         taskID,
 		Amount:         amount,
 		IdempotencyKey: key,
+		ActingUserID:   actingUserID,
+		Draft:          draft,
 	}, nil
 }
 
 type acceptCommandWire struct {
-	PayoutEntryID    string        `json:"payout_entry_id"`
-	RefundEntryID    string        `json:"refund_entry_id"`
-	TipDebitEntryID  string        `json:"tip_debit_entry_id"`
-	TipCreditEntryID string        `json:"tip_credit_entry_id"`
-	RequesterUserID  string        `json:"requester_user_id"`
-	TaskID           string        `json:"task_id"`
-	SubmissionID     string        `json:"submission_id"`
-	IdempotencyKey   string        `json:"idempotency_key"`
-	CreditSelection  selectionWire `json:"credit_selection"`
-	TipSelection     selectionWire `json:"tip_selection"`
-	CollectibleTip   selectionWire `json:"collectible_tip"`
+	PayoutEntryID    string                `json:"payout_entry_id"`
+	RefundEntryID    string                `json:"refund_entry_id"`
+	TipDebitEntryID  string                `json:"tip_debit_entry_id"`
+	TipCreditEntryID string                `json:"tip_credit_entry_id"`
+	RequesterUserID  string                `json:"requester_user_id"`
+	TaskID           string                `json:"task_id"`
+	SubmissionID     string                `json:"submission_id"`
+	IdempotencyKey   string                `json:"idempotency_key"`
+	CreditSelection  selectionWire         `json:"credit_selection"`
+	TipSelection     selectionWire         `json:"tip_selection"`
+	CollectibleTip   selectionWire         `json:"collectible_tip"`
+	Draft            eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeAcceptCommand(command ledger.AcceptStoreCommand) acceptCommandWire {
@@ -439,6 +482,7 @@ func encodeAcceptCommand(command ledger.AcceptStoreCommand) acceptCommandWire {
 		CreditSelection:  encodeCreditReviewSelection(command.CreditSelection),
 		TipSelection:     encodeTipSelection(command.TipSelection),
 		CollectibleTip:   encodeCollectibleTipSelection(command.CollectibleTip),
+		Draft:            eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -463,6 +507,10 @@ func decodeAcceptCommand(wire acceptCommandWire) (ledger.AcceptStoreCommand, err
 	if err != nil {
 		return ledger.AcceptStoreCommand{}, err
 	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return ledger.AcceptStoreCommand{}, err
+	}
 	return ledger.AcceptStoreCommand{
 		PayoutEntryID:    ids.payout,
 		RefundEntryID:    ids.refund,
@@ -475,15 +523,17 @@ func decodeAcceptCommand(wire acceptCommandWire) (ledger.AcceptStoreCommand, err
 		CreditSelection:  creditSelection,
 		TipSelection:     tipSelection,
 		CollectibleTip:   collectibleTip,
+		Draft:            draft,
 	}, nil
 }
 
 type requestChangesCommandWire struct {
-	RequesterUserID string `json:"requester_user_id"`
-	TaskID          string `json:"task_id"`
-	SubmissionID    string `json:"submission_id"`
-	IdempotencyKey  string `json:"idempotency_key"`
-	ReviewNote      string `json:"review_note"`
+	RequesterUserID string                `json:"requester_user_id"`
+	TaskID          string                `json:"task_id"`
+	SubmissionID    string                `json:"submission_id"`
+	IdempotencyKey  string                `json:"idempotency_key"`
+	ReviewNote      string                `json:"review_note"`
+	Draft           eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeRequestChangesCommand(command ledger.RequestChangesStoreCommand) requestChangesCommandWire {
@@ -493,6 +543,7 @@ func encodeRequestChangesCommand(command ledger.RequestChangesStoreCommand) requ
 		SubmissionID:    corewire.EncodeSubmissionID(command.SubmissionID),
 		IdempotencyKey:  encodeIdempotencyKey(command.IdempotencyKey),
 		ReviewNote:      encodeReviewNote(command.ReviewNote),
+		Draft:           eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -517,27 +568,33 @@ func decodeRequestChangesCommand(wire requestChangesCommandWire) (ledger.Request
 	if err != nil {
 		return ledger.RequestChangesStoreCommand{}, err
 	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return ledger.RequestChangesStoreCommand{}, err
+	}
 	return ledger.RequestChangesStoreCommand{
 		RequesterUserID: requesterUserID,
 		TaskID:          taskID,
 		SubmissionID:    submissionID,
 		IdempotencyKey:  idempotencyKey,
 		ReviewNote:      reviewNote,
+		Draft:           draft,
 	}, nil
 }
 
 type rejectCommandWire struct {
-	PayoutEntryID    string        `json:"payout_entry_id"`
-	TipDebitEntryID  string        `json:"tip_debit_entry_id"`
-	TipCreditEntryID string        `json:"tip_credit_entry_id"`
-	RequesterUserID  string        `json:"requester_user_id"`
-	TaskID           string        `json:"task_id"`
-	SubmissionID     string        `json:"submission_id"`
-	IdempotencyKey   string        `json:"idempotency_key"`
-	ReviewNote       string        `json:"review_note"`
-	CreditSelection  selectionWire `json:"credit_selection"`
-	TipSelection     selectionWire `json:"tip_selection"`
-	BanSelection     selectionWire `json:"ban_selection"`
+	PayoutEntryID    string                `json:"payout_entry_id"`
+	TipDebitEntryID  string                `json:"tip_debit_entry_id"`
+	TipCreditEntryID string                `json:"tip_credit_entry_id"`
+	RequesterUserID  string                `json:"requester_user_id"`
+	TaskID           string                `json:"task_id"`
+	SubmissionID     string                `json:"submission_id"`
+	IdempotencyKey   string                `json:"idempotency_key"`
+	ReviewNote       string                `json:"review_note"`
+	CreditSelection  selectionWire         `json:"credit_selection"`
+	TipSelection     selectionWire         `json:"tip_selection"`
+	BanSelection     selectionWire         `json:"ban_selection"`
+	Draft            eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeRejectCommand(command ledger.RejectStoreCommand) rejectCommandWire {
@@ -553,6 +610,7 @@ func encodeRejectCommand(command ledger.RejectStoreCommand) rejectCommandWire {
 		CreditSelection:  encodeCreditReviewSelection(command.CreditSelection),
 		TipSelection:     encodeTipSelection(command.TipSelection),
 		BanSelection:     encodeBanSelection(command.BanSelection),
+		Draft:            eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -589,6 +647,10 @@ func decodeRejectCommand(wire rejectCommandWire) (ledger.RejectStoreCommand, err
 	if err != nil {
 		return ledger.RejectStoreCommand{}, err
 	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return ledger.RejectStoreCommand{}, err
+	}
 	return ledger.RejectStoreCommand{
 		PayoutEntryID:    payoutEntryID,
 		TipDebitEntryID:  tipDebitEntryID,
@@ -601,14 +663,16 @@ func decodeRejectCommand(wire rejectCommandWire) (ledger.RejectStoreCommand, err
 		CreditSelection:  creditSelection,
 		TipSelection:     tipSelection,
 		BanSelection:     banSelection,
+		Draft:            draft,
 	}, nil
 }
 
 type refundCommandWire struct {
-	EntryID         string `json:"entry_id"`
-	RequesterUserID string `json:"requester_user_id"`
-	TaskID          string `json:"task_id"`
-	IdempotencyKey  string `json:"idempotency_key"`
+	EntryID         string                `json:"entry_id"`
+	RequesterUserID string                `json:"requester_user_id"`
+	TaskID          string                `json:"task_id"`
+	IdempotencyKey  string                `json:"idempotency_key"`
+	Draft           eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeRefundCommand(command ledger.RefundStoreCommand) refundCommandWire {
@@ -617,6 +681,7 @@ func encodeRefundCommand(command ledger.RefundStoreCommand) refundCommandWire {
 		RequesterUserID: corewire.EncodeUserID(command.RequesterUserID),
 		TaskID:          corewire.EncodeTaskID(command.TaskID),
 		IdempotencyKey:  encodeIdempotencyKey(command.IdempotencyKey),
+		Draft:           eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -637,11 +702,16 @@ func decodeRefundCommand(wire refundCommandWire) (ledger.RefundStoreCommand, err
 	if err != nil {
 		return ledger.RefundStoreCommand{}, err
 	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return ledger.RefundStoreCommand{}, err
+	}
 	return ledger.RefundStoreCommand{
 		EntryID:         entryID,
 		RequesterUserID: requesterUserID,
 		TaskID:          taskID,
 		IdempotencyKey:  key,
+		Draft:           draft,
 	}, nil
 }
 
@@ -820,16 +890,18 @@ func decodeTipOutcome(wire tipOutcomeWire) (ledger.TipOutcome, error) {
 // fundResultWire backs the fund and refund results, which each carry a task
 // fund on success.
 type fundResultWire struct {
-	Variant string                  `json:"variant"`
-	Fund    *taskFundWire           `json:"fund,omitempty"`
-	Error   *domainwire.DomainError `json:"error,omitempty"`
+	Variant        string                  `json:"variant"`
+	Fund           *taskFundWire           `json:"fund,omitempty"`
+	Execution      string                  `json:"execution,omitempty"`
+	RecordedEvents []eventbridge.DraftWire `json:"recorded_events,omitempty"`
+	Error          *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeFundResult(result ledger.FundResult) fundResultWire {
 	switch typed := result.(type) {
 	case ledger.TaskFunded:
 		fund := encodeTaskFund(typed.Fund)
-		return fundResultWire{Variant: "funded", Fund: &fund}
+		return fundResultWire{Variant: "funded", Fund: &fund, Execution: encodeExecution(typed.Execution), RecordedEvents: eventbridge.EncodeDrafts(typed.RecordedEvents)}
 	case ledger.FundRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return fundResultWire{Variant: "rejected", Error: &reason}
@@ -845,7 +917,15 @@ func decodeFundResult(wire fundResultWire) (ledger.FundResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		return ledger.TaskFunded{Fund: fund}, nil
+		execution, err := decodeExecution(wire.Execution)
+		if err != nil {
+			return nil, err
+		}
+		recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.TaskFunded{Fund: fund, Execution: execution, RecordedEvents: recorded}, nil
 	case "rejected":
 		return ledger.FundRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
@@ -857,7 +937,7 @@ func encodeRefundResult(result ledger.RefundResult) fundResultWire {
 	switch typed := result.(type) {
 	case ledger.TaskRefunded:
 		fund := encodeTaskFund(typed.Fund)
-		return fundResultWire{Variant: "refunded", Fund: &fund}
+		return fundResultWire{Variant: "refunded", Fund: &fund, Execution: encodeExecution(typed.Execution), RecordedEvents: eventbridge.EncodeDrafts(typed.RecordedEvents)}
 	case ledger.RefundRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return fundResultWire{Variant: "rejected", Error: &reason}
@@ -873,7 +953,15 @@ func decodeRefundResult(wire fundResultWire) (ledger.RefundResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		return ledger.TaskRefunded{Fund: fund}, nil
+		execution, err := decodeExecution(wire.Execution)
+		if err != nil {
+			return nil, err
+		}
+		recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.TaskRefunded{Fund: fund, Execution: execution, RecordedEvents: recorded}, nil
 	case "rejected":
 		return ledger.RefundRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
@@ -884,13 +972,15 @@ func decodeRefundResult(wire fundResultWire) (ledger.RefundResult, error) {
 // reviewedSubmissionWire backs the accept and reject results, which each carry a
 // task/submission plus payout and tip outcomes on success.
 type reviewedSubmissionWire struct {
-	Variant      string                  `json:"variant"`
-	TaskID       string                  `json:"task_id,omitempty"`
-	SubmissionID string                  `json:"submission_id,omitempty"`
-	WorkerUserID string                  `json:"worker_user_id,omitempty"`
-	Payout       *payoutOutcomeWire      `json:"payout,omitempty"`
-	Tip          *tipOutcomeWire         `json:"tip,omitempty"`
-	Error        *domainwire.DomainError `json:"error,omitempty"`
+	Variant        string                  `json:"variant"`
+	TaskID         string                  `json:"task_id,omitempty"`
+	SubmissionID   string                  `json:"submission_id,omitempty"`
+	WorkerUserID   string                  `json:"worker_user_id,omitempty"`
+	Payout         *payoutOutcomeWire      `json:"payout,omitempty"`
+	Tip            *tipOutcomeWire         `json:"tip,omitempty"`
+	Execution      string                  `json:"execution,omitempty"`
+	RecordedEvents []eventbridge.DraftWire `json:"recorded_events,omitempty"`
+	Error          *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func reviewedSubmissionSuccess(variant string, taskID core.TaskID, submissionID core.SubmissionID, workerUserID core.UserID, payout ledger.PayoutOutcome, tip ledger.TipOutcome) reviewedSubmissionWire {
@@ -944,7 +1034,10 @@ func decodeReviewedSubmission(wire reviewedSubmissionWire) (reviewedSubmissionVa
 func encodeAcceptResult(result ledger.AcceptResult) reviewedSubmissionWire {
 	switch typed := result.(type) {
 	case ledger.SubmissionAccepted:
-		return reviewedSubmissionSuccess("accepted", typed.TaskID, typed.SubmissionID, typed.WorkerUserID, typed.Payout, typed.Tip)
+		wire := reviewedSubmissionSuccess("accepted", typed.TaskID, typed.SubmissionID, typed.WorkerUserID, typed.Payout, typed.Tip)
+		wire.Execution = encodeExecution(typed.Execution)
+		wire.RecordedEvents = eventbridge.EncodeDrafts(typed.RecordedEvents)
+		return wire
 	case ledger.AcceptRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return reviewedSubmissionWire{Variant: "failed", Error: &reason}
@@ -960,7 +1053,15 @@ func decodeAcceptResult(wire reviewedSubmissionWire) (ledger.AcceptResult, error
 		if err != nil {
 			return nil, err
 		}
-		return ledger.SubmissionAccepted{TaskID: value.taskID, SubmissionID: value.submissionID, WorkerUserID: value.workerUserID, Payout: value.payout, Tip: value.tip}, nil
+		execution, err := decodeExecution(wire.Execution)
+		if err != nil {
+			return nil, err
+		}
+		recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.SubmissionAccepted{TaskID: value.taskID, SubmissionID: value.submissionID, WorkerUserID: value.workerUserID, Payout: value.payout, Tip: value.tip, Execution: execution, RecordedEvents: recorded}, nil
 	case "failed":
 		return ledger.AcceptRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
@@ -971,7 +1072,10 @@ func decodeAcceptResult(wire reviewedSubmissionWire) (ledger.AcceptResult, error
 func encodeRejectResult(result ledger.RejectResult) reviewedSubmissionWire {
 	switch typed := result.(type) {
 	case ledger.SubmissionRejected:
-		return reviewedSubmissionSuccess("rejected", typed.TaskID, typed.SubmissionID, typed.WorkerUserID, typed.Payout, typed.Tip)
+		wire := reviewedSubmissionSuccess("rejected", typed.TaskID, typed.SubmissionID, typed.WorkerUserID, typed.Payout, typed.Tip)
+		wire.Execution = encodeExecution(typed.Execution)
+		wire.RecordedEvents = eventbridge.EncodeDrafts(typed.RecordedEvents)
+		return wire
 	case ledger.RejectRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return reviewedSubmissionWire{Variant: "failed", Error: &reason}
@@ -987,7 +1091,15 @@ func decodeRejectResult(wire reviewedSubmissionWire) (ledger.RejectResult, error
 		if err != nil {
 			return nil, err
 		}
-		return ledger.SubmissionRejected{TaskID: value.taskID, SubmissionID: value.submissionID, WorkerUserID: value.workerUserID, Payout: value.payout, Tip: value.tip}, nil
+		execution, err := decodeExecution(wire.Execution)
+		if err != nil {
+			return nil, err
+		}
+		recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.SubmissionRejected{TaskID: value.taskID, SubmissionID: value.submissionID, WorkerUserID: value.workerUserID, Payout: value.payout, Tip: value.tip, Execution: execution, RecordedEvents: recorded}, nil
 	case "failed":
 		return ledger.RejectRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
@@ -996,23 +1108,27 @@ func decodeRejectResult(wire reviewedSubmissionWire) (ledger.RejectResult, error
 }
 
 type changesRequestedWire struct {
-	Variant      string                  `json:"variant"`
-	TaskID       string                  `json:"task_id,omitempty"`
-	SubmissionID string                  `json:"submission_id,omitempty"`
-	WorkerUserID string                  `json:"worker_user_id,omitempty"`
-	ReviewNote   string                  `json:"review_note,omitempty"`
-	Error        *domainwire.DomainError `json:"error,omitempty"`
+	Variant        string                  `json:"variant"`
+	TaskID         string                  `json:"task_id,omitempty"`
+	SubmissionID   string                  `json:"submission_id,omitempty"`
+	WorkerUserID   string                  `json:"worker_user_id,omitempty"`
+	ReviewNote     string                  `json:"review_note,omitempty"`
+	Execution      string                  `json:"execution,omitempty"`
+	RecordedEvents []eventbridge.DraftWire `json:"recorded_events,omitempty"`
+	Error          *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeRequestChangesResult(result ledger.RequestChangesResult) changesRequestedWire {
 	switch typed := result.(type) {
 	case ledger.ChangesRequested:
 		return changesRequestedWire{
-			Variant:      "requested",
-			TaskID:       corewire.EncodeTaskID(typed.TaskID),
-			SubmissionID: corewire.EncodeSubmissionID(typed.SubmissionID),
-			WorkerUserID: corewire.EncodeUserID(typed.WorkerUserID),
-			ReviewNote:   typed.ReviewNote,
+			Variant:        "requested",
+			TaskID:         corewire.EncodeTaskID(typed.TaskID),
+			SubmissionID:   corewire.EncodeSubmissionID(typed.SubmissionID),
+			WorkerUserID:   corewire.EncodeUserID(typed.WorkerUserID),
+			ReviewNote:     typed.ReviewNote,
+			Execution:      encodeExecution(typed.Execution),
+			RecordedEvents: eventbridge.EncodeDrafts(typed.RecordedEvents),
 		}
 	case ledger.RequestChangesRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
@@ -1037,7 +1153,15 @@ func decodeRequestChangesResult(wire changesRequestedWire) (ledger.RequestChange
 		if err != nil {
 			return nil, err
 		}
-		return ledger.ChangesRequested{TaskID: taskID, SubmissionID: submissionID, WorkerUserID: workerUserID, ReviewNote: wire.ReviewNote}, nil
+		execution, err := decodeExecution(wire.Execution)
+		if err != nil {
+			return nil, err
+		}
+		recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.ChangesRequested{TaskID: taskID, SubmissionID: submissionID, WorkerUserID: workerUserID, ReviewNote: wire.ReviewNote, Execution: execution, RecordedEvents: recorded}, nil
 	case "rejected":
 		return ledger.RequestChangesRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
@@ -1115,13 +1239,14 @@ func decodeBalanceResult(wire balanceWire) (ledger.BalanceResult, error) {
 type entriesWire struct {
 	Variant string                  `json:"variant"`
 	Entries []ledgerEntryWire       `json:"entries,omitempty"`
+	Total   int64                   `json:"total,omitempty"`
 	Error   *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeListEntriesResult(result ledger.ListEntriesResult) entriesWire {
 	switch typed := result.(type) {
 	case ledger.EntriesListed:
-		return entriesWire{Variant: "listed", Entries: encodeLedgerEntries(typed.Values)}
+		return entriesWire{Variant: "listed", Entries: encodeLedgerEntries(typed.Values), Total: typed.Total}
 	case ledger.ListEntriesRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return entriesWire{Variant: "rejected", Error: &reason}
@@ -1137,7 +1262,7 @@ func decodeListEntriesResult(wire entriesWire) (ledger.ListEntriesResult, error)
 		if err != nil {
 			return nil, err
 		}
-		return ledger.EntriesListed{Values: entries}, nil
+		return ledger.EntriesListed{Values: entries, Total: wire.Total}, nil
 	case "rejected":
 		return ledger.ListEntriesRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
@@ -1199,11 +1324,12 @@ func decodeGrantTarget(wire grantTargetWire) (ledger.GrantTarget, error) {
 }
 
 type grantCommandWire struct {
-	EntryID        string          `json:"entry_id"`
-	Target         grantTargetWire `json:"target"`
-	Amount         int64           `json:"amount"`
-	Note           string          `json:"note"`
-	IdempotencyKey string          `json:"idempotency_key"`
+	EntryID        string                `json:"entry_id"`
+	Target         grantTargetWire       `json:"target"`
+	Amount         int64                 `json:"amount"`
+	Note           string                `json:"note"`
+	IdempotencyKey string                `json:"idempotency_key"`
+	Draft          eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeGrantCommand(command ledger.GrantStoreCommand) grantCommandWire {
@@ -1213,6 +1339,7 @@ func encodeGrantCommand(command ledger.GrantStoreCommand) grantCommandWire {
 		Amount:         encodeCreditAmount(command.Amount),
 		Note:           command.Note.String(),
 		IdempotencyKey: encodeIdempotencyKey(command.IdempotencyKey),
+		Draft:          eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -1237,21 +1364,28 @@ func decodeGrantCommand(wire grantCommandWire) (ledger.GrantStoreCommand, error)
 	if err != nil {
 		return ledger.GrantStoreCommand{}, err
 	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return ledger.GrantStoreCommand{}, err
+	}
 	return ledger.GrantStoreCommand{
 		EntryID:        entryID,
 		Target:         target,
 		Amount:         amount,
 		Note:           noteResult.Value,
 		IdempotencyKey: key,
+		Draft:          draft,
 	}, nil
 }
 
 type grantResultWire struct {
-	Variant    string                  `json:"variant"`
-	EntryID    string                  `json:"entry_id,omitempty"`
-	Amount     int64                   `json:"amount,omitempty"`
-	Recipients []string                `json:"recipients,omitempty"`
-	Error      *domainwire.DomainError `json:"error,omitempty"`
+	Variant        string                  `json:"variant"`
+	EntryID        string                  `json:"entry_id,omitempty"`
+	Amount         int64                   `json:"amount,omitempty"`
+	Recipients     []string                `json:"recipients,omitempty"`
+	Execution      string                  `json:"execution,omitempty"`
+	RecordedEvents []eventbridge.DraftWire `json:"recorded_events,omitempty"`
+	Error          *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeGrantResult(result ledger.GrantResult) grantResultWire {
@@ -1262,10 +1396,12 @@ func encodeGrantResult(result ledger.GrantResult) grantResultWire {
 			recipients = append(recipients, corewire.EncodeUserID(recipient))
 		}
 		return grantResultWire{
-			Variant:    "granted",
-			EntryID:    corewire.EncodeLedgerEntryID(typed.EntryID),
-			Amount:     encodeCreditAmount(typed.Amount),
-			Recipients: recipients,
+			Variant:        "granted",
+			EntryID:        corewire.EncodeLedgerEntryID(typed.EntryID),
+			Amount:         encodeCreditAmount(typed.Amount),
+			Recipients:     recipients,
+			Execution:      encodeExecution(typed.Execution),
+			RecordedEvents: eventbridge.EncodeDrafts(typed.RecordedEvents),
 		}
 	case ledger.GrantRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
@@ -1294,7 +1430,15 @@ func decodeGrantResult(wire grantResultWire) (ledger.GrantResult, error) {
 			}
 			recipients = append(recipients, recipient)
 		}
-		return ledger.CreditsGranted{EntryID: entryID, Amount: amount, RecipientUserIDs: recipients}, nil
+		execution, err := decodeExecution(wire.Execution)
+		if err != nil {
+			return nil, err
+		}
+		recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.CreditsGranted{EntryID: entryID, Amount: amount, RecipientUserIDs: recipients, Execution: execution, RecordedEvents: recorded}, nil
 	case "rejected":
 		return ledger.GrantRejected{Reason: decodeReason(wire.Error)}, nil
 	default:

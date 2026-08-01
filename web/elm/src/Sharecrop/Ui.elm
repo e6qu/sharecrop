@@ -42,7 +42,7 @@ on either keep working.
 emptyState : String -> String -> String -> Html msg
 emptyState identifier slug message =
     Html.div [ class "flex flex-col items-center gap-3 py-6 text-center" ]
-        [ Sprites.pixel slug 4
+        [ Sprites.pixel slug 5
         , p [ class "text-sm text-farm-muted", testId identifier ] [ text message ]
         ]
 

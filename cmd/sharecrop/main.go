@@ -389,7 +389,7 @@ func runMCPStdio(ctx context.Context, cfg app.MCPConfig, stdout io.Writer, logge
 	platformAdmins := db.NewPlatformAdminStore(pool, bootstrapAdmins)
 	moderationTriage := db.NewModerationTriageStore(pool)
 	privacyService := db.NewPrivacyStore(pool)
-	mcpServer := httpserver.NewMCPServer(graph.TaskService, graph.SubmissionService, graph.LedgerService, graph.OrganizationService, graph.OrgCredentialService, graph.AssetService, graph.NotificationService, graph.AuthService, platformAdmins, moderationTriage, privacyService, graph.AuditService, webhook.NewService(db.NewWebhookStore(pool)))
+	mcpServer := httpserver.NewMCPServer(graph.TaskService, graph.SubmissionService, graph.LedgerService, graph.OrganizationService, graph.OrgCredentialService, graph.AssetService, graph.NotificationService, graph.AuthService, platformAdmins, moderationTriage, privacyService, graph.AuditService, webhook.NewService(db.NewWebhookStore(pool)), db.NewEventStore(pool))
 
 	logger.Info("starting sharecrop mcp stdio transport")
 	if err := mcp.ServeStdio(ctx, mcpServer, subject, callerCredential, os.Stdin, stdout); err != nil {

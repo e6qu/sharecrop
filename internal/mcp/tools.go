@@ -61,6 +61,7 @@ func toolDefinitions() []toolDefinition {
 	definitions = append(definitions, orgToolDefinitions()...)
 	definitions = append(definitions, collectiblesToolDefinitions()...)
 	definitions = append(definitions, notificationsToolDefinitions()...)
+	definitions = append(definitions, eventsToolDefinitions()...)
 	definitions = append(definitions, creditsToolDefinitions()...)
 	definitions = append(definitions, webhooksToolDefinitions()...)
 	definitions = append(definitions, usersToolDefinitions()...)
@@ -72,9 +73,9 @@ func coreToolDefinitions() []toolDefinition {
 	return []toolDefinition{
 		{
 			Name:        toolListTasks,
-			Description: "List tasks the agent is permitted to see. Scope is \"public\" (open tasks to work) or \"user\" (the agent's own tasks). Optional filters mirror the REST task listing: repeated states, participation_policy, query (title/id search), task_type, created_after (RFC3339; only tasks created strictly after it), sort, and limit/offset paging. state is a deprecated single-state alias for states. The result carries next_offset (0 on the last page).",
+			Description: "List tasks the agent is permitted to see. Scope is \"public\" (open tasks to work) or \"user\" (the agent's own tasks). Optional filters mirror the REST task listing: repeated states, participation_policy, query (title/id search), task_type, created_after (RFC3339; only tasks created strictly after it), funded (reward_funded, reward_unfunded, or no_credit_reward), sort, and limit/offset paging. state is a deprecated single-state alias for states. Rows carry creator_display_name, holder_display_name (the active reservation holder, when user-assigned), funded, and pending_review_count (submissions awaiting review, populated only on the caller's own tasks). The result carries next_offset (0 on the last page) and total (rows matching the filter, ignoring paging).",
 			Scope:       agent.ScopeTasksRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"scope":{"type":"string","enum":["public","user"]},"state":{"type":"string","enum":["draft","open","closed","cancelled","expired"]},"states":{"type":"array","items":{"type":"string","enum":["draft","open","closed","cancelled","expired"]}},"participation_policy":{"type":"string","enum":["open","reservation_required","approval_required"]},"query":{"type":"string"},"task_type":{"type":"string","enum":["general","code_review","security_review","product_review","ui_ux_review","qa_testing"]},"created_after":{"type":"string"},"sort":{"type":"string","enum":["newest","oldest","title_asc","title_desc","reward_desc","reward_asc"]},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["scope"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"scope":{"type":"string","enum":["public","user"]},"state":{"type":"string","enum":["draft","open","closed","cancelled","expired"]},"states":{"type":"array","items":{"type":"string","enum":["draft","open","closed","cancelled","expired"]}},"participation_policy":{"type":"string","enum":["open","reservation_required","approval_required"]},"query":{"type":"string"},"task_type":{"type":"string","enum":["general","code_review","security_review","product_review","ui_ux_review","qa_testing"]},"created_after":{"type":"string"},"funded":{"type":"string","enum":["reward_funded","reward_unfunded","no_credit_reward"]},"sort":{"type":"string","enum":["newest","oldest","title_asc","title_desc","reward_desc","reward_asc"]},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["scope"]}`),
 		},
 		{
 			Name:        toolGetTask,

@@ -12,6 +12,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -183,6 +184,7 @@ func TestRequestChangesStoresNoteAndReactivatesReservation(t *testing.T) {
 		TaskID:          taskID,
 		SubmissionID:    submissionID,
 		ReviewNote:      note,
+		Draft:           testEventDraft(t, event.KindSubmissionChangesRequested, owner),
 	})
 	if _, matched := result.(ledger.ChangesRequested); !matched {
 		t.Fatalf("request changes result = %T, want ChangesRequested", result)
@@ -226,6 +228,7 @@ func TestRejectCanPayPartialTipAndBanImplementor(t *testing.T) {
 		CreditSelection:  ledger.PartialCreditReviewSelection{Amount: creditAmount(t, 10)},
 		TipSelection:     ledger.CreditTipSelection{Amount: creditAmount(t, 3)},
 		BanSelection:     ledger.BanImplementorSelection{},
+		Draft:            testEventDraft(t, event.KindSubmissionRejected, owner),
 	})
 	rejected, matched := result.(ledger.SubmissionRejected)
 	if !matched {
@@ -445,6 +448,7 @@ func fundCommand(t *testing.T, owner core.UserID, taskID core.TaskID, amount int
 		TaskID:         taskID,
 		Amount:         creditAmount(t, amount),
 		IdempotencyKey: idempotencyKey(t, key),
+		Draft:          testEventDraft(t, event.KindTaskFunded, owner),
 	}
 }
 
@@ -459,6 +463,7 @@ func acceptCommand(t *testing.T, owner core.UserID, taskID core.TaskID, submissi
 		TaskID:           taskID,
 		SubmissionID:     submissionID,
 		IdempotencyKey:   idempotencyKey(t, key),
+		Draft:            testEventDraft(t, event.KindSubmissionAccepted, owner),
 	}
 }
 
@@ -469,6 +474,7 @@ func refundCommand(t *testing.T, owner core.UserID, taskID core.TaskID, key stri
 		RequesterUserID: owner,
 		TaskID:          taskID,
 		IdempotencyKey:  idempotencyKey(t, key),
+		Draft:           testEventDraft(t, event.KindTaskCancelled, owner),
 	}
 }
 

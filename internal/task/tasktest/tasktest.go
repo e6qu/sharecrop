@@ -174,7 +174,20 @@ func ListItemDiff(got, want task.ListItem) string {
 	if got.CreatorDisplayName.String() != want.CreatorDisplayName.String() {
 		return fmt.Sprintf("creator_display_name: %q != %q", got.CreatorDisplayName.String(), want.CreatorDisplayName.String())
 	}
+	if holderNameKey(got.HolderDisplayName) != holderNameKey(want.HolderDisplayName) {
+		return fmt.Sprintf("holder_display_name: %q != %q", holderNameKey(got.HolderDisplayName), holderNameKey(want.HolderDisplayName))
+	}
+	if got.Funded != want.Funded {
+		return fmt.Sprintf("funded: %q != %q", got.Funded.String(), want.Funded.String())
+	}
 	return ""
+}
+
+func holderNameKey(ref task.HolderNameRef) string {
+	if named, matched := ref.(task.HolderNamed); matched {
+		return "holder:" + named.DisplayName.String()
+	}
+	return "none"
 }
 
 func attachmentsDiff(got, want []attachment.Attachment) string {

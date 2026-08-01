@@ -41,7 +41,7 @@ func (server Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
-	response := notificationsResponse{Notifications: make([]notificationResponse, 0, visible), NextOffset: nextOffset}
+	response := notificationsResponse{Notifications: make([]notificationResponse, 0, visible), NextOffset: nextOffset, Total: listed.Total}
 	for _, value := range listed.Values[:visible] {
 		response.Notifications = append(response.Notifications, notificationToResponse(value))
 	}

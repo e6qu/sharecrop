@@ -129,6 +129,8 @@ type ListDeliveriesResult interface {
 
 type DeliveriesListed struct {
 	Values []Delivery
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
 }
 
 type ListDeliveriesRejected struct {
@@ -145,5 +147,5 @@ func (service Service) ListDeliveries(ctx context.Context, owner Owner, id core.
 	if !matched {
 		return ListDeliveriesRejected{Reason: storeResult.(ListDeliveriesStoreRejected).Reason}
 	}
-	return DeliveriesListed{Values: listed.Values}
+	return DeliveriesListed{Values: listed.Values, Total: listed.Total}
 }

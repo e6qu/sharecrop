@@ -23,7 +23,7 @@ type userDirectoryPayload struct {
 
 type userProfilePayload struct {
 	ID         string        `json:"id"`
-	Tasks      []taskSummary `json:"tasks"`
+	Tasks      []taskListRow `json:"tasks"`
 	NextOffset int           `json:"next_offset"`
 }
 
@@ -85,9 +85,9 @@ func (server Server) callGetUserProfile(ctx context.Context, subject auth.UserSu
 		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
 	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
-	tasks := make([]taskSummary, 0, visible)
+	tasks := make([]taskListRow, 0, visible)
 	for index := range listed.Values[:visible] {
-		tasks = append(tasks, taskToSummary(listed.Values[index].Task))
+		tasks = append(tasks, listItemToRow(listed.Values[index]))
 	}
 	return marshalPayload(userProfilePayload{ID: userID.String(), Tasks: tasks, NextOffset: nextOffset})
 }
@@ -107,11 +107,11 @@ func (server Server) callGetUserWork(ctx context.Context, subject auth.UserSubje
 		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
 	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
-	summaries := make([]taskSummary, 0, visible)
+	rows := make([]taskListRow, 0, visible)
 	for index := range listed.Values[:visible] {
-		summaries = append(summaries, taskToSummary(listed.Values[index].Task))
+		rows = append(rows, listItemToRow(listed.Values[index]))
 	}
-	return marshalPayload(tasksPayload{Tasks: summaries, NextOffset: nextOffset})
+	return marshalPayload(tasksPayload{Tasks: rows, NextOffset: nextOffset, Total: listed.Total})
 }
 
 func (server Server) callGetUserSubmissions(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -133,5 +133,5 @@ func (server Server) callGetUserSubmissions(ctx context.Context, subject auth.Us
 	for index := range listed.Values[:visible] {
 		summaries = append(summaries, submissionToSummary(listed.Values[index]))
 	}
-	return marshalPayload(submissionsPayload{Submissions: summaries, NextOffset: nextOffset})
+	return marshalPayload(submissionsPayload{Submissions: summaries, NextOffset: nextOffset, Total: listed.Total})
 }

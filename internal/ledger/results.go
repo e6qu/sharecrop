@@ -1,6 +1,25 @@
 package ledger
 
-import "github.com/e6qu/sharecrop/internal/core"
+import (
+	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
+)
+
+// Execution says whether a store command performed its mutation now or
+// recognized an idempotent replay of an earlier execution. Replays record no
+// new domain events (the original execution already recorded them), so the
+// service skips the dispatch step.
+type Execution interface {
+	execution()
+}
+
+type FirstExecution struct{}
+
+type IdempotentReplay struct{}
+
+func (FirstExecution) execution() {}
+
+func (IdempotentReplay) execution() {}
 
 type FundResult interface {
 	fundResult()
@@ -8,6 +27,12 @@ type FundResult interface {
 
 type TaskFunded struct {
 	Fund TaskFund
+	// Execution distinguishes a fresh fund from an idempotent replay.
+	Execution Execution
+	// RecordedEvents are the event drafts the store recorded inside the fund
+	// transaction (with the store-resolved recipients merged in); the service
+	// dispatches them after commit. Empty on a replay.
+	RecordedEvents []event.Draft
 }
 
 type FundRejected struct {
@@ -62,6 +87,13 @@ type SubmissionAccepted struct {
 	WorkerUserID core.UserID
 	Payout       PayoutOutcome
 	Tip          TipOutcome
+	// Execution distinguishes a fresh accept from an idempotent replay.
+	Execution Execution
+	// RecordedEvents are the drafts recorded inside the accept transaction:
+	// the accepted-review event, the payout/tip events the review produced,
+	// and one submission_superseded event per competing submission the close
+	// superseded. Empty on a replay.
+	RecordedEvents []event.Draft
 }
 
 type AcceptRejected struct {
@@ -112,6 +144,11 @@ type ChangesRequested struct {
 	// WorkerUserID is the reviewed submission's author (see SubmissionAccepted).
 	WorkerUserID core.UserID
 	ReviewNote   string
+	// Execution distinguishes a fresh request from an idempotent replay.
+	Execution Execution
+	// RecordedEvents are the drafts recorded inside the transaction; empty
+	// on a replay.
+	RecordedEvents []event.Draft
 }
 
 type RequestChangesRejected struct {
@@ -133,6 +170,12 @@ type SubmissionRejected struct {
 	WorkerUserID core.UserID
 	Payout       PayoutOutcome
 	Tip          TipOutcome
+	// Execution distinguishes a fresh reject from an idempotent replay.
+	Execution Execution
+	// RecordedEvents are the drafts recorded inside the reject transaction
+	// (the rejected-review event plus the partial payout/tip events); empty
+	// on a replay.
+	RecordedEvents []event.Draft
 }
 
 type RejectRejected struct {
@@ -149,6 +192,12 @@ type RefundResult interface {
 
 type TaskRefunded struct {
 	Fund TaskFund
+	// Execution distinguishes a fresh refund from an idempotent replay.
+	Execution Execution
+	// RecordedEvents are the drafts recorded inside the refund transaction
+	// (the task_cancelled event, with the released reservation holders the
+	// store resolved merged into its recipients); empty on a replay.
+	RecordedEvents []event.Draft
 }
 
 type RefundRejected struct {
@@ -199,6 +248,8 @@ type ListEntriesResult interface {
 
 type EntriesListed struct {
 	Values []LedgerEntry
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
 }
 
 type ListEntriesRejected struct {
@@ -224,6 +275,12 @@ type CreditsGranted struct {
 	// resolves them inside the grant transaction so the service does not need
 	// a separate membership lookup.
 	RecipientUserIDs []core.UserID
+	// Execution distinguishes a fresh grant from an idempotent replay.
+	Execution Execution
+	// RecordedEvents are the drafts recorded inside the grant transaction
+	// (the credit_granted event with the resolved beneficiaries merged into
+	// its recipients); empty on a replay.
+	RecordedEvents []event.Draft
 }
 
 type GrantRejected struct {

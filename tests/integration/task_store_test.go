@@ -9,6 +9,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -27,7 +28,7 @@ func TestTaskStoreCancelReleasesSubmittedReservation(t *testing.T) {
 	insertSubmittedReservation(t, pool, taskID, worker)
 
 	store := db.NewTaskStore(pool)
-	result := store.ChangeTaskState(context.Background(), taskID, task.StateCancelled)
+	result := store.ChangeTaskState(context.Background(), taskID, task.StateCancelled, event.NoEvent{})
 	changed, matched := result.(task.ChangeTaskStateStoreAccepted)
 	if !matched {
 		t.Fatalf("cancel task with submitted reservation: want ChangeTaskStateStoreAccepted, got %#v", result)

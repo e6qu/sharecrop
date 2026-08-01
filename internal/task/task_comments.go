@@ -97,16 +97,21 @@ func (service Service) AddTaskComment(ctx context.Context, actor auth.UserSubjec
 		return TaskCommentRejected{Reason: idResult.(core.TaskCommentIDRejected).Reason}
 	}
 	comment := TaskComment{ID: created.Value, TaskID: value.ID, AuthorID: actor.ID, Body: body}
-	storeResult := service.store.CreateTaskComment(ctx, comment)
+	// The active assignee (if one holds the task) is read via the existing
+	// reservation listing so both discussion parties hear about the comment;
+	// the event is recorded inside the comment's insert transaction.
+	recipients := append([]core.UserID{value.CreatedBy, actor.ID}, service.activeReservationHolders(ctx, value.ID)...)
+	draft, draftProblem := taskEventDraft(event.KindTaskCommented, event.ActorUser{ID: actor.ID}, value.ID,
+		event.TaskMetadata(value.ID), event.NewRecipients(recipients...))
+	if draftProblem != nil {
+		return TaskCommentRejected{Reason: *draftProblem}
+	}
+	storeResult := service.store.CreateTaskComment(ctx, comment, draft)
 	accepted, accepted_ := storeResult.(CreateTaskCommentStoreAccepted)
 	if !accepted_ {
 		return TaskCommentRejected{Reason: storeResult.(CreateTaskCommentStoreRejected).Reason}
 	}
-	// The active assignee (if one holds the task) is read via the existing
-	// reservation listing so both discussion parties hear about the comment.
-	recipients := append([]core.UserID{value.CreatedBy, actor.ID}, service.activeReservationHolders(ctx, value.ID)...)
-	service.emitTaskEvent(ctx, event.KindTaskCommented, event.ActorUser{ID: actor.ID}, value.ID,
-		event.TaskMetadata(value.ID), event.NewRecipients(recipients...))
+	service.recorder.Dispatch(ctx, draft)
 	return TaskCommentAdded{Value: accepted.Value}
 }
 

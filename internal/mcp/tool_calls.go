@@ -47,9 +47,26 @@ type taskDetail struct {
 	ExpiresAt string `json:"expires_at"`
 }
 
+// taskListRow is one task-listing row: the task summary plus the read-model
+// enrichments listings resolve (mirroring REST's taskListItemResponse): the
+// creator's display name, the active reservation holder's display name (empty
+// when no user-assigned reservation is active), the credit-reward escrow state
+// (reward_funded, reward_unfunded, or no_credit_reward), and the count of
+// submissions still awaiting review (populated only on the caller's own
+// tasks; 0 elsewhere).
+type taskListRow struct {
+	taskSummary
+	CreatorDisplayName string `json:"creator_display_name"`
+	HolderDisplayName  string `json:"holder_display_name"`
+	Funded             string `json:"funded"`
+	PendingReviewCount int64  `json:"pending_review_count"`
+}
+
 type tasksPayload struct {
-	Tasks      []taskSummary `json:"tasks"`
+	Tasks      []taskListRow `json:"tasks"`
 	NextOffset int           `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 type schemaPayload struct {
@@ -136,6 +153,8 @@ type submissionSummary struct {
 type submissionsPayload struct {
 	Submissions []submissionSummary `json:"submissions"`
 	NextOffset  int                 `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 // submissionDetail is get_submission's full read: everything a reviewer
@@ -207,6 +226,7 @@ func (server Server) callListTasks(ctx context.Context, subject auth.Subject, ar
 		Query               string   `json:"query"`
 		TaskType            string   `json:"task_type"`
 		CreatedAfter        string   `json:"created_after"`
+		Funded              string   `json:"funded"`
 		Sort                string   `json:"sort"`
 		Limit               int      `json:"limit"`
 		Offset              int      `json:"offset"`
@@ -291,6 +311,14 @@ func (server Server) callListTasks(ctx context.Context, subject auth.Subject, ar
 		}
 		filters.Created = task.CreatedAfter{Instant: instant.UTC()}
 	}
+	if args.Funded != "" {
+		fundedResult := task.ParseFundedState(args.Funded)
+		fundedParsed, fundedMatched := fundedResult.(task.FundedStateParsed)
+		if !fundedMatched {
+			return toolProtocolError{code: codeInvalidParams, message: fundedResult.(task.FundedStateRejected).Reason.Description()}
+		}
+		filters.Funded = task.FundedEquals{Value: fundedParsed.Value}
+	}
 
 	page, pageProblem := parseMCPPage(args.Limit, args.Offset)
 	if pageProblem != nil {
@@ -304,11 +332,11 @@ func (server Server) callListTasks(ctx context.Context, subject auth.Subject, ar
 	}
 
 	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
-	summaries := make([]taskSummary, 0, visible)
+	rows := make([]taskListRow, 0, visible)
 	for index := range listed.Values[:visible] {
-		summaries = append(summaries, taskToSummary(listed.Values[index].Task))
+		rows = append(rows, listItemToRow(listed.Values[index]))
 	}
-	return marshalPayload(tasksPayload{Tasks: summaries, NextOffset: nextOffset})
+	return marshalPayload(tasksPayload{Tasks: rows, NextOffset: nextOffset, Total: listed.Total})
 }
 
 // parseMCPPage maps optional limit/offset tool arguments onto core.Page.
@@ -1021,7 +1049,7 @@ func (server Server) callListTaskSubmissions(ctx context.Context, subject auth.U
 	for index := range listed.Values[:visible] {
 		summaries = append(summaries, submissionToSummary(listed.Values[index]))
 	}
-	return marshalPayload(submissionsPayload{Submissions: summaries, NextOffset: nextOffset})
+	return marshalPayload(submissionsPayload{Submissions: summaries, NextOffset: nextOffset, Total: listed.Total})
 }
 
 func (server Server) callAcceptSubmission(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -1921,6 +1949,21 @@ func taskToSummary(value task.Task) taskSummary {
 		VisibilityKind: visibilityKind(value.Visibility),
 		CreatedBy:      value.CreatedBy.String(),
 	}
+}
+
+// listItemToRow flattens a task-listing read model onto the wire row,
+// mirroring REST's taskListItemToResponse enrichment fields.
+func listItemToRow(item task.ListItem) taskListRow {
+	row := taskListRow{
+		taskSummary:        taskToSummary(item.Task),
+		CreatorDisplayName: item.CreatorDisplayName.String(),
+		Funded:             item.Funded.String(),
+		PendingReviewCount: item.PendingReviewCount,
+	}
+	if named, matched := item.HolderDisplayName.(task.HolderNamed); matched {
+		row.HolderDisplayName = named.DisplayName.String()
+	}
+	return row
 }
 
 func taskToDetail(value task.Task) taskDetail {

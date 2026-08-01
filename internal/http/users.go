@@ -125,6 +125,7 @@ func (server Server) getUserWork(w http.ResponseWriter, r *http.Request) {
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
 	response := tasksToResponse(listed.Values[:visible], actor)
 	response.NextOffset = nextOffset
+	response.Total = listed.Total
 	writeTasksResponse(w, http.StatusOK, response)
 }
 
@@ -142,7 +143,7 @@ func (server Server) getUserSubmissions(w http.ResponseWriter, r *http.Request) 
 
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
 	server.recordSensitiveFieldAccessForList(r.Context(), actor.ID, listed.Values[:visible])
-	response := submissionsResponse{Submissions: make([]submissionResponse, 0, visible), NextOffset: nextOffset}
+	response := submissionsResponse{Submissions: make([]submissionResponse, 0, visible), NextOffset: nextOffset, Total: listed.Total}
 	for _, value := range listed.Values[:visible] {
 		response.Submissions = append(response.Submissions, submissionToResponse(value))
 	}

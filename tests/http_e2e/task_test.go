@@ -583,11 +583,15 @@ type taskHTTPResponse struct {
 	ActiveAssigneeID       string `json:"active_assignee_id"`
 	ViewerAction           string `json:"viewer_action"`
 	CreatorDisplayName     string `json:"creator_display_name"`
+	HolderDisplayName      string `json:"holder_display_name"`
+	Funded                 string `json:"funded"`
 	PendingReviewCount     int64  `json:"pending_review_count"`
 }
 
 type tasksHTTPResponse struct {
-	Tasks []taskHTTPResponse `json:"tasks"`
+	Tasks      []taskHTTPResponse `json:"tasks"`
+	NextOffset int                `json:"next_offset"`
+	Total      int64              `json:"total"`
 }
 
 type reservationHTTPResponse struct {

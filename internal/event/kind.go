@@ -29,6 +29,7 @@ var (
 	KindSubmissionAccepted         = Kind{value: "submission_accepted"}
 	KindSubmissionChangesRequested = Kind{value: "submission_changes_requested"}
 	KindSubmissionRejected         = Kind{value: "submission_rejected"}
+	KindSubmissionSuperseded       = Kind{value: "submission_superseded"}
 	KindSubmissionCommented        = Kind{value: "submission_commented"}
 	KindPayoutReceived             = Kind{value: "payout_received"}
 	KindCreditGranted              = Kind{value: "credit_granted"}
@@ -55,6 +56,7 @@ func AllKinds() []Kind {
 		KindSubmissionAccepted,
 		KindSubmissionChangesRequested,
 		KindSubmissionRejected,
+		KindSubmissionSuperseded,
 		KindSubmissionCommented,
 		KindPayoutReceived,
 		KindCreditGranted,

@@ -16,20 +16,49 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// drainWebhookPump advances the shared fan-out cursor past every event
-// already in the database, so a test's subscriptions only see the events the
-// test itself emits afterwards.
-func drainWebhookPump(t *testing.T, store db.WebhookStore) {
+// parkActiveSubscriptions revokes every subscription already active in the
+// shared database, mirroring parkPendingDeliveries: the integration database
+// persists across tests and runs, and a leftover active subscription would
+// both absorb claim capacity and receive deliveries for events this test
+// emits, making counts non-deterministic.
+func parkActiveSubscriptions(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
+	if _, err := pool.Exec(context.Background(), `
+		update webhook_subscriptions set state = 'revoked', state_recorded_at = now()
+		where state = 'active'
+	`); err != nil {
+		t.Fatalf("park active subscriptions: %v", err)
+	}
+}
+
+// dispatchAllRecordedEvents runs the store-side dispatch step for every event
+// still in the recorded state, so a test starts from a fully-dispatched
+// stream and only its own events are pending.
+func dispatchAllRecordedEvents(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	eventStore := db.NewEventStore(pool)
 	for {
-		result := store.PumpEvents(context.Background())
-		completed, matched := result.(db.PumpEventsCompleted)
+		listed, matched := eventStore.ListRecordedBefore(context.Background(), time.Now().UTC().Add(time.Hour), 500).(db.RecordedEventsListed)
 		if !matched {
-			t.Fatalf("pump rejected: %#v", result)
+			t.Fatalf("list recorded events rejected")
 		}
-		if completed.ExpandedEvents == 0 {
+		if len(listed.Values) == 0 {
 			return
 		}
+		for _, draft := range listed.Values {
+			if _, completed := eventStore.Dispatch(context.Background(), draft.ID).(event.DispatchStoreCompleted); !completed {
+				t.Fatalf("dispatch recorded event rejected")
+			}
+		}
+	}
+}
+
+// dispatchStoredEvent runs the store-side dispatch step (webhook delivery
+// expansion + marking dispatched) for one event the test appended.
+func dispatchStoredEvent(t *testing.T, pool *pgxpool.Pool, stored event.StoredEvent) {
+	t.Helper()
+	if _, matched := db.NewEventStore(pool).Dispatch(context.Background(), stored.Event.ID).(event.DispatchStoreCompleted); !matched {
+		t.Fatalf("dispatch event rejected")
 	}
 }
 
@@ -77,13 +106,16 @@ func countDeliveries(t *testing.T, pool *pgxpool.Pool, subscriptionID core.Webho
 	return count
 }
 
-// TestWebhookPumpFanOut proves the pump inserts exactly the right pending
-// rows: kind filter AND owner visibility both gate, revoked subscriptions
-// never match, and a second pump over the same events inserts nothing.
-func TestWebhookPumpFanOut(t *testing.T) {
+// TestWebhookDispatchFanOut proves the per-event dispatch step inserts
+// exactly the right pending rows: kind filter AND owner visibility both gate,
+// revoked subscriptions never match, and re-dispatching the same event
+// inserts nothing (the idempotency the inline dispatch and the recovery
+// sweep rely on to race safely).
+func TestWebhookDispatchFanOut(t *testing.T) {
 	pool := newPool(t)
 	store := db.NewWebhookStore(pool)
-	drainWebhookPump(t, store)
+	parkActiveSubscriptions(t, pool)
+	dispatchAllRecordedEvents(t, pool)
 
 	recipient := createUser(t, pool, "webhook-recipient")
 	bystander := createUser(t, pool, "webhook-bystander")
@@ -100,15 +132,8 @@ func TestWebhookPumpFanOut(t *testing.T) {
 		t.Fatalf("revoke rejected")
 	}
 
-	appendWebhookTestEvent(t, pool, event.KindTaskOpened, recipient, []core.UserID{recipient}, event.OrganizationSubject{ID: organization})
-
-	pumped, matched := store.PumpEvents(context.Background()).(db.PumpEventsCompleted)
-	if !matched {
-		t.Fatalf("pump rejected")
-	}
-	if pumped.ExpandedEvents != 1 || pumped.InsertedDeliveries != 2 {
-		t.Fatalf("pump expanded %d events with %d deliveries, want 1 and 2", pumped.ExpandedEvents, pumped.InsertedDeliveries)
-	}
+	stored := appendWebhookTestEvent(t, pool, event.KindTaskOpened, recipient, []core.UserID{recipient}, event.OrganizationSubject{ID: organization})
+	dispatchStoredEvent(t, pool, stored)
 	if count := countDeliveries(t, pool, matchingUserSub.ID); count != 1 {
 		t.Fatalf("matching user subscription has %d deliveries, want 1", count)
 	}
@@ -123,13 +148,11 @@ func TestWebhookPumpFanOut(t *testing.T) {
 		}
 	}
 
-	// Re-running the pump over the same stream inserts nothing new.
-	repumped, repumpMatched := store.PumpEvents(context.Background()).(db.PumpEventsCompleted)
-	if !repumpMatched || repumped.ExpandedEvents != 0 || repumped.InsertedDeliveries != 0 {
-		t.Fatalf("second pump = %#v, want a no-op", repumped)
-	}
+	// Re-dispatching the same event (the inline dispatch racing the recovery
+	// sweep) inserts nothing new.
+	dispatchStoredEvent(t, pool, stored)
 	if count := countDeliveries(t, pool, matchingUserSub.ID); count != 1 {
-		t.Fatalf("second pump duplicated deliveries: %d", count)
+		t.Fatalf("re-dispatch duplicated deliveries: %d", count)
 	}
 
 	// The owner-facing read model sees the pending delivery; a stranger owner
@@ -151,15 +174,16 @@ func TestWebhookPumpFanOut(t *testing.T) {
 func TestWebhookClaimExclusivity(t *testing.T) {
 	pool := newPool(t)
 	store := db.NewWebhookStore(pool)
-	drainWebhookPump(t, store)
+	parkActiveSubscriptions(t, pool)
+	dispatchAllRecordedEvents(t, pool)
 	parkPendingDeliveries(t, pool)
 
 	recipient := createUser(t, pool, "webhook-claim")
 	subscription, _ := createWebhookTestSubscription(t, store, webhook.OwnerUser{ID: recipient}, event.KindTaskOpened)
 	for range 8 {
-		appendWebhookTestEvent(t, pool, event.KindTaskOpened, recipient, []core.UserID{recipient}, event.NoOrganization{})
+		stored := appendWebhookTestEvent(t, pool, event.KindTaskOpened, recipient, []core.UserID{recipient}, event.NoOrganization{})
+		dispatchStoredEvent(t, pool, stored)
 	}
-	drainWebhookPump(t, store)
 	if count := countDeliveries(t, pool, subscription.ID); count != 8 {
 		t.Fatalf("pending deliveries = %d, want 8", count)
 	}
@@ -204,14 +228,14 @@ func TestWebhookClaimExclusivity(t *testing.T) {
 func TestWebhookDeliveryMarks(t *testing.T) {
 	pool := newPool(t)
 	store := db.NewWebhookStore(pool)
-	drainWebhookPump(t, store)
+	parkActiveSubscriptions(t, pool)
+	dispatchAllRecordedEvents(t, pool)
 	parkPendingDeliveries(t, pool)
 
 	recipient := createUser(t, pool, "webhook-marks")
 	subscription, _ := createWebhookTestSubscription(t, store, webhook.OwnerUser{ID: recipient}, event.KindTaskOpened)
-	appendWebhookTestEvent(t, pool, event.KindTaskOpened, recipient, []core.UserID{recipient}, event.NoOrganization{})
-	appendWebhookTestEvent(t, pool, event.KindTaskOpened, recipient, []core.UserID{recipient}, event.NoOrganization{})
-	drainWebhookPump(t, store)
+	dispatchStoredEvent(t, pool, appendWebhookTestEvent(t, pool, event.KindTaskOpened, recipient, []core.UserID{recipient}, event.NoOrganization{}))
+	dispatchStoredEvent(t, pool, appendWebhookTestEvent(t, pool, event.KindTaskOpened, recipient, []core.UserID{recipient}, event.NoOrganization{}))
 
 	claimed := claimAllForSubscription(t, store, pool, subscription.ID)
 	if len(claimed) != 2 {
@@ -379,11 +403,12 @@ func createMarketplaceSubscription(t *testing.T, store db.WebhookStore, owner we
 // relationship required), the optional task-type and minimum-reward filters
 // gate expansion, private tasks never match, and a rogue marketplace row
 // listening for another kind never matches. Recipient subscriptions keep
-// their existing recipient-gated behavior (TestWebhookPumpFanOut).
+// their existing recipient-gated behavior (TestWebhookDispatchFanOut).
 func TestWebhookMarketplaceFanOut(t *testing.T) {
 	pool := newPool(t)
 	store := db.NewWebhookStore(pool)
-	drainWebhookPump(t, store)
+	parkActiveSubscriptions(t, pool)
+	dispatchAllRecordedEvents(t, pool)
 
 	creator := createUser(t, pool, "marketplace-creator")
 	stranger := createUser(t, pool, "marketplace-stranger")
@@ -421,16 +446,8 @@ func TestWebhookMarketplaceFanOut(t *testing.T) {
 		t.Fatalf("rewrite rogue subscription kind: %v", err)
 	}
 
-	appendTaskOpenedEvent(t, pool, publicTask, creator)
-	appendTaskOpenedEvent(t, pool, privateTask, creator)
-
-	pumped, matched := store.PumpEvents(context.Background()).(db.PumpEventsCompleted)
-	if !matched {
-		t.Fatalf("pump rejected")
-	}
-	if pumped.ExpandedEvents != 2 {
-		t.Fatalf("pump expanded %d events, want 2", pumped.ExpandedEvents)
-	}
+	dispatchStoredEvent(t, pool, appendTaskOpenedEvent(t, pool, publicTask, creator))
+	dispatchStoredEvent(t, pool, appendTaskOpenedEvent(t, pool, privateTask, creator))
 
 	for name, expectation := range map[string]struct {
 		subscription webhook.Subscription
@@ -450,11 +467,12 @@ func TestWebhookMarketplaceFanOut(t *testing.T) {
 }
 
 // TestWebhookMarketplaceIgnoresClosedTasks proves a marketplace delivery is
-// only expanded while the task is still open and public at pump time.
+// only expanded while the task is still open and public at dispatch time.
 func TestWebhookMarketplaceIgnoresClosedTasks(t *testing.T) {
 	pool := newPool(t)
 	store := db.NewWebhookStore(pool)
-	drainWebhookPump(t, store)
+	parkActiveSubscriptions(t, pool)
+	dispatchAllRecordedEvents(t, pool)
 
 	creator := createUser(t, pool, "marketplace-closed-creator")
 	stranger := createUser(t, pool, "marketplace-closed-stranger")
@@ -463,12 +481,10 @@ func TestWebhookMarketplaceIgnoresClosedTasks(t *testing.T) {
 
 	subscription := createMarketplaceSubscription(t, store, webhook.OwnerUser{ID: stranger}, webhook.NewMarketplaceAudience())
 
-	appendTaskOpenedEvent(t, pool, closedTask, creator)
+	stored := appendTaskOpenedEvent(t, pool, closedTask, creator)
 	setTaskState(t, pool, closedTask, "cancelled")
 
-	if _, matched := store.PumpEvents(context.Background()).(db.PumpEventsCompleted); !matched {
-		t.Fatalf("pump rejected")
-	}
+	dispatchStoredEvent(t, pool, stored)
 	if count := countDeliveries(t, pool, subscription.ID); count != 0 {
 		t.Fatalf("cancelled task produced %d marketplace deliveries, want 0", count)
 	}

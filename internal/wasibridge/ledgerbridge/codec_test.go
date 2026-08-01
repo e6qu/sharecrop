@@ -5,9 +5,20 @@ import (
 	"testing"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
+
+// testDraft builds a minimal event draft for command round-trips.
+func testDraft(t *testing.T, kind event.Kind, actor core.UserID) event.Draft {
+	t.Helper()
+	created, matched := event.NewDraft(kind, event.ActorUser{ID: actor}, event.NoSubjectRefs(), event.EmptyMetadata(), event.NewRecipients(actor)).(event.DraftCreated)
+	if !matched {
+		t.Fatalf("draft rejected")
+	}
+	return created.Value
+}
 
 func amount(t *testing.T, value int64) ledger.CreditAmount {
 	t.Helper()
@@ -240,6 +251,7 @@ func TestRejectCommandRoundTrip(t *testing.T) {
 		CreditSelection:  ledger.NoCreditReviewSelection{},
 		TipSelection:     ledger.CreditTipSelection{Amount: amount(t, 3)},
 		BanSelection:     ledger.BanImplementorSelection{},
+		Draft:            testDraft(t, event.KindSubmissionRejected, userID(t)),
 	}
 	restored, err := decodeRejectCommand(encodeRejectCommand(original))
 	if err != nil {
@@ -247,6 +259,9 @@ func TestRejectCommandRoundTrip(t *testing.T) {
 	}
 	if restored.ReviewNote.String() != "needs work" || restored.RequesterUserID != original.RequesterUserID {
 		t.Errorf("reject command did not round-trip: %+v", restored)
+	}
+	if restored.Draft.ID != original.Draft.ID || restored.Draft.Kind != original.Draft.Kind {
+		t.Errorf("draft did not round-trip: %+v", restored.Draft)
 	}
 	if _, matched := restored.BanSelection.(ledger.BanImplementorSelection); !matched {
 		t.Errorf("ban selection did not round-trip: %T", restored.BanSelection)

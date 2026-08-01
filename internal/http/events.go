@@ -1,11 +1,15 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/agent"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/webhook"
@@ -45,6 +49,16 @@ const (
 const (
 	eventStreamPollInterval = 5 * time.Second
 	eventStreamMaxDuration  = 25 * time.Second
+)
+
+// Long-poll pacing for GET /api/events?wait=N: the handler re-checks the
+// store every tick until an event arrives or the wait elapses. The wait is
+// capped below the API Gateway edge's 30-second request cap so the response
+// always leaves cleanly.
+const (
+	eventFeedWaitQueryParameter = "wait"
+	eventFeedLongPollTick       = 500 * time.Millisecond
+	eventFeedMaxWait            = 25 * time.Second
 )
 
 type eventFeedQueryResult interface {
@@ -95,11 +109,120 @@ func parseEventFeedQuery(r *http.Request) eventFeedQueryResult {
 	return eventFeedQueryAccepted{filter: filter, page: accepted.Value}
 }
 
+// eventFeedRecipient is the resolved owner of the feed being read: the events
+// endpoint always serves a recipient's own event stream, never someone
+// else's. Each variant knows which store read serves it.
+type eventFeedRecipient interface {
+	listEvents(ctx context.Context, store event.Store, filter event.CursorFilter, page core.Page) event.ListStoreResult
+}
+
+type userFeedRecipient struct {
+	id core.UserID
+}
+
+func (recipient userFeedRecipient) listEvents(ctx context.Context, store event.Store, filter event.CursorFilter, page core.Page) event.ListStoreResult {
+	return store.ListForRecipient(ctx, recipient.id, filter, page)
+}
+
+type organizationFeedRecipient struct {
+	id core.OrganizationID
+}
+
+func (recipient organizationFeedRecipient) listEvents(ctx context.Context, store event.Store, filter event.CursorFilter, page core.Page) event.ListStoreResult {
+	return store.ListForOrganization(ctx, recipient.id, filter, page)
+}
+
+// eventFeedActorResult resolves who is polling the event feed: a user
+// session, an org credential holding notifications_read (the feed is the
+// organization's own event stream), or a personal agent credential holding
+// notifications_read (the feed is the owning user's event stream). The scope
+// is notifications_read because the feed carries the same recipient-scoped
+// facts the notification inbox is built from; a credential never sees more
+// than its owner would.
+type eventFeedActorResult interface {
+	eventFeedActorResult()
+}
+
+type eventFeedActorAccepted struct {
+	recipient eventFeedRecipient
+}
+
+// eventFeedActorRejection wraps the shared user/org rejection so listEvents
+// can reuse writeActorRejection's 401/403 split.
+type eventFeedActorRejection struct {
+	value actorResult
+}
+
+func (eventFeedActorAccepted) eventFeedActorResult() {}
+
+func (eventFeedActorRejection) eventFeedActorResult() {}
+
+func (server Server) resolveEventFeedActor(r *http.Request) eventFeedActorResult {
+	sharedResult := server.requireUserOrOrgSubject(r, agent.ScopeNotificationsRead)
+	if accepted, matched := sharedResult.(actorAccepted); matched {
+		switch subject := accepted.actor.(type) {
+		case auth.UserSubject:
+			return eventFeedActorAccepted{recipient: userFeedRecipient{id: subject.ID}}
+		case auth.OrgSubject:
+			return eventFeedActorAccepted{recipient: organizationFeedRecipient{id: subject.ID}}
+		}
+		return eventFeedActorRejection{value: actorRejected{reason: "a user access token or an organization credential is required"}}
+	}
+	rawToken, hasBearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !hasBearer || !agent.HasSecretPrefix(rawToken) {
+		return eventFeedActorRejection{value: sharedResult}
+	}
+	verifyResult := server.verifyAgent(r)
+	verified, verifiedMatched := verifyResult.(agent.CredentialVerified)
+	if !verifiedMatched {
+		return eventFeedActorRejection{value: actorRejected{reason: verifyResult.(agent.VerifyRejected).Reason.Description()}}
+	}
+	if _, granted := verified.Credential.Scopes.Allows(agent.ScopeNotificationsRead).(agent.ScopeGranted); !granted {
+		return eventFeedActorRejection{value: actorScopeDenied{reason: "the agent credential is missing the " + agent.ScopeNotificationsRead.String() + " scope"}}
+	}
+	return eventFeedActorAccepted{recipient: userFeedRecipient{id: verified.Subject.ID}}
+}
+
+type eventFeedWaitResult interface {
+	eventFeedWaitResult()
+}
+
+type eventFeedWaitAccepted struct {
+	value time.Duration
+}
+
+type eventFeedWaitRejected struct {
+	reason string
+}
+
+func (eventFeedWaitAccepted) eventFeedWaitResult() {}
+
+func (eventFeedWaitRejected) eventFeedWaitResult() {}
+
+// parseEventFeedWait reads the optional long-poll wait: whole seconds, absent
+// or 0 means respond immediately, negative or malformed is rejected, and
+// anything above the cap is clamped to it (the edge would cut a longer hold).
+func parseEventFeedWait(r *http.Request) eventFeedWaitResult {
+	rawWait := r.URL.Query().Get(eventFeedWaitQueryParameter)
+	if rawWait == "" {
+		return eventFeedWaitAccepted{value: 0}
+	}
+	seconds, err := strconv.Atoi(rawWait)
+	if err != nil || seconds < 0 {
+		return eventFeedWaitRejected{reason: "wait query parameter is invalid"}
+	}
+	wait := time.Duration(seconds) * time.Second
+	if wait > eventFeedMaxWait {
+		wait = eventFeedMaxWait
+	}
+	return eventFeedWaitAccepted{value: wait}
+}
+
 func (server Server) listEvents(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, matched := actorResult.(userSubjectAccepted)
+	actorResult := server.resolveEventFeedActor(r)
+	actor, matched := actorResult.(eventFeedActorAccepted)
 	if !matched {
-		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
+		writeActorRejection(w, actorResult.(eventFeedActorRejection).value)
 		return
 	}
 
@@ -109,20 +232,50 @@ func (server Server) listEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, queryResult.(eventFeedQueryRejected).reason)
 		return
 	}
-
-	result := server.eventStore.ListForRecipient(r.Context(), actor.subject.ID, query.filter, query.page)
-	listed, listedMatched := result.(event.ListStoreAccepted)
-	if !listedMatched {
-		writeDomainError(w, result.(event.ListStoreRejected).Reason)
+	waitResult := parseEventFeedWait(r)
+	wait, waitMatched := waitResult.(eventFeedWaitAccepted)
+	if !waitMatched {
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, waitResult.(eventFeedWaitRejected).reason)
 		return
 	}
 
-	response := eventListResponse{Events: make([]webhook.EventPayload, 0, len(listed.Values))}
-	for index := range listed.Values {
-		response.Events = append(response.Events, webhook.EventPayloadFromStored(listed.Values[index]))
+	// The WASI guest bridge buffers whole responses and cannot hold a request
+	// cheaply (a held request pins a pooled guest worker), so long-poll
+	// degrades to an immediate response there — the same transport probe the
+	// SSE stream uses before entering its live loop.
+	_, transportCanHold := w.(http.Flusher)
+
+	deadline := time.Now().Add(wait.value)
+	for {
+		result := actor.recipient.listEvents(r.Context(), server.eventStore, query.filter, query.page)
+		listed, listedMatched := result.(event.ListStoreAccepted)
+		if !listedMatched {
+			writeDomainError(w, result.(event.ListStoreRejected).Reason)
+			return
+		}
+		if len(listed.Values) > 0 || wait.value == 0 || !transportCanHold || !time.Now().Before(deadline) {
+			writeEventFeedPage(w, listed.Values)
+			return
+		}
+		tick := time.NewTimer(eventFeedLongPollTick)
+		select {
+		case <-tick.C:
+		case <-r.Context().Done():
+			tick.Stop()
+			return
+		}
 	}
-	if len(listed.Values) > 0 {
-		response.NextCursor = listed.Values[len(listed.Values)-1].Cursor.String()
+}
+
+// writeEventFeedPage renders one feed page in the shared feed/webhook wire
+// shape with the cursor to resume from.
+func writeEventFeedPage(w http.ResponseWriter, values []event.StoredEvent) {
+	response := eventListResponse{Events: make([]webhook.EventPayload, 0, len(values))}
+	for index := range values {
+		response.Events = append(response.Events, webhook.EventPayloadFromStored(values[index]))
+	}
+	if len(values) > 0 {
+		response.NextCursor = values[len(values)-1].Cursor.String()
 	}
 	writeJSON(w, http.StatusOK, response)
 }

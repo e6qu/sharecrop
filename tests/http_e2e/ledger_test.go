@@ -164,6 +164,7 @@ type errorHTTPResponse struct {
 type ledgerHTTPResponse struct {
 	Entries    []ledgerEntryHTTPResponse `json:"entries"`
 	NextOffset int                       `json:"next_offset"`
+	Total      int64                     `json:"total"`
 }
 
 type taskFundHTTPResponse struct {

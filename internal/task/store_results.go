@@ -3,6 +3,7 @@ package task
 import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 )
 
 type CreateTaskStoreResult interface {
@@ -27,6 +28,11 @@ type ChangeTaskStateStoreResult interface {
 
 type ChangeTaskStateStoreAccepted struct {
 	Value Task
+	// RecordedEvents are the event drafts recorded inside the state-change
+	// transaction (the service-built draft with the task creator the store
+	// resolved merged into its recipients); the service dispatches them
+	// after commit. Empty when the mutation carried a NoEvent plan.
+	RecordedEvents []event.Draft
 }
 
 type ChangeTaskStateStoreRejected struct {
@@ -63,6 +69,8 @@ type ListTasksStoreResult interface {
 
 type ListTasksStoreAccepted struct {
 	Values []ListItem
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
 }
 
 type ListTasksStoreRejected struct {
@@ -95,6 +103,11 @@ type ChangeReservationStateStoreResult interface {
 
 type ChangeReservationStateStoreAccepted struct {
 	Value Reservation
+	// RecordedEvents are the event drafts recorded inside the state-change
+	// transaction (the service-built draft with the reservation holder the
+	// store resolved merged into its recipients); the service dispatches
+	// them after commit. Empty when the mutation carried a NoEvent plan.
+	RecordedEvents []event.Draft
 }
 
 type ChangeReservationStateStoreRejected struct {

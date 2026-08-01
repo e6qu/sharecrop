@@ -178,11 +178,17 @@ type listItemWire struct {
 	Task               taskWire           `json:"task"`
 	ActiveAssignee     activeAssigneeWire `json:"active_assignee"`
 	CreatorDisplayName string             `json:"creator_display_name"`
+	HolderDisplayName  string             `json:"holder_display_name,omitempty"`
 	PendingReviewCount int64              `json:"pending_review_count"`
+	Funded             string             `json:"funded"`
 }
 
 func encodeListItem(item task.ListItem) listItemWire {
-	return listItemWire{Task: encodeTask(item.Task), ActiveAssignee: encodeActiveAssignee(item.ActiveAssignee), CreatorDisplayName: item.CreatorDisplayName.String(), PendingReviewCount: item.PendingReviewCount}
+	holderName := ""
+	if named, matched := item.HolderDisplayName.(task.HolderNamed); matched {
+		holderName = named.DisplayName.String()
+	}
+	return listItemWire{Task: encodeTask(item.Task), ActiveAssignee: encodeActiveAssignee(item.ActiveAssignee), CreatorDisplayName: item.CreatorDisplayName.String(), HolderDisplayName: holderName, PendingReviewCount: item.PendingReviewCount, Funded: item.Funded.String()}
 }
 
 func decodeListItem(wire listItemWire) (task.ListItem, error) {
@@ -198,7 +204,19 @@ func decodeListItem(wire listItemWire) (task.ListItem, error) {
 	if err != nil {
 		return task.ListItem{}, err
 	}
-	return task.ListItem{Task: value, ActiveAssignee: assignee, CreatorDisplayName: creatorName, PendingReviewCount: wire.PendingReviewCount}, nil
+	var holderName task.HolderNameRef = task.NoHolderName{}
+	if wire.HolderDisplayName != "" {
+		named, nameErr := decodeTaskDisplayName(wire.HolderDisplayName)
+		if nameErr != nil {
+			return task.ListItem{}, nameErr
+		}
+		holderName = task.HolderNamed{DisplayName: named}
+	}
+	funded, fundedMatched := task.ParseFundedState(wire.Funded).(task.FundedStateParsed)
+	if !fundedMatched {
+		return task.ListItem{}, fmt.Errorf("invalid funded state %q", wire.Funded)
+	}
+	return task.ListItem{Task: value, ActiveAssignee: assignee, CreatorDisplayName: creatorName, HolderDisplayName: holderName, PendingReviewCount: wire.PendingReviewCount, Funded: funded.Value}, nil
 }
 
 func encodeListItems(values []task.ListItem) []listItemWire {

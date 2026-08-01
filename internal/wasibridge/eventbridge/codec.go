@@ -7,6 +7,7 @@ package eventbridge
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -147,6 +148,161 @@ func decodeEvent(wire eventWire) (event.Event, error) {
 		Metadata:   event.Metadata{JSON: wire.Metadata},
 		OccurredAt: occurredAt,
 	}, nil
+}
+
+// ---- event.Draft / event.Plan (shared with the command bridges) ----
+
+// DraftWire is the wire form of an event draft carried inside store mutation
+// commands: the event fields minus the store-assigned occurrence instant,
+// plus the recipient set. Exported so the task/submission/ledger/assets
+// bridges reuse one encoding.
+type DraftWire struct {
+	ID           string   `json:"id"`
+	Kind         string   `json:"kind"`
+	ActorKind    string   `json:"actor_kind"`
+	ActorUserID  string   `json:"actor_user_id,omitempty"`
+	Task         string   `json:"task,omitempty"`
+	Submission   string   `json:"submission,omitempty"`
+	Reservation  string   `json:"reservation,omitempty"`
+	Series       string   `json:"series,omitempty"`
+	Organization string   `json:"organization,omitempty"`
+	Collectible  string   `json:"collectible,omitempty"`
+	Metadata     string   `json:"metadata"`
+	Recipients   []string `json:"recipients"`
+}
+
+// EncodeDraft serializes an event draft.
+func EncodeDraft(draft event.Draft) DraftWire {
+	encoded := encodeEvent(draft.Event(time.Time{}))
+	return DraftWire{
+		ID:           encoded.ID,
+		Kind:         encoded.Kind,
+		ActorKind:    encoded.ActorKind,
+		ActorUserID:  encoded.ActorUserID,
+		Task:         encoded.Task,
+		Submission:   encoded.Submission,
+		Reservation:  encoded.Reservation,
+		Series:       encoded.Series,
+		Organization: encoded.Organization,
+		Collectible:  encoded.Collectible,
+		Metadata:     encoded.Metadata,
+		Recipients:   encodeRecipients(draft.Recipients),
+	}
+}
+
+// DecodeDraft rebuilds an event draft.
+func DecodeDraft(wire DraftWire) (event.Draft, error) {
+	value, err := decodeEvent(eventWire{
+		ID:           wire.ID,
+		Kind:         wire.Kind,
+		ActorKind:    wire.ActorKind,
+		ActorUserID:  wire.ActorUserID,
+		Task:         wire.Task,
+		Submission:   wire.Submission,
+		Reservation:  wire.Reservation,
+		Series:       wire.Series,
+		Organization: wire.Organization,
+		Collectible:  wire.Collectible,
+		Metadata:     wire.Metadata,
+		OccurredAt:   corewire.EncodeTime(time.Time{}),
+	})
+	if err != nil {
+		return event.Draft{}, err
+	}
+	recipients, err := decodeRecipients(wire.Recipients)
+	if err != nil {
+		return event.Draft{}, err
+	}
+	return event.Draft{
+		ID:         value.ID,
+		Kind:       value.Kind,
+		Actor:      value.Actor,
+		Subject:    value.Subject,
+		Metadata:   value.Metadata,
+		Recipients: recipients,
+	}, nil
+}
+
+// EncodeDrafts / DecodeDrafts carry the recorded-drafts list mutation results
+// return.
+func EncodeDrafts(drafts []event.Draft) []DraftWire {
+	values := make([]DraftWire, 0, len(drafts))
+	for _, draft := range drafts {
+		values = append(values, EncodeDraft(draft))
+	}
+	return values
+}
+
+func DecodeDrafts(wires []DraftWire) ([]event.Draft, error) {
+	values := make([]event.Draft, 0, len(wires))
+	for _, wire := range wires {
+		draft, err := DecodeDraft(wire)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, draft)
+	}
+	return values, nil
+}
+
+// PlanWire carries the optional event plan of a state-change mutation: nil
+// Draft means NoEvent.
+type PlanWire struct {
+	Draft *DraftWire `json:"draft,omitempty"`
+}
+
+// EncodePlan serializes an event plan.
+func EncodePlan(plan event.Plan) PlanWire {
+	if record, matched := plan.(event.Record); matched {
+		draft := EncodeDraft(record.Draft)
+		return PlanWire{Draft: &draft}
+	}
+	return PlanWire{}
+}
+
+// DecodePlan rebuilds an event plan.
+func DecodePlan(wire PlanWire) (event.Plan, error) {
+	if wire.Draft == nil {
+		return event.NoEvent{}, nil
+	}
+	draft, err := DecodeDraft(*wire.Draft)
+	if err != nil {
+		return nil, err
+	}
+	return event.Record{Draft: draft}, nil
+}
+
+// ---- event.Store.Dispatch result ----
+
+type dispatchResultWire struct {
+	Variant string                  `json:"variant"`
+	Error   *domainwire.DomainError `json:"error,omitempty"`
+}
+
+func encodeDispatchResult(result event.DispatchStoreResult) dispatchResultWire {
+	switch typed := result.(type) {
+	case event.DispatchStoreCompleted:
+		return dispatchResultWire{Variant: "completed"}
+	case event.DispatchStoreRejected:
+		reason := domainwire.EncodeDomainError(typed.Reason)
+		return dispatchResultWire{Variant: "rejected", Error: &reason}
+	default:
+		return dispatchResultWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown event result %T", result))}
+	}
+}
+
+func decodeDispatchResult(wire dispatchResultWire) (event.DispatchStoreResult, error) {
+	switch wire.Variant {
+	case "completed":
+		return event.DispatchStoreCompleted{}, nil
+	case "rejected":
+		if wire.Error == nil {
+			return nil, fmt.Errorf("rejected dispatch result is missing its error")
+		}
+		return event.DispatchStoreRejected{Reason: domainwire.DecodeDomainError(*wire.Error)}, nil
+	default:
+		return nil, fmt.Errorf("unknown dispatch result variant %q", wire.Variant)
+	}
 }
 
 // ---- event.Recipients ----
