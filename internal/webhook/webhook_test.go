@@ -140,6 +140,8 @@ func TestRequiredScopeForKindIsTotal(t *testing.T) {
 		"credit_granted":               agent.ScopeLedgerRead,
 		"tip_received":                 agent.ScopeLedgerRead,
 		"collectible_awarded":          agent.ScopeCollectiblesRead,
+		"collectible_withdrawn":        agent.ScopeCollectiblesRead,
+		"credits_sent":                 agent.ScopeLedgerRead,
 	}
 	kinds := event.AllKinds()
 	if len(kinds) != len(expected) {

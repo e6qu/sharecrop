@@ -130,7 +130,7 @@ func (server Server) resolveWebhookToolOwner(ctx context.Context, subject auth.S
 		organizationIDResult := core.ParseOrganizationID(rawOrganizationID)
 		organizationID, organizationMatched := organizationIDResult.(core.OrganizationIDCreated)
 		if !organizationMatched {
-			return webhookToolOwnerRejected{failure: toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}}
+			return webhookToolOwnerRejected{failure: invalidIDArgument("organization_id")}
 		}
 		permissionResult := server.services.CheckOrganizationPermission(ctx, organizationID.Value, typed.ID, org.PermissionManageMembers)
 		if _, denied := permissionResult.(org.PermissionDenied); denied {
@@ -156,8 +156,12 @@ func (server Server) resolveWebhookToolOwner(ctx context.Context, subject auth.S
 func parseMCPWebhookAudience(rawAudience string, rawTaskType string, rawMinReward int64) (webhook.Audience, toolResult) {
 	switch rawAudience {
 	case "", "recipient":
+		// Filters-without-marketplace is a domain rule (which filters make
+		// sense for which audience), not an input-shape violation, so it
+		// surfaces as an isError tool result like the kinds-compatibility
+		// rule webhook.Service.Create enforces — not as a JSON-RPC error.
 		if rawTaskType != "" || rawMinReward != 0 {
-			return nil, toolProtocolError{code: codeInvalidParams, message: "filter_task_type and filter_min_credit_reward require the marketplace audience"}
+			return nil, toolFailed{code: core.ErrorCodeInvalidArgument, message: "filter_task_type and filter_min_credit_reward require the marketplace audience"}
 		}
 		return webhook.RecipientAudience{}, nil
 	case "marketplace":
@@ -314,7 +318,7 @@ func (server Server) resolveWebhookToolTarget(ctx context.Context, subject auth.
 	idResult := core.ParseWebhookSubscriptionID(args.SubscriptionID)
 	id, idMatched := idResult.(core.WebhookSubscriptionIDCreated)
 	if !idMatched {
-		return webhookToolTargetRejected{failure: toolProtocolError{code: codeInvalidParams, message: idResult.(core.WebhookSubscriptionIDRejected).Reason.Description()}}
+		return webhookToolTargetRejected{failure: invalidIDArgument("subscription_id")}
 	}
 	ownerResult := server.resolveWebhookToolOwner(ctx, subject, args.OrganizationID)
 	owner, ownerMatched := ownerResult.(webhookToolOwnerAccepted)

@@ -21,6 +21,7 @@ const (
 	methodRejectSubmission         = "ledger.RejectSubmission"
 	methodRefundTask               = "ledger.RefundTask"
 	methodGrantCredits             = "ledger.GrantCredits"
+	methodPeerTransfer             = "ledger.PeerTransfer"
 	methodTaskAllocatedCredits     = "ledger.TaskAllocatedCredits"
 	methodBalance                  = "ledger.Balance"
 	methodOrganizationBalance      = "ledger.OrganizationBalance"
@@ -54,6 +55,10 @@ type refundTaskArgs struct {
 
 type grantCreditsArgs struct {
 	GrantCommand grantCommandWire `json:"grantcommand"`
+}
+
+type peerTransferArgs struct {
+	PeerTransferCommand peerTransferCommandWire `json:"peertransfercommand"`
 }
 
 type taskAllocatedCreditsArgs struct {
@@ -153,6 +158,16 @@ func Dispatch(ctx context.Context, store ledger.Store, method string, args []byt
 			return nil, err
 		}
 		return json.Marshal(encodeGrantResult(store.GrantCredits(ctx, argGrantCommand)))
+	case methodPeerTransfer:
+		var decoded peerTransferArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("ledger bridge: decode PeerTransfer args: %w", err)
+		}
+		argPeerTransferCommand, err := decodePeerTransferCommand(decoded.PeerTransferCommand)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeSendResult(store.PeerTransfer(ctx, argPeerTransferCommand)))
 	case methodTaskAllocatedCredits:
 		var decoded taskAllocatedCreditsArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -368,6 +383,26 @@ func (g GuestStore) GrantCredits(ctx context.Context, argGrantCommand ledger.Gra
 	result, err := decodeGrantResult(wire)
 	if err != nil {
 		return ledger.GrantRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) PeerTransfer(ctx context.Context, argPeerTransferCommand ledger.PeerTransferStoreCommand) ledger.SendResult {
+	args, err := json.Marshal(peerTransferArgs{PeerTransferCommand: encodePeerTransferCommand(argPeerTransferCommand)})
+	if err != nil {
+		return ledger.SendRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodPeerTransfer, args)
+	if err != nil {
+		return ledger.SendRejected{Reason: guestError(err)}
+	}
+	var wire sendResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return ledger.SendRejected{Reason: guestError(err)}
+	}
+	result, err := decodeSendResult(wire)
+	if err != nil {
+		return ledger.SendRejected{Reason: guestError(err)}
 	}
 	return result
 }

@@ -26,6 +26,8 @@ type NotificationKind
     | NotificationKindCreditGranted
     | NotificationKindTipReceived
     | NotificationKindCollectibleAwarded
+    | NotificationKindCollectibleWithdrawn
+    | NotificationKindCreditsReceived
 
 notificationKindDecoder : Decoder NotificationKind
 notificationKindDecoder =
@@ -93,6 +95,12 @@ notificationKindDecoder =
                     "collectible_awarded" ->
                         Decode.succeed NotificationKindCollectibleAwarded
 
+                    "collectible_withdrawn" ->
+                        Decode.succeed NotificationKindCollectibleWithdrawn
+
+                    "credits_received" ->
+                        Decode.succeed NotificationKindCreditsReceived
+
                     _ ->
                         Decode.fail "invalid NotificationKind"
             )
@@ -159,6 +167,12 @@ notificationKindEncoder notificationKind =
 
         NotificationKindCollectibleAwarded ->
             Encode.string "collectible_awarded"
+
+        NotificationKindCollectibleWithdrawn ->
+            Encode.string "collectible_withdrawn"
+
+        NotificationKindCreditsReceived ->
+            Encode.string "credits_received"
 
 
 type alias NotificationResponse =

@@ -164,7 +164,7 @@ async function main(): Promise<void> {
       "Exercise configured Go WASM request handling for measurement.",
     reward: { kind: "none" },
     participation: {
-      policy: "approval_required",
+      policy: "reservation_required",
       assignee_scope: "user",
       reservation_expiry_hours: 48,
     },

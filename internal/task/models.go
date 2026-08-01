@@ -253,10 +253,12 @@ type ParticipationPolicy struct {
 	value string
 }
 
+// The approval gate was removed: reserving always yields an immediately
+// active reservation, so the participation policy is a two-variant enum
+// (migration 000049 folded approval_required into reservation_required).
 var (
 	ParticipationPolicyOpen                = ParticipationPolicy{value: "open"}
 	ParticipationPolicyReservationRequired = ParticipationPolicy{value: "reservation_required"}
-	ParticipationPolicyApprovalRequired    = ParticipationPolicy{value: "approval_required"}
 )
 
 type ParticipationPolicyResult interface {
@@ -281,8 +283,6 @@ func ParseParticipationPolicy(raw string) ParticipationPolicyResult {
 		return ParticipationPolicyAccepted{Value: ParticipationPolicyOpen}
 	case ParticipationPolicyReservationRequired.value:
 		return ParticipationPolicyAccepted{Value: ParticipationPolicyReservationRequired}
-	case ParticipationPolicyApprovalRequired.value:
-		return ParticipationPolicyAccepted{Value: ParticipationPolicyApprovalRequired}
 	default:
 		return ParticipationPolicyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "task participation policy is invalid")}
 	}
@@ -396,6 +396,10 @@ func (OrganizationTeamAssignee) assignee() {}
 
 func (TeamAssignee) assignee() {}
 
+// ReservationState is the reservation lifecycle. The requested and declined
+// states are historical-only since the approval gate was removed (migration
+// 000049): stored rows still parse, but no code path produces them —
+// reserving creates an active reservation directly.
 type ReservationState struct {
 	value string
 }
@@ -456,10 +460,9 @@ type AvailabilityKind struct {
 }
 
 var (
-	AvailabilityAvailable        = AvailabilityKind{value: "available"}
-	AvailabilityReserved         = AvailabilityKind{value: "reserved"}
-	AvailabilityAwaitingApproval = AvailabilityKind{value: "awaiting_approval"}
-	AvailabilityClosed           = AvailabilityKind{value: "closed"}
+	AvailabilityAvailable = AvailabilityKind{value: "available"}
+	AvailabilityReserved  = AvailabilityKind{value: "reserved"}
+	AvailabilityClosed    = AvailabilityKind{value: "closed"}
 )
 
 func (kind AvailabilityKind) String() string {
@@ -471,11 +474,10 @@ type ViewerAction struct {
 }
 
 var (
-	ViewerActionSubmit          = ViewerAction{value: "submit"}
-	ViewerActionReserve         = ViewerAction{value: "reserve"}
-	ViewerActionRequestApproval = ViewerAction{value: "request_approval"}
-	ViewerActionWait            = ViewerAction{value: "wait"}
-	ViewerActionNone            = ViewerAction{value: "none"}
+	ViewerActionSubmit  = ViewerAction{value: "submit"}
+	ViewerActionReserve = ViewerAction{value: "reserve"}
+	ViewerActionWait    = ViewerAction{value: "wait"}
+	ViewerActionNone    = ViewerAction{value: "none"}
 )
 
 func (action ViewerAction) String() string {

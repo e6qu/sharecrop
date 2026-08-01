@@ -7,6 +7,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
+	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -109,7 +110,7 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.RequesterUserID, "accept submissions for")
+	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.Reviewer, "accept submissions for")
 	taskRow, taskMatched := taskResult.(taskLocked)
 	if !taskMatched {
 		return ledger.AcceptRejected{Reason: taskResult.(taskLockRejected).reason}
@@ -173,12 +174,12 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 		}
 	}
 
-	tipResult := payCreditTip(ctx, tx, command.TaskID, command.RequesterUserID, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.IdempotencyKey, command.TipSelection)
+	tipResult := payCreditTip(ctx, tx, command.TaskID, command.Reviewer, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.IdempotencyKey, command.TipSelection)
 	tip, tipMatched := tipResult.(tipResolved)
 	if !tipMatched {
 		return ledger.AcceptRejected{Reason: tipResult.(tipRejected).reason}
 	}
-	collectibleTipResult := payCollectibleTip(ctx, tx, command.RequesterUserID, rawWorkerID, command.CollectibleTip)
+	collectibleTipResult := payCollectibleTip(ctx, tx, command.Reviewer, rawWorkerID, command.CollectibleTip)
 	collectibleTip, collectibleTipMatched := collectibleTipResult.(tipResolved)
 	if !collectibleTipMatched {
 		return ledger.AcceptRejected{Reason: collectibleTipResult.(tipRejected).reason}
@@ -193,13 +194,13 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 	// The accept closes the task, so every other submission still in
 	// 'submitted' is superseded in this same transaction, each with its own
 	// event addressed to its submitter.
-	supersededDrafts, supersedeProblem := supersedeCompetingSubmissions(ctx, tx, command.TaskID, command.SubmissionID, command.RequesterUserID)
+	supersededDrafts, supersedeProblem := supersedeCompetingSubmissions(ctx, tx, command.TaskID, command.SubmissionID, command.Draft.Actor)
 	if supersedeProblem != nil {
 		return ledger.AcceptRejected{Reason: *supersedeProblem}
 	}
 
 	acceptedDraft := command.Draft.WithRecipients(workerID)
-	payoutDrafts, payoutDraftProblem := ledger.ReviewEventDrafts(acceptedDraft, command.RequesterUserID, command.TaskID, outcome, tipOutcome)
+	payoutDrafts, payoutDraftProblem := ledger.ReviewEventDrafts(acceptedDraft, command.Reviewer, command.TaskID, outcome, tipOutcome)
 	if payoutDraftProblem != nil {
 		return ledger.AcceptRejected{Reason: *payoutDraftProblem}
 	}
@@ -248,7 +249,7 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
+	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.Reviewer, "review submissions for")
 	taskRow, taskMatched := taskResult.(taskLocked)
 	if !taskMatched {
 		return ledger.RequestChangesRejected{Reason: taskResult.(taskLockRejected).reason}
@@ -291,7 +292,7 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 		update submissions
 		set state = 'changes_requested', review_note = $2, reviewed_by_user_id = $3, review_recorded_at = now(), changes_idempotency_key = $4, state_recorded_at = now()
 		where id = $1
-	`, command.SubmissionID.String(), command.ReviewNote.String(), command.RequesterUserID.String(), command.IdempotencyKey.String()); err != nil {
+	`, command.SubmissionID.String(), command.ReviewNote.String(), reviewerUserColumn(command.Reviewer), command.IdempotencyKey.String()); err != nil {
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "request submission changes failed")}
 	}
 
@@ -322,7 +323,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.RequesterUserID, "review submissions for")
+	taskResult := lockTaskForReview(ctx, tx, command.TaskID, command.Reviewer, "review submissions for")
 	taskRow, taskMatched := taskResult.(taskLocked)
 	if !taskMatched {
 		return ledger.RejectRejected{Reason: taskResult.(taskLockRejected).reason}
@@ -374,7 +375,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 		return ledger.RejectRejected{Reason: payoutResult.(payoutRejected).reason}
 	}
 
-	tipResult := payCreditTip(ctx, tx, command.TaskID, command.RequesterUserID, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.IdempotencyKey, command.TipSelection)
+	tipResult := payCreditTip(ctx, tx, command.TaskID, command.Reviewer, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.IdempotencyKey, command.TipSelection)
 	tip, tipMatched := tipResult.(tipResolved)
 	if !tipMatched {
 		return ledger.RejectRejected{Reason: tipResult.(tipRejected).reason}
@@ -384,7 +385,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 		update submissions
 		set state = 'rejected', review_note = $2, reviewed_by_user_id = $3, review_recorded_at = now(), review_idempotency_key = $4, state_recorded_at = now()
 		where id = $1
-	`, command.SubmissionID.String(), command.ReviewNote.String(), command.RequesterUserID.String(), command.IdempotencyKey.String()); err != nil {
+	`, command.SubmissionID.String(), command.ReviewNote.String(), reviewerUserColumn(command.Reviewer), command.IdempotencyKey.String()); err != nil {
 		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reject submission failed")}
 	}
 
@@ -397,17 +398,23 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 	}
 
 	if _, ban := command.BanSelection.(ledger.BanImplementorSelection); ban {
+		// Bans record the banning user; the service refuses ban selections
+		// from an organization reviewer before the command is built.
+		bannedBy := reviewerUserColumn(command.Reviewer)
+		if bannedBy == nil {
+			return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "an organization credential cannot ban an implementor")}
+		}
 		if _, err := tx.Exec(ctx, `
 			insert into task_implementor_bans (task_id, assignee_kind, assignee_key, user_id, banned_by_user_id)
 			values ($1, 'user', $2, $3, $4)
 			on conflict (task_id, assignee_kind, assignee_key) do nothing
-		`, command.TaskID.String(), rawWorkerID, rawWorkerID, command.RequesterUserID.String()); err != nil {
+		`, command.TaskID.String(), rawWorkerID, rawWorkerID, *bannedBy); err != nil {
 			return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "ban task implementor failed")}
 		}
 	}
 
 	rejectedDraft := command.Draft.WithRecipients(workerID)
-	payoutDrafts, payoutDraftProblem := ledger.ReviewEventDrafts(rejectedDraft, command.RequesterUserID, command.TaskID, payout.outcome, tip.outcome)
+	payoutDrafts, payoutDraftProblem := ledger.ReviewEventDrafts(rejectedDraft, command.Reviewer, command.TaskID, payout.outcome, tip.outcome)
 	if payoutDraftProblem != nil {
 		return ledger.RejectRejected{Reason: *payoutDraftProblem}
 	}
@@ -819,4 +826,179 @@ func (store LedgerStore) ListOrganizationEntries(ctx context.Context, organizati
 		return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read organization ledger entries failed")}
 	}
 	return ledger.EntriesListed{Values: entries, Total: total}
+}
+
+// transferAccountRef normalizes a transfer side onto the account owner it
+// resolves to, with a stable ordering key so two crossing sends always lock
+// the two accounts in the same order (no AB-BA deadlock).
+type transferAccountRef struct {
+	key          string
+	user         *core.UserID
+	organization *core.OrganizationID
+}
+
+func transferSourceRef(source ledger.TransferSource, actor core.UserID) (transferAccountRef, *core.DomainError) {
+	switch typed := source.(type) {
+	case ledger.TransferFromSelf:
+		user := actor
+		return transferAccountRef{key: "user:" + user.String(), user: &user}, nil
+	case ledger.TransferFromOrganization:
+		organization := typed.ID
+		return transferAccountRef{key: "organization:" + organization.String(), organization: &organization}, nil
+	default:
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "credit send source is invalid")
+		return transferAccountRef{}, &reason
+	}
+}
+
+func transferTargetRef(target ledger.TransferTarget) (transferAccountRef, *core.DomainError) {
+	switch typed := target.(type) {
+	case ledger.TransferToUser:
+		user := typed.ID
+		return transferAccountRef{key: "user:" + user.String(), user: &user}, nil
+	case ledger.TransferToOrganization:
+		organization := typed.ID
+		return transferAccountRef{key: "organization:" + organization.String(), organization: &organization}, nil
+	default:
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "credit send target is invalid")
+		return transferAccountRef{}, &reason
+	}
+}
+
+func lockTransferAccount(ctx context.Context, tx Tx, ref transferAccountRef) accountLockResult {
+	if ref.user != nil {
+		return lockUserAccount(ctx, tx, *ref.user)
+	}
+	return lockOrganizationAccount(ctx, tx, *ref.organization)
+}
+
+// PeerTransfer moves credits between two accounts as an atomic peer_transfer
+// double entry. An organization source is authorized in-transaction: the
+// acting user must hold the billing permission in that organization. The
+// idempotency key is scoped per side (":send-debit" / ":send-credit" under
+// the per-account unique index), and a replayed key returns the original
+// outcome without new ledger rows or events.
+func (store LedgerStore) PeerTransfer(ctx context.Context, command ledger.PeerTransferStoreCommand) ledger.SendResult {
+	sourceRef, sourceProblem := transferSourceRef(command.Source, command.ActingUserID)
+	if sourceProblem != nil {
+		return ledger.SendRejected{Reason: *sourceProblem}
+	}
+	targetRef, targetProblem := transferTargetRef(command.Target)
+	if targetProblem != nil {
+		return ledger.SendRejected{Reason: *targetProblem}
+	}
+	if sourceRef.key == targetRef.key {
+		return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credits cannot be sent to the sending account")}
+	}
+
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin peer transfer transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if organizationSource, isOrganization := command.Source.(ledger.TransferFromOrganization); isOrganization {
+		check := organizationMemberPermission(ctx, tx, organizationSource.ID.String(), command.ActingUserID, org.PermissionManageBilling)
+		if _, denied := check.(org.PermissionDenied); denied {
+			return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "sending organization credits requires the billing permission")}
+		}
+	}
+
+	// Lock both accounts in stable key order.
+	firstRef, secondRef := sourceRef, targetRef
+	if secondRef.key < firstRef.key {
+		firstRef, secondRef = secondRef, firstRef
+	}
+	locked := map[string]accountLocked{}
+	for _, ref := range []transferAccountRef{firstRef, secondRef} {
+		result := lockTransferAccount(ctx, tx, ref)
+		account, matched := result.(accountLocked)
+		if !matched {
+			return ledger.SendRejected{Reason: result.(accountLockRejected).reason}
+		}
+		locked[ref.key] = account
+	}
+	sourceAccount := locked[sourceRef.key]
+	targetAccount := locked[targetRef.key]
+
+	debitKey := command.IdempotencyKey.String() + ":send-debit"
+	creditKey := command.IdempotencyKey.String() + ":send-credit"
+
+	receivers, receiversReason := transferReceivers(ctx, tx, command.Target)
+	if receiversReason != nil {
+		return ledger.SendRejected{Reason: *receiversReason}
+	}
+
+	var existingID string
+	var existingKind string
+	var existingAmount int64
+	scanErr := tx.QueryRow(ctx, "select id::text, kind, amount from ledger_entries where idempotency_key = $1 and account_id = $2",
+		debitKey, sourceAccount.id).Scan(&existingID, &existingKind, &existingAmount)
+	if scanErr != nil && !errors.Is(scanErr, ErrNoRows) {
+		return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check peer transfer idempotency failed")}
+	}
+	if scanErr == nil {
+		if existingKind != ledger.EntryKindPeerTransfer.String() || existingAmount != -command.Amount.Int64() {
+			return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
+		}
+		parsedResult := core.ParseLedgerEntryID(existingID)
+		parsed, parsedMatched := parsedResult.(core.LedgerEntryIDCreated)
+		if !parsedMatched {
+			return ledger.SendRejected{Reason: parsedResult.(core.LedgerEntryIDRejected).Reason}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit peer transfer replay failed")}
+		}
+		return ledger.CreditsSent{DebitEntryID: parsed.Value, Amount: command.Amount, ReceiverUserIDs: receivers, Execution: ledger.IdempotentReplay{}, RecordedEvents: []event.Draft{}}
+	}
+
+	var spendable int64
+	if err := tx.QueryRow(ctx, "select coalesce(sum(amount), 0) from ledger_entries where account_id = $1", sourceAccount.id).Scan(&spendable); err != nil {
+		return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read sender balance failed")}
+	}
+	if spendable < command.Amount.Int64() {
+		return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "insufficient credits to send")}
+	}
+
+	noteText := ""
+	if provided, hasNote := command.Note.(ledger.TransferNoteProvided); hasNote {
+		noteText = provided.Note.String()
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into ledger_entries (id, account_id, kind, amount, idempotency_key, note)
+		values ($1, $2, 'peer_transfer', $3, $4, $5)
+	`, command.DebitEntryID.String(), sourceAccount.id, -command.Amount.Int64(), debitKey, noteText); err != nil {
+		return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert peer transfer debit failed")}
+	}
+	if _, err := tx.Exec(ctx, `
+		insert into ledger_entries (id, account_id, kind, amount, idempotency_key, note)
+		values ($1, $2, 'peer_transfer', $3, $4, $5)
+	`, command.CreditEntryID.String(), targetAccount.id, command.Amount.Int64(), creditKey, noteText); err != nil {
+		return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert peer transfer credit failed")}
+	}
+
+	draft := command.Draft.WithRecipients(receivers...)
+	if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+		return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record credits sent event failed")}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit peer transfer transaction failed")}
+	}
+	return ledger.CreditsSent{DebitEntryID: command.DebitEntryID, Amount: command.Amount, ReceiverUserIDs: receivers, Execution: ledger.FirstExecution{}, RecordedEvents: []event.Draft{draft}}
+}
+
+// transferReceivers resolves who a peer transfer notifies: the receiving
+// user, or the receiving organization's owner/admin/billing members (the
+// same audience a credit grant to that organization notifies).
+func transferReceivers(ctx context.Context, tx Tx, target ledger.TransferTarget) ([]core.UserID, *core.DomainError) {
+	switch typed := target.(type) {
+	case ledger.TransferToUser:
+		return []core.UserID{typed.ID}, nil
+	case ledger.TransferToOrganization:
+		return grantRecipients(ctx, tx, ledger.GrantToOrganization{ID: typed.ID})
+	default:
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "credit send target is invalid")
+		return nil, &reason
+	}
 }

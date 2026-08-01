@@ -243,7 +243,7 @@ func TestRejectCommandRoundTrip(t *testing.T) {
 		PayoutEntryID:    entryID(t),
 		TipDebitEntryID:  entryID(t),
 		TipCreditEntryID: entryID(t),
-		RequesterUserID:  userID(t),
+		Reviewer:         ledger.UserReviewer{ID: userID(t)},
 		TaskID:           taskID(t),
 		SubmissionID:     submissionID(t),
 		IdempotencyKey:   key(t, "reject-1"),
@@ -257,7 +257,7 @@ func TestRejectCommandRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if restored.ReviewNote.String() != "needs work" || restored.RequesterUserID != original.RequesterUserID {
+	if restored.ReviewNote.String() != "needs work" || restored.Reviewer != original.Reviewer {
 		t.Errorf("reject command did not round-trip: %+v", restored)
 	}
 	if restored.Draft.ID != original.Draft.ID || restored.Draft.Kind != original.Draft.Kind {

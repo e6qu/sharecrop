@@ -99,3 +99,21 @@ func AllowsRewardPayout(policy TransferPolicy) RewardCheck {
 		return RewardDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer policy does not permit reward payout")}
 	}
 }
+
+// AllowsTransfer says whether a policy permits a voluntary peer transfer
+// (user-to-user, user-to-organization, or organization-to-user). The matrix
+// matches AllowsTip: freely transferable policies allow it, within-org
+// policies allow it subject to the membership checks the store runs, and
+// payout-only / issuer-controlled instances stay put.
+func AllowsTransfer(policy TransferPolicy) RewardCheck {
+	switch policy {
+	case TransferPolicyTransferableBetweenUsers, TransferPolicyTransferableWithinOrg:
+		return RewardAllowed{}
+	case TransferPolicyNonTransferableExceptPayout:
+		return RewardDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "collectible is not transferable")}
+	case TransferPolicyIssuerControlled:
+		return RewardDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "collectible transfers are controlled by its issuer")}
+	default:
+		return RewardDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "collectible transfer policy is invalid")}
+	}
+}

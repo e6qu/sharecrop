@@ -413,19 +413,19 @@ test("the active implementor refunds a funded task they reserved", async ({ page
   );
 });
 
-test("an owner approves a worker's reservation request from the task detail page", async ({ page, request }) => {
-  const owner = await registerViaApi(request, "reservation-approve-owner");
-  const title = `Approval required ${crypto.randomUUID()}`;
+test("a worker's reservation is active immediately and the owner sees it on the task detail page", async ({ page, request }) => {
+  const owner = await registerViaApi(request, "reservation-flow-owner");
+  const title = `Reservation required ${crypto.randomUUID()}`;
 
   await loginViaUi(page, owner.email);
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("new-task-button").click();
   await page.getByTestId("create-title").fill(title);
   await page.getByTestId("create-description").fill(
-    "Approval required from the browser.",
+    "Reservation required from the browser.",
   );
   await page.getByTestId("create-task-ownership").click();
-  await page.getByTestId("create-participation-approval_required").click();
+  await page.getByTestId("create-participation-reservation_required").click();
   await page.getByTestId("create-visibility-public").click();
   await page.getByTestId("create-task").click();
   // Creating a task now opens it in the UI for further editing.
@@ -439,21 +439,21 @@ test("an owner approves a worker's reservation request from the task detail page
     "Task opened",
   );
 
-  const worker = await registerViaApi(request, "reservation-approve-worker");
+  const worker = await registerViaApi(request, "reservation-flow-worker");
   await page.getByTestId("nav-account-menu").click();
   await logoutViaUi(page);
   await loginViaUi(page, worker.email);
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-task-row").filter({ hasText: title })
     .getByTestId("discovery-view").click();
-  await page.getByTestId("request-approval").click();
+  // Reserving needs no owner approval: the reservation is active at once.
+  await page.getByTestId("reserve-task").click();
   await expect(page.getByTestId("reservation-message")).toContainText(
-    "requested",
+    "active",
   );
 
-  // The owner sees the pending request at the top of the task detail page
-  // (the Reservation section, above owner controls) and can approve it —
-  // previously there was no way to do this through the browser at all.
+  // The owner sees the active reservation at the top of the task detail
+  // page (the Reservation section, above owner controls) and can cancel it.
   await page.getByTestId("detail-back").click();
   await page.getByTestId("nav-account-menu").click();
   await logoutViaUi(page);
@@ -468,10 +468,7 @@ test("an owner approves a worker's reservation request from the task detail page
     hasText: worker.email.split("@")[0],
   });
   await expect(reservationRow).toHaveCount(1);
-  await reservationRow.getByTestId("approve-reservation").click();
-  await expect(page.getByTestId("reservation-message")).toContainText(
-    "active",
-  );
+  await expect(reservationRow.getByTestId("cancel-reservation")).toBeVisible();
 });
 
 test("requesters upload small task attachments through the real backend", async ({ page, request }) => {
@@ -753,12 +750,13 @@ test("a task's reward shows as its own badge in the task list", async ({ page, r
   await expect(row).toHaveCount(1);
   await expect(row).toContainText("20 credits");
   // The reward renders as its own icon-prefixed badge (the reward-toned
-  // square token), distinct from the plain trailing text it used to be.
+  // token led by the golden-coins pixel sprite), distinct from the plain
+  // trailing text it used to be.
   const rewardBadge = row.locator("span.bg-farm-reward-soft", {
     hasText: "20 credits",
   });
   await expect(rewardBadge).toHaveCount(1);
-  await expect(rewardBadge).toContainText("◆");
+  await expect(rewardBadge.locator('span[aria-hidden="true"]')).toHaveCount(1);
 });
 
 test("requesters filter their task list by state", async ({ page, request }) => {
@@ -1845,8 +1843,14 @@ test("task creators set an expiration with the native picker and the detail page
   await page.getByTestId("create-expires-at").fill("2027-06-01T12:00");
   await page.getByTestId("create-task").click();
   await expect(page.getByTestId("detail-title")).toContainText(title);
+  // The expiry reads as a humanized calendar moment; the raw RFC3339
+  // instant survives in the tooltip.
   await expect(page.getByTestId("detail-expires")).toContainText(
-    "Expires 2027-06-01T12:00:00Z",
+    "Expires Jun 1, 2027, 12:00 UTC",
+  );
+  await expect(page.getByTestId("detail-expires")).toHaveAttribute(
+    "title",
+    "2027-06-01T12:00:00Z",
   );
 
   // An expiry in the past surfaces the server's validation error instead of

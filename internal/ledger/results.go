@@ -290,3 +290,34 @@ type GrantRejected struct {
 func (CreditsGranted) grantResult() {}
 
 func (GrantRejected) grantResult() {}
+
+// SendResult is the outcome of a peer credit send. A replayed idempotency
+// key returns the same CreditsSent shape as the original send with no new
+// recorded events.
+type SendResult interface {
+	sendResult()
+}
+
+type CreditsSent struct {
+	// DebitEntryID identifies the sender-side peer_transfer row (the
+	// creditside row shares the same idempotency key stem).
+	DebitEntryID core.LedgerEntryID
+	Amount       CreditAmount
+	// ReceiverUserIDs are the users the send notifies: the receiving user,
+	// or the receiving organization's owner/admin/billing members, resolved
+	// by the store inside the transfer transaction.
+	ReceiverUserIDs []core.UserID
+	// Execution distinguishes a fresh send from an idempotent replay.
+	Execution Execution
+	// RecordedEvents are the drafts recorded inside the transfer transaction
+	// (the credits_sent event); empty on a replay.
+	RecordedEvents []event.Draft
+}
+
+type SendRejected struct {
+	Reason core.DomainError
+}
+
+func (CreditsSent) sendResult() {}
+
+func (SendRejected) sendResult() {}

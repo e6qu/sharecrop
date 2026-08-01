@@ -13,7 +13,7 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
   await page.goto(`${demoOrigin}/index.html`);
 
   // Boots straight into the seeded account (refresh auto-succeeds in the shim).
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
   // The Account menu names the signed-in person, not a bare "Account".
   await expect(page.getByTestId("nav-account-menu")).toContainText(
     "Mara Ellison",
@@ -87,7 +87,7 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
 
 test("demo uploads small task and submission attachments", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("new-task-button").click();
@@ -143,7 +143,7 @@ test("demo uploads small task and submission attachments", async ({ page }) => {
 
 test("demo organization page shows a funded balance, not a stuck spinner", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-manage-menu").click();
   await page.getByRole("link", { name: "Organizations" }).click();
@@ -157,7 +157,7 @@ test("demo organization page shows a funded balance, not a stuck spinner", async
 
 test("demo admin resolves privacy requests from the browser", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-profile").click();
@@ -198,7 +198,7 @@ test("demo admin resolves privacy requests from the browser", async ({ page }) =
 
 test("demo admin config grants and revokes platform admins", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
@@ -235,7 +235,7 @@ test("demo admin config grants and revokes platform admins", async ({ page }) =>
 
 test("demo admin runs privacy retention from the browser", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
@@ -251,7 +251,7 @@ test("demo admin runs privacy retention from the browser", async ({ page }) => {
 
 test("demo admin grants credits with a ledger note from the browser", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
@@ -272,7 +272,7 @@ test("demo admin grants credits with a ledger note from the browser", async ({ p
 
   // The balance reflects the grant and the ledger entry shows the note.
   await page.getByTestId("nav-overview").click();
-  await expect(page.getByTestId("balance")).toHaveText("95 credits");
+  await expect(page.getByTestId("balance")).toHaveText("120 credits");
   await expect(page.getByTestId("ledger-entry-note").first()).toContainText(
     "Demo goodwill grant",
   );
@@ -280,7 +280,7 @@ test("demo admin grants credits with a ledger note from the browser", async ({ p
 
 test("demo task reports appear in the admin moderation panel", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-view").first().click();
@@ -305,7 +305,7 @@ test("demo task reports appear in the admin moderation panel", async ({ page }) 
 
 test("demo admin triages moderation reports from the browser", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-view").first().click();
@@ -345,7 +345,7 @@ test("demo admin triages moderation reports from the browser", async ({ page }) 
 
 test("demo dispute from a rejected submission reaches the admin queue", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   // The seed rejected mara's submission on ren's alt-text task, so the
   // single-actor demo has a real rejected row to dispute from.
@@ -388,7 +388,7 @@ test("demo dispute from a rejected submission reaches the admin queue", async ({
 
 test("demo owner can refund a funded task they own", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page
@@ -408,7 +408,7 @@ test("demo owner can refund a funded task they own", async ({ page }) => {
 
 test("the fund panel does not appear on an already-funded, open demo task", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page
@@ -424,7 +424,7 @@ test("the fund panel does not appear on an already-funded, open demo task", asyn
 
 test("demo owner funds a draft task created with no declared reward", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("new-task-button").click();
@@ -453,12 +453,13 @@ test("demo owner funds a draft task created with no declared reward", async ({ p
 
 test("the collectibles catalog renders sprites, awards a default, and trades it", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
   await page.getByTestId("nav-manage-menu").click();
   await page.getByRole("link", { name: "Collectibles", exact: true }).click();
 
-  // The 25 default collectibles render as a gallery of pixel sprites.
-  await expect(page.getByTestId("catalog-entry")).toHaveCount(25);
+  // The 25 default collectibles plus the 3 seeded demo entries (unique,
+  // edition, withdrawn) render as a gallery of pixel sprites.
+  await expect(page.getByTestId("catalog-entry")).toHaveCount(28);
 
   // Award one to myself (the demo user id), then it appears in my holdings.
   await page.getByTestId("award-default-section").click();
@@ -479,13 +480,13 @@ test("the collectibles catalog renders sprites, awards a default, and trades it"
   });
   await page.getByTestId("transfer-collectible").click();
   await expect(page.getByTestId("transfer-message")).toContainText(
-    "Transferred",
+    "Sent",
   );
 });
 
 test("demo creates and opens a task series", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   // A real bug found by hand-testing the demo: /api/task-series was entirely
   // unclassified in the WASM backend (a 404), so this whole flow was broken.
@@ -510,7 +511,7 @@ test("demo creates and opens a task series", async ({ page }) => {
 
 test("the demo shows a Reset button and hash routing keeps a stable URL on refresh", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
-  await expect(page.getByText("70 credits")).toBeVisible();
+  await expect(page.getByText("95 credits")).toBeVisible();
 
   // The demo-only Reset control is present.
   await page.getByTestId("nav-account-menu").click();
@@ -523,4 +524,186 @@ test("the demo shows a Reset button and hash routing keeps a stable URL on refre
   await page.reload();
   await expect(page).toHaveURL(/#\/collectibles$/);
   await expect(page.getByTestId("catalog")).toBeVisible();
+});
+
+test("the demo seeds show catalog states, provenance, and the received credit send", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("95 credits")).toBeVisible();
+
+  // The received peer send is a ledger row with its note.
+  await expect(page.getByTestId("ledger-entry").first()).toContainText(
+    "Credit send",
+  );
+  await expect(page.getByTestId("ledger-entry-note").first()).toHaveText(
+    "Thanks for the fraud-sweep review",
+  );
+
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByRole("link", { name: "Collectibles", exact: true }).click();
+
+  // Catalog states and counts: the withdrawn entry, the fully-minted
+  // unique, and the partially-minted edition.
+  const withdrawnEntry = page.getByTestId("catalog-entry").filter({
+    hasText: "Retired Scarecrow",
+  });
+  await expect(withdrawnEntry).toContainText("withdrawn");
+  const uniqueEntry = page.getByTestId("catalog-entry").filter({
+    hasText: "Founders' Medal",
+  });
+  await expect(uniqueEntry).toContainText("unique — 1 of 1 minted");
+  const editionEntry = page.getByTestId("catalog-entry").filter({
+    hasText: "Harvest Festival 2026",
+  });
+  await expect(editionEntry).toContainText("3 of 25 minted");
+
+  // Provenance on held instances: the edition number, catalog origin, and
+  // issuer, plus the withdrawn instance's state and Delete control.
+  const festivalRow = page.getByTestId("collectible-row").filter({
+    hasText: "Harvest Festival 2026",
+  });
+  await expect(festivalRow.getByTestId("collectible-provenance"))
+    .toContainText("edition #1");
+  await expect(festivalRow.getByTestId("collectible-provenance"))
+    .toContainText("issued by Mara Ellison");
+  const rainDropRow = page.getByTestId("collectible-row").filter({
+    hasText: "Rain Drop",
+  });
+  await expect(rainDropRow).toContainText("withdrawn");
+  await expect(rainDropRow.getByTestId("collectible-delete")).toBeVisible();
+
+  // An issuer-controlled unique cannot be sent, and the row says why.
+  const medalRow = page.getByTestId("collectible-row").filter({
+    hasText: "Founders' Medal",
+  });
+  await expect(medalRow.getByTestId("send-collectible-toggle")).toBeDisabled();
+  await expect(medalRow.getByTestId("send-collectible-unavailable"))
+    .toContainText("only this collectible's issuer can move it");
+});
+
+test("the demo admin adds, withdraws, and deletes a catalog entry with explained disabled states", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("95 credits")).toBeVisible();
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByRole("link", { name: "Collectibles", exact: true }).click();
+
+  // With no recipient chosen, every Award is disabled and says why.
+  await expect(page.getByTestId("catalog-award").first()).toBeDisabled();
+  await expect(page.getByTestId("catalog-award-hint").first()).toContainText(
+    "choose a recipient above first.",
+  );
+
+  await page.getByTestId("catalog-manage-section").click();
+  await page.getByTestId("catalog-slug").fill("demo-test-entry");
+  await page.getByTestId("catalog-name").fill("Demo Test Entry");
+  await page.getByTestId("catalog-art-honey-pot").click();
+  await page.getByTestId("catalog-add").click();
+  await expect(page.getByTestId("catalog-message")).toContainText(
+    "'Demo Test Entry' is available to award",
+  );
+
+  const entry = page.getByTestId("catalog-entry").filter({
+    hasText: "Demo Test Entry",
+  });
+  await expect(entry).toContainText("available");
+  // Delete is disabled while the entry is available, with the reason shown.
+  await expect(entry.getByTestId("catalog-delete")).toBeDisabled();
+  await expect(entry.getByTestId("catalog-delete-hint")).toContainText(
+    "Withdraw the entry first to delete it.",
+  );
+
+  await entry.getByTestId("catalog-withdraw").click();
+  await expect(page.getByTestId("catalog-message")).toContainText(
+    "Withdrew 'Demo Test Entry' from the catalog.",
+  );
+  await expect(entry).toContainText("withdrawn");
+  await entry.getByTestId("catalog-delete").click();
+  await expect(page.getByTestId("catalog-message")).toContainText(
+    "Deleted the catalog entry.",
+  );
+  await expect(
+    page.getByTestId("catalog-entry").filter({
+      hasText: "Demo Test Entry",
+    }),
+  ).toHaveCount(0);
+});
+
+test("the demo sends credits to another user from the overview card", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("95 credits")).toBeVisible();
+
+  await page.getByTestId("send-credits-panel").click();
+  await page.getByTestId("send-recipient-id-query").fill("ren");
+  await page.getByTestId("send-recipient-id").selectOption({
+    label: "ren@sharecrop.demo",
+  });
+  await page.getByTestId("send-amount").fill("10");
+  await page.getByTestId("send-note").fill("Lunch repayment");
+  await page.getByTestId("send-credits").click();
+
+  await expect(page.getByTestId("send-message")).toHaveText(
+    "Sent 10 credits to ren@sharecrop.demo.",
+  );
+  await expect(page.getByTestId("balance")).toHaveText("85 credits");
+  await expect(page.getByTestId("ledger-entry-note").first()).toHaveText(
+    "Lunch repayment",
+  );
+});
+
+test("the demo sends an edition collectible to another user from its row", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("95 credits")).toBeVisible();
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByRole("link", { name: "Collectibles", exact: true }).click();
+
+  const row = page.getByTestId("collectible-row").filter({
+    hasText: "Harvest Festival 2026",
+  });
+  await row.getByTestId("send-collectible-toggle").click();
+  await page.getByTestId("send-collectible-recipient-query").fill("jules");
+  await page.getByTestId("send-collectible-recipient").selectOption({
+    label: "jules@sharecrop.demo",
+  });
+  await page.getByTestId("send-collectible").click();
+  await expect(page.getByTestId("transfer-message")).toHaveText(
+    "Sent Harvest Festival 2026.",
+  );
+  await expect(
+    page.getByTestId("collectible-row").filter({
+      hasText: "Harvest Festival 2026",
+    }),
+  ).toHaveCount(0);
+});
+
+test("the demo organization sends credits and a collectible", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("95 credits")).toBeVisible();
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByTestId("nav-organizations").click();
+  await page.getByTestId("select-organization").first().click();
+  await expect(page.getByText("Spendable balance:")).toBeVisible();
+
+  await page.getByTestId("org-send-credits-panel").click();
+  await page.getByTestId("send-recipient-id-query").fill("ren");
+  await page.getByTestId("send-recipient-id").selectOption({
+    label: "ren@sharecrop.demo",
+  });
+  await page.getByTestId("send-amount").fill("10");
+  await page.getByTestId("org-send-credits").click();
+  await expect(page.getByTestId("send-message")).toHaveText(
+    "Sent 10 credits to ren@sharecrop.demo.",
+  );
+
+  // The seeded org-owned Golden Egg moves to a user through the org's
+  // send-to-user control (disabled until a user is picked).
+  await page.getByTestId("org-collectibles-section").click();
+  await expect(page.getByTestId("org-send-collectible").first())
+    .toBeDisabled();
+  await page.getByTestId("org-send-collectible-recipient-query").fill("jules");
+  await page.getByTestId("org-send-collectible-recipient").selectOption({
+    label: "jules@sharecrop.demo",
+  });
+  await page.getByTestId("org-send-collectible").first().click();
+  await expect(page.getByTestId("org-send-collectible-message")).toHaveText(
+    "Sent Golden Egg.",
+  );
 });

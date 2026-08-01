@@ -235,15 +235,6 @@ func (services mcpServices) ListAuditEvents(ctx context.Context, filters audit.L
 	return services.auditService.List(ctx, filters, page)
 }
 
-func (services mcpServices) AwardCollectible(ctx context.Context, slug string, recipientKind string, recipientID string, organizationID string) assets.MintResult {
-	entry, found := assets.CatalogBySlug(slug)
-	if !found {
-		return assets.MintRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "unknown default collectible")}
-	}
-	nameResult := assets.NewCollectibleName(entry.Name)
-	name, nameMatched := nameResult.(assets.CollectibleNameAccepted)
-	if !nameMatched {
-		return assets.MintRejected{Reason: nameResult.(assets.CollectibleNameRejected).Reason}
-	}
-	return services.assetService.Mint(ctx, recipientKind, recipientID, organizationID, name.Value, entry.Kind, entry.Policy, entry.Art)
+func (services mcpServices) AwardCollectible(ctx context.Context, issuer core.UserID, slug string, recipientKind string, recipientID string, organizationID string) assets.MintResult {
+	return services.assetService.AwardFromCatalog(ctx, issuer, slug, recipientKind, recipientID, organizationID)
 }

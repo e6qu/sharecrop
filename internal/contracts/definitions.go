@@ -178,6 +178,8 @@ func notificationModule() Module {
 					{Name: NewElmTypeName("NotificationKindCreditGranted"), Tag: "credit_granted"},
 					{Name: NewElmTypeName("NotificationKindTipReceived"), Tag: "tip_received"},
 					{Name: NewElmTypeName("NotificationKindCollectibleAwarded"), Tag: "collectible_awarded"},
+					{Name: NewElmTypeName("NotificationKindCollectibleWithdrawn"), Tag: "collectible_withdrawn"},
+					{Name: NewElmTypeName("NotificationKindCreditsReceived"), Tag: "credits_received"},
 				},
 			},
 			Product{
@@ -249,6 +251,8 @@ func eventsModule() Module {
 					{Name: NewElmTypeName("DomainEventKindCreditGranted"), Tag: "credit_granted"},
 					{Name: NewElmTypeName("DomainEventKindTipReceived"), Tag: "tip_received"},
 					{Name: NewElmTypeName("DomainEventKindCollectibleAwarded"), Tag: "collectible_awarded"},
+					{Name: NewElmTypeName("DomainEventKindCollectibleWithdrawn"), Tag: "collectible_withdrawn"},
+					{Name: NewElmTypeName("DomainEventKindCreditsSent"), Tag: "credits_sent"},
 				},
 			},
 			Enum{
@@ -449,6 +453,7 @@ func collectibleModule() Module {
 					{Name: NewElmTypeName("CollectibleStateMinted"), Tag: "minted"},
 					{Name: NewElmTypeName("CollectibleStateEscrowed"), Tag: "escrowed"},
 					{Name: NewElmTypeName("CollectibleStateAwarded"), Tag: "awarded"},
+					{Name: NewElmTypeName("CollectibleStateWithdrawn"), Tag: "withdrawn"},
 				},
 			},
 			Enum{
@@ -472,6 +477,15 @@ func collectibleModule() Module {
 					{Name: NewElmValueName("ownerKind"), JSONName: NewJSONFieldName("owner_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("organizationID"), JSONName: NewJSONFieldName("organization_id"), Type: StringRef{}},
 					{Name: NewElmValueName("art"), JSONName: NewJSONFieldName("art"), Type: StringRef{}},
+					// catalogSlug names the catalog entry a catalog-awarded
+					// instance came from; empty for custom mints.
+					{Name: NewElmValueName("catalogSlug"), JSONName: NewJSONFieldName("catalog_slug"), Type: StringRef{}},
+					// editionNumber is the mint sequence number of an edition
+					// instance; 0 for unnumbered instances.
+					{Name: NewElmValueName("editionNumber"), JSONName: NewJSONFieldName("edition_number"), Type: IntRef{}},
+					// issuerDisplayName names the minting/awarding user on
+					// list reads; empty on mutation responses.
+					{Name: NewElmValueName("issuerDisplayName"), JSONName: NewJSONFieldName("issuer_display_name"), Type: StringRef{}},
 				},
 			},
 			Product{
@@ -479,6 +493,17 @@ func collectibleModule() Module {
 				Fields: []Field{
 					{Name: NewElmValueName("collectibles"), JSONName: NewJSONFieldName("collectibles"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("CollectibleResponse")}}},
 					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
+				},
+			},
+			// CollectibleCatalogEntryState is the catalog entry lifecycle:
+			// available entries are awardable; withdrawn entries stay listed
+			// (their instances remain in circulation) but can no longer be
+			// awarded.
+			Enum{
+				Name: NewElmTypeName("CollectibleCatalogEntryState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("CollectibleCatalogEntryStateAvailable"), Tag: "available"},
+					{Name: NewElmTypeName("CollectibleCatalogEntryStateWithdrawn"), Tag: "withdrawn"},
 				},
 			},
 			Product{
@@ -489,6 +514,14 @@ func collectibleModule() Module {
 					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: NamedRef{Name: NewElmTypeName("CollectibleKind")}},
 					{Name: NewElmValueName("transferPolicy"), JSONName: NewJSONFieldName("transfer_policy"), Type: NamedRef{Name: NewElmTypeName("CollectibleTransferPolicy")}},
 					{Name: NewElmValueName("art"), JSONName: NewJSONFieldName("art"), Type: StringRef{}},
+					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("CollectibleCatalogEntryState")}},
+					// maxEditions bounds how many instances may ever be
+					// minted: 1 for uniques, the run size for editions, 0 for
+					// uncapped badges.
+					{Name: NewElmValueName("maxEditions"), JSONName: NewJSONFieldName("max_editions"), Type: IntRef{}},
+					// mintedCount counts the entry's live (non-withdrawn)
+					// instances.
+					{Name: NewElmValueName("mintedCount"), JSONName: NewJSONFieldName("minted_count"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -757,7 +790,6 @@ func taskModule() Module {
 				Variants: []Variant{
 					{Name: NewElmTypeName("TaskParticipationPolicyOpen"), Tag: "open"},
 					{Name: NewElmTypeName("TaskParticipationPolicyReservationRequired"), Tag: "reservation_required"},
-					{Name: NewElmTypeName("TaskParticipationPolicyApprovalRequired"), Tag: "approval_required"},
 				},
 			},
 			Enum{
@@ -773,7 +805,6 @@ func taskModule() Module {
 				Variants: []Variant{
 					{Name: NewElmTypeName("TaskAvailabilityKindAvailable"), Tag: "available"},
 					{Name: NewElmTypeName("TaskAvailabilityKindReserved"), Tag: "reserved"},
-					{Name: NewElmTypeName("TaskAvailabilityKindAwaitingApproval"), Tag: "awaiting_approval"},
 					{Name: NewElmTypeName("TaskAvailabilityKindClosed"), Tag: "closed"},
 				},
 			},
@@ -782,7 +813,6 @@ func taskModule() Module {
 				Variants: []Variant{
 					{Name: NewElmTypeName("TaskViewerActionSubmit"), Tag: "submit"},
 					{Name: NewElmTypeName("TaskViewerActionReserve"), Tag: "reserve"},
-					{Name: NewElmTypeName("TaskViewerActionRequestApproval"), Tag: "request_approval"},
 					{Name: NewElmTypeName("TaskViewerActionWait"), Tag: "wait"},
 					{Name: NewElmTypeName("TaskViewerActionNone"), Tag: "none"},
 				},
@@ -1057,6 +1087,7 @@ func ledgerModule() Module {
 					{Name: NewElmTypeName("LedgerEntryKindTaskPayout"), Tag: "task_payout"},
 					{Name: NewElmTypeName("LedgerEntryKindTaskTip"), Tag: "task_tip"},
 					{Name: NewElmTypeName("LedgerEntryKindManualAdjustment"), Tag: "manual_adjustment"},
+					{Name: NewElmTypeName("LedgerEntryKindPeerTransfer"), Tag: "peer_transfer"},
 				},
 			},
 			Product{
@@ -1081,6 +1112,34 @@ func ledgerModule() Module {
 			},
 			Product{
 				Name: NewElmTypeName("CreditGrantResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("entryID"), JSONName: NewJSONFieldName("entry_id"), Type: StringRef{}},
+					{Name: NewElmValueName("amount"), JSONName: NewJSONFieldName("amount"), Type: IntRef{}},
+				},
+			},
+			// CreditTransferSourceKind says whose balance a peer credit send
+			// debits: the sender's own, or an organization's (the sender needs
+			// its billing permission).
+			Enum{
+				Name: NewElmTypeName("CreditTransferSourceKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("CreditTransferSourceSelf"), Tag: "self"},
+					{Name: NewElmTypeName("CreditTransferSourceOrganization"), Tag: "organization"},
+				},
+			},
+			// CreditTransferTargetKind says whose account a peer credit send
+			// credits.
+			Enum{
+				Name: NewElmTypeName("CreditTransferTargetKind"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("CreditTransferTargetUser"), Tag: "user"},
+					{Name: NewElmTypeName("CreditTransferTargetOrganization"), Tag: "organization"},
+				},
+			},
+			// CreditTransferResponse reports the sender-side ledger entry of a
+			// completed peer credit send (POST /api/credits/transfers).
+			Product{
+				Name: NewElmTypeName("CreditTransferResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("entryID"), JSONName: NewJSONFieldName("entry_id"), Type: StringRef{}},
 					{Name: NewElmValueName("amount"), JSONName: NewJSONFieldName("amount"), Type: IntRef{}},
@@ -1152,6 +1211,7 @@ func agentModule() Module {
 					{Name: NewElmTypeName("AgentScopeNotificationsManage"), Tag: "notifications_manage"},
 					{Name: NewElmTypeName("AgentScopeUsersRead"), Tag: "users_read"},
 					{Name: NewElmTypeName("AgentScopeLedgerRead"), Tag: "ledger_read"},
+					{Name: NewElmTypeName("AgentScopeLedgerWrite"), Tag: "ledger_write"},
 					{Name: NewElmTypeName("AgentScopeModerationRead"), Tag: "moderation_read"},
 					{Name: NewElmTypeName("AgentScopeModerationManage"), Tag: "moderation_manage"},
 					{Name: NewElmTypeName("AgentScopePrivacyRead"), Tag: "privacy_read"},

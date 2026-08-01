@@ -2,6 +2,54 @@
 
 ## Implemented surface
 
+- **Commit-ordered, loss-free event pipeline**: event seq allocation is
+  serialized through a single-row fence lock taken as the final lock of every
+  mutation transaction, so cursor feeds (poll, long-poll, SSE resume, MCP
+  `list_events`) can never skip a late-committing event. Reservation expiry
+  records its events in whichever transaction performs the release (request
+  path or sweep); task/reservation expiry sweeps record drafts in the expiry
+  transaction (the `Recorder.Emit` post-commit path is gone). Dispatch flips
+  an event to `dispatched` only after every fan-out leg succeeds; malformed
+  rows are skipped and logged; after 20 attempts a row retires to terminal
+  `dispatch_failed` (operator-readable). Delivery claim holds cover
+  worst-case batch time (at-least-once documented). Cancel events resolve
+  released holders inside the cancel transaction.
+- **Direct reservations**: the approval gate is removed. Participation is
+  `open` or `reservation_required`; reserving always yields an active,
+  exclusive, TTL-bound reservation and the holder submits directly.
+  `requested`/`declined` reservation states and the approval endpoints/tools
+  are gone (historical rows stay parseable; the migration promoted the
+  oldest pending request per task).
+- **Peer-to-peer economy**: any user sends credits to any user or
+  organization (`POST /api/credits/transfers`, MCP `sharecrop.send_credits`
+  behind the new mintable `ledger_write` scope, Overview send panel);
+  organizations send with billing permission. Collectibles transfer
+  user↔user and user↔org (org side gated by the new `manage_collectibles`
+  org permission). `peer_transfer` ledger entries are double-entry, atomic,
+  idempotent per account, and notify receivers (`credits_received`).
+- **Admin-controlled collectible catalog**: the default catalog lives in the
+  database (seeded with the original 25). Platform admins add entries (art
+  from the fixed sprite registry, kind-coherent edition caps), withdraw
+  entries (no longer awardable), delete withdrawn entries without live
+  instances, withdraw individual catalog-minted collectibles from holders
+  (notified), and delete withdrawn instances — REST + MCP + the Collectibles
+  page, all audited. Uniqueness is engine-enforced: `unique` entries have at
+  most one live instance, editions are numbered against a per-entry cap,
+  custom mints are unique per issuer+name. New mints default to
+  `transferable_between_users`; collectible provenance (catalog slug,
+  edition number, issuer name) is serialized everywhere.
+- **Org-credential reviewing**: org credentials with submission scopes list
+  submissions and review (accept/request-changes/reject) on their own
+  organization's tasks over REST and MCP, via a typed reviewer union;
+  org reviewers cannot tip or ban.
+- **Honest contracts and errors**: openapi request-body `required` lists are
+  true (omitempty audit), 20 more operations declare their query
+  parameters, MCP malformed ids return uniform domain-shaped messages, and
+  the UI renders API failures as visible load-error states instead of
+  empty lists. The golden-coins sprite marks credit amounts; one gnome
+  brand mark is used across app, docs, and landing; demo and app bundles
+  build with `--optimize`.
+
 - **Durable event pipeline**: domain events and their recipients are written
   in the same transaction as the mutation they describe (`domain_events.
   dispatch_state` recorded→dispatched); notification fan-out and webhook

@@ -147,7 +147,7 @@ func parseOrganizationID(arguments json.RawMessage) (core.OrganizationID, toolRe
 	result := core.ParseOrganizationID(args.OrganizationID)
 	organizationID, matched := result.(core.OrganizationIDCreated)
 	if !matched {
-		return core.OrganizationID{}, toolProtocolError{code: codeInvalidParams, message: result.(core.OrganizationIDRejected).Reason.Description()}
+		return core.OrganizationID{}, invalidIDArgument("organization_id")
 	}
 	return organizationID.Value, nil
 }
@@ -162,7 +162,7 @@ func parseTeamID(arguments json.RawMessage) (core.TeamID, toolResult) {
 	result := core.ParseTeamID(args.TeamID)
 	teamID, matched := result.(core.TeamIDCreated)
 	if !matched {
-		return core.TeamID{}, toolProtocolError{code: codeInvalidParams, message: result.(core.TeamIDRejected).Reason.Description()}
+		return core.TeamID{}, invalidIDArgument("team_id")
 	}
 	return teamID.Value, nil
 }
@@ -260,7 +260,7 @@ func (server Server) callProvisionOrgMember(ctx context.Context, subject auth.Us
 	organizationIDResult := core.ParseOrganizationID(args.OrganizationID)
 	organizationID, organizationIDMatched := organizationIDResult.(core.OrganizationIDCreated)
 	if !organizationIDMatched {
-		return toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+		return invalidIDArgument("organization_id")
 	}
 	emailResult := auth.NewEmailAddress(args.Email)
 	email, emailMatched := emailResult.(auth.EmailAddressAccepted)
@@ -292,12 +292,12 @@ func (server Server) callDeactivateOrgMember(ctx context.Context, subject auth.U
 	organizationIDResult := core.ParseOrganizationID(args.OrganizationID)
 	organizationID, organizationIDMatched := organizationIDResult.(core.OrganizationIDCreated)
 	if !organizationIDMatched {
-		return toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+		return invalidIDArgument("organization_id")
 	}
 	userIDResult := core.ParseUserID(args.UserID)
 	userID, userIDMatched := userIDResult.(core.UserIDCreated)
 	if !userIDMatched {
-		return toolProtocolError{code: codeInvalidParams, message: userIDResult.(core.UserIDRejected).Reason.Description()}
+		return invalidIDArgument("user_id")
 	}
 	result := server.services.DeactivateOrganizationMember(ctx, subject, organizationID.Value, userID.Value)
 	if _, matched := result.(org.MemberDeactivationAccepted); !matched {
@@ -318,12 +318,12 @@ func (server Server) callUpdateOrgMemberRoles(ctx context.Context, subject auth.
 	organizationIDResult := core.ParseOrganizationID(args.OrganizationID)
 	organizationID, organizationIDMatched := organizationIDResult.(core.OrganizationIDCreated)
 	if !organizationIDMatched {
-		return toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+		return invalidIDArgument("organization_id")
 	}
 	userIDResult := core.ParseUserID(args.UserID)
 	userID, userIDMatched := userIDResult.(core.UserIDCreated)
 	if !userIDMatched {
-		return toolProtocolError{code: codeInvalidParams, message: userIDResult.(core.UserIDRejected).Reason.Description()}
+		return invalidIDArgument("user_id")
 	}
 	roles, problem := parseOrganizationRoles(args.Roles)
 	if problem != nil {
@@ -603,7 +603,7 @@ func (server Server) callRevokeOrgCredential(ctx context.Context, subject auth.U
 	credentialIDResult := core.ParseOrgCredentialID(args.CredentialID)
 	credentialID, credentialIDMatched := credentialIDResult.(core.OrgCredentialIDCreated)
 	if !credentialIDMatched {
-		return toolProtocolError{code: codeInvalidParams, message: credentialIDResult.(core.OrgCredentialIDRejected).Reason.Description()}
+		return invalidIDArgument("credential_id")
 	}
 	result := server.services.RevokeOrgCredential(ctx, organizationID, credentialID.Value)
 	revoked, matched := result.(orgcred.CredentialRevoked)

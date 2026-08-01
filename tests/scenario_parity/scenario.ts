@@ -513,6 +513,126 @@ export async function runSharedScenarioParity(
     "transferred collectible owner must be the recipient",
   );
 
+  // Peer credit send - the seam behind the browser "Send credits" panel:
+  // the actor moves 5 credits to the transfer recipient and both sides see
+  // the outcome.
+  const peerSend = await client.request(
+    "POST",
+    "/api/credits/transfers",
+    {
+      source_kind: "self",
+      target_kind: "user",
+      target_id: transferRecipient.subjectID,
+      amount: 5,
+      note: "Scenario parity peer send",
+      idempotency_key: `parity-send-${Date.now()}`,
+    },
+  );
+  assertStatus(peerSend, 201, "peer credit send");
+  requireString(peerSend.json, "entry_id");
+  assertScenario(
+    requireNumber(peerSend.json, "amount") === 5,
+    "peer credit send amount must round trip",
+  );
+  const peerSendRecipientBalance = await transferRecipient.client.request(
+    "GET",
+    "/api/credits/balance",
+    noScenarioBody,
+  );
+  assertStatus(peerSendRecipientBalance, 200, "peer send recipient balance");
+  assertScenario(
+    requireNumber(peerSendRecipientBalance.json, "spendable_credits") === 105,
+    "peer send recipient spendable credits must include the sent 5",
+  );
+
+  // Admin catalog lifecycle - the seams behind the browser catalog manager:
+  // add an entry, award an instance from it, watch the withdrawn/deletion
+  // ordering rules hold, and clean both up.
+  const parityEntrySlug = `parity-entry-${Date.now()}`;
+  const addedEntry = await client.request(
+    "POST",
+    "/api/admin/collectible-catalog",
+    {
+      slug: parityEntrySlug,
+      name: uniqueName("Scenario parity entry"),
+      kind: "edition",
+      transfer_policy: "transferable_between_users",
+      art: "golden-egg",
+      max_editions: 2,
+    },
+  );
+  assertStatus(addedEntry, 201, "add catalog entry");
+  assertScenario(
+    requireString(addedEntry.json, "state") === "available",
+    "added catalog entry must start available",
+  );
+  const awardedInstance = await client.request(
+    "POST",
+    "/api/collectibles/award",
+    {
+      slug: parityEntrySlug,
+      recipient_kind: "user",
+      recipient_id: transferRecipient.subjectID,
+    },
+  );
+  assertStatus(awardedInstance, 201, "award catalog instance");
+  assertScenario(
+    requireString(awardedInstance.json, "catalog_slug") === parityEntrySlug,
+    "awarded instance must carry its catalog slug",
+  );
+  assertScenario(
+    requireNumber(awardedInstance.json, "edition_number") === 1,
+    "awarded instance must be edition number 1",
+  );
+  requireString(awardedInstance.json, "issuer_display_name");
+  const awardedInstanceID = requireString(awardedInstance.json, "id");
+
+  const withdrawnEntry = await client.request(
+    "POST",
+    `/api/admin/collectible-catalog/${parityEntrySlug}/withdraw`,
+    {},
+  );
+  assertStatus(withdrawnEntry, 200, "withdraw catalog entry");
+  assertScenario(
+    requireString(withdrawnEntry.json, "state") === "withdrawn",
+    "withdrawn catalog entry must report the withdrawn state",
+  );
+
+  // Deleting the entry is refused while a live instance references it.
+  const refusedEntryDelete = await client.request(
+    "DELETE",
+    `/api/admin/collectible-catalog/${parityEntrySlug}`,
+    noScenarioBody,
+  );
+  assertStatus(
+    refusedEntryDelete,
+    409,
+    "delete catalog entry with live instance",
+  );
+
+  const withdrawnInstance = await client.request(
+    "POST",
+    `/api/admin/collectibles/${awardedInstanceID}/withdraw`,
+    {},
+  );
+  assertStatus(withdrawnInstance, 200, "withdraw catalog instance");
+  assertScenario(
+    requireString(withdrawnInstance.json, "state") === "withdrawn",
+    "withdrawn instance must report the withdrawn state",
+  );
+  const deletedInstance = await client.request(
+    "DELETE",
+    `/api/admin/collectibles/${awardedInstanceID}`,
+    noScenarioBody,
+  );
+  assertStatus(deletedInstance, 200, "delete withdrawn instance");
+  const deletedEntry = await client.request(
+    "DELETE",
+    `/api/admin/collectible-catalog/${parityEntrySlug}`,
+    noScenarioBody,
+  );
+  assertStatus(deletedEntry, 200, "delete withdrawn catalog entry");
+
   const rewardCollectible = await client.request(
     "POST",
     "/api/collectibles",
@@ -1396,7 +1516,7 @@ export async function runSharedScenarioParity(
     description: "Created for multi-actor reservation and payout parity.",
     visibility: { kind: "public" },
     participation: {
-      policy: "approval_required",
+      policy: "reservation_required",
       assignee_scope: "user",
       reservation_expiry_hours: 48,
     },
@@ -1474,11 +1594,11 @@ export async function runSharedScenarioParity(
     `/api/tasks/${multiActorTaskID}/reservations`,
     {},
   );
-  assertStatus(requestedReservation, 201, "request reservation approval");
+  assertStatus(requestedReservation, 201, "reserve multi-actor task");
   const reservationID = requireString(requestedReservation.json, "id");
   assertScenario(
-    requireString(requestedReservation.json, "state") === "requested",
-    "approval-required reservation must start requested",
+    requireString(requestedReservation.json, "state") === "active",
+    "reservation must be active immediately (no approval gate)",
   );
   assertScenario(
     requireString(requestedReservation.json, "requested_by") ===
@@ -1501,23 +1621,12 @@ export async function runSharedScenarioParity(
     "owner reservation list must include worker request",
   );
 
-  const approvedReservation = await owner.client.request(
-    "POST",
-    `/api/tasks/${multiActorTaskID}/reservations/${reservationID}/approve`,
-    {},
-  );
-  assertStatus(approvedReservation, 200, "approve reservation");
-  assertScenario(
-    requireString(approvedReservation.json, "state") === "active",
-    "approved reservation must become active",
-  );
-
   const workerSubmission = await worker.client.request(
     "POST",
     `/api/tasks/${multiActorTaskID}/submissions`,
     { response_json: '{"multi_actor":"complete"}' },
   );
-  assertStatus(workerSubmission, 201, "worker submit approved reservation");
+  assertStatus(workerSubmission, 201, "worker submit active reservation");
   const multiActorSubmission = requireRecord(
     workerSubmission.json["submission"],
     "multiActorSubmission",

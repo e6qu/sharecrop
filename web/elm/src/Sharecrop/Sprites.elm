@@ -10,9 +10,9 @@ Two families live here:
 
   - the 25 collectible-catalog sprites, whose slugs are part of the API
     contract (`slugs`) and must not be renamed, and
-  - UI sprites for the garden-gnome identity (`gnome`, `gnome-hero`,
-    `gnome-watering`, `gnome-dozing`, `gnome-signpost`), which are purely
-    presentational and can evolve freely.
+  - UI sprites (`gnome`, `gnome-hero`, `gnome-watering`, `gnome-dozing`,
+    `gnome-signpost` for the garden-gnome identity, and `golden-coins` for
+    credit amounts), which are purely presentational and can evolve freely.
 
 @docs pixel, slugs
 
@@ -320,6 +320,9 @@ sprite slug =
         "gnome-signpost" ->
             Just gnomeSignpost
 
+        "golden-coins" ->
+            Just goldenCoins
+
         "harvest-star" ->
             Just harvestStar
 
@@ -570,6 +573,30 @@ gnomeSignpost =
       , "...kkdkk..kdkkdk.."
       ]
     , gnomePalette
+    )
+
+
+{-| Credits: a face-on gold coin resting on a coin edge — the one icon the
+app pairs with credit amounts (balance cards, reward chips, ledger
+headers). Drawn bold so it stays readable at 12-24px: a fat highlight,
+1px ink outline, and a wide base coin so the silhouette reads "stack",
+not "circle".
+-}
+goldenCoins : ( List String, List ( Char, String ) )
+goldenCoins =
+    ( [ "..kkkkkkk..."
+      , ".koooooooak."
+      , "koWWooooooak"
+      , "koWoooooooak"
+      , "koooooooooak"
+      , "kooooooooaak"
+      , ".kooooooaak."
+      , ".kkkkkkkkkk."
+      , "koooooooooak"
+      , "koaaaaaaaaok"
+      , ".kkkkkkkkkk."
+      ]
+    , [ ( 'k', ink ), ( 'o', gold ), ( 'a', goldDark ), ( 'W', "#fdeeb0" ) ]
     )
 
 

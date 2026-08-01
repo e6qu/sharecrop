@@ -284,12 +284,6 @@ func (server Server) listTaskReservations(w http.ResponseWriter, r *http.Request
 	}
 	writeJSON(w, http.StatusOK, response)
 }
-func (server Server) approveTaskReservation(w http.ResponseWriter, r *http.Request) {
-	server.changeTaskReservation(w, r, server.taskService.ApproveReservation)
-}
-func (server Server) declineTaskReservation(w http.ResponseWriter, r *http.Request) {
-	server.changeTaskReservation(w, r, server.taskService.DeclineReservation)
-}
 func (server Server) cancelTaskReservation(w http.ResponseWriter, r *http.Request) {
 	server.changeTaskReservation(w, r, server.taskService.CancelReservation)
 }
@@ -319,7 +313,7 @@ func (server Server) changeTaskReservation(w http.ResponseWriter, r *http.Reques
 		writeDomainError(w, result.(task.ReservationStateChangeRejected).Reason)
 		return
 	}
-	writeJSON(w, http.StatusOK, reservationToResponse(changed.Value, changed.IssuedWorkerCredentialSecret))
+	writeJSON(w, http.StatusOK, reservationToResponse(changed.Value, ""))
 }
 func (server Server) changeTaskState(w http.ResponseWriter, r *http.Request, changer taskStateChanger) {
 	actorResult := server.requireUserOrOrgSubject(r, agent.ScopeTasksWrite)
@@ -1046,14 +1040,13 @@ func (server Server) withAllocatedFunding(ctx context.Context, response taskResp
 	return response, nil
 }
 
-// taskViewerActionForActor overrides the viewer-independent "reserve" /
-// "request approval" action once this specific actor already has a pending
-// or active reservation on the task - otherwise the Reserve/Request-approval
-// button never goes away after successfully using it, inviting a pointless
-// (and server-rejected) second attempt.
+// taskViewerActionForActor overrides the viewer-independent "reserve"
+// action once this specific actor already has an active reservation on the
+// task - otherwise the Reserve button never goes away after successfully
+// using it, inviting a pointless (and server-rejected) second attempt.
 func (server Server) taskViewerActionForActor(ctx context.Context, actor auth.UserSubject, value task.Task) task.ViewerAction {
 	base := taskViewerAction(value)
-	if base != task.ViewerActionReserve && base != task.ViewerActionRequestApproval {
+	if base != task.ViewerActionReserve {
 		return base
 	}
 	listResult := server.taskService.ListReservations(ctx, actor, value.ID, core.DefaultPage())
@@ -1062,7 +1055,7 @@ func (server Server) taskViewerActionForActor(ctx context.Context, actor auth.Us
 		return base
 	}
 	for _, reservation := range listed.Values {
-		if reservation.RequestedBy == actor.ID && (reservation.State == task.ReservationStateRequested || reservation.State == task.ReservationStateActive) {
+		if reservation.RequestedBy == actor.ID && reservation.State == task.ReservationStateActive {
 			return task.ViewerActionWait
 		}
 	}
@@ -1114,9 +1107,6 @@ func taskAvailabilityKind(value task.Task) task.AvailabilityKind {
 	if value.State != task.StateOpen {
 		return task.AvailabilityClosed
 	}
-	if value.Participation == task.ParticipationPolicyApprovalRequired {
-		return task.AvailabilityAwaitingApproval
-	}
 	return task.AvailabilityAvailable
 }
 func taskViewerAction(value task.Task) task.ViewerAction {
@@ -1128,8 +1118,6 @@ func taskViewerAction(value task.Task) task.ViewerAction {
 		return task.ViewerActionSubmit
 	case task.ParticipationPolicyReservationRequired:
 		return task.ViewerActionReserve
-	case task.ParticipationPolicyApprovalRequired:
-		return task.ViewerActionRequestApproval
 	default:
 		return task.ViewerActionNone
 	}

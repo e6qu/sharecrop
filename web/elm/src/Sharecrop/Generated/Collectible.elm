@@ -46,6 +46,7 @@ type CollectibleState
     = CollectibleStateMinted
     | CollectibleStateEscrowed
     | CollectibleStateAwarded
+    | CollectibleStateWithdrawn
 
 collectibleStateDecoder : Decoder CollectibleState
 collectibleStateDecoder =
@@ -62,6 +63,9 @@ collectibleStateDecoder =
                     "awarded" ->
                         Decode.succeed CollectibleStateAwarded
 
+                    "withdrawn" ->
+                        Decode.succeed CollectibleStateWithdrawn
+
                     _ ->
                         Decode.fail "invalid CollectibleState"
             )
@@ -77,6 +81,9 @@ collectibleStateEncoder collectibleState =
 
         CollectibleStateAwarded ->
             Encode.string "awarded"
+
+        CollectibleStateWithdrawn ->
+            Encode.string "withdrawn"
 
 
 type CollectibleTransferPolicy
@@ -133,6 +140,9 @@ type alias CollectibleResponse =
     , ownerKind : String
     , organizationID : String
     , art : String
+    , catalogSlug : String
+    , editionNumber : Int
+    , issuerDisplayName : String
     }
 
 collectibleResponseDecoder : Decoder CollectibleResponse
@@ -148,8 +158,11 @@ collectibleResponseDecoder =
         (Decode.field "organization_id" Decode.string)
         |> Decode.andThen
             (\finish ->
-                Decode.map finish
+                Decode.map4 finish
                     (Decode.field "art" Decode.string)
+                    (Decode.field "catalog_slug" Decode.string)
+                    (Decode.field "edition_number" Decode.int)
+                    (Decode.field "issuer_display_name" Decode.string)
             )
 
 collectibleResponseEncoder : CollectibleResponse -> Encode.Value
@@ -164,6 +177,9 @@ collectibleResponseEncoder collectibleResponse =
         , ( "owner_kind", Encode.string collectibleResponse.ownerKind )
         , ( "organization_id", Encode.string collectibleResponse.organizationID )
         , ( "art", Encode.string collectibleResponse.art )
+        , ( "catalog_slug", Encode.string collectibleResponse.catalogSlug )
+        , ( "edition_number", Encode.int collectibleResponse.editionNumber )
+        , ( "issuer_display_name", Encode.string collectibleResponse.issuerDisplayName )
         ]
 
 type alias CollectiblesResponse =
@@ -184,22 +200,58 @@ collectiblesResponseEncoder collectiblesResponse =
         , ( "next_offset", Encode.int collectiblesResponse.nextOffset )
         ]
 
+type CollectibleCatalogEntryState
+    = CollectibleCatalogEntryStateAvailable
+    | CollectibleCatalogEntryStateWithdrawn
+
+collectibleCatalogEntryStateDecoder : Decoder CollectibleCatalogEntryState
+collectibleCatalogEntryStateDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "available" ->
+                        Decode.succeed CollectibleCatalogEntryStateAvailable
+
+                    "withdrawn" ->
+                        Decode.succeed CollectibleCatalogEntryStateWithdrawn
+
+                    _ ->
+                        Decode.fail "invalid CollectibleCatalogEntryState"
+            )
+
+collectibleCatalogEntryStateEncoder : CollectibleCatalogEntryState -> Encode.Value
+collectibleCatalogEntryStateEncoder collectibleCatalogEntryState =
+    case collectibleCatalogEntryState of
+        CollectibleCatalogEntryStateAvailable ->
+            Encode.string "available"
+
+        CollectibleCatalogEntryStateWithdrawn ->
+            Encode.string "withdrawn"
+
+
 type alias CollectibleCatalogEntry =
     { slug : String
     , name : String
     , kind : CollectibleKind
     , transferPolicy : CollectibleTransferPolicy
     , art : String
+    , state : CollectibleCatalogEntryState
+    , maxEditions : Int
+    , mintedCount : Int
     }
 
 collectibleCatalogEntryDecoder : Decoder CollectibleCatalogEntry
 collectibleCatalogEntryDecoder =
-    Decode.map5 CollectibleCatalogEntry
+    Decode.map8 CollectibleCatalogEntry
         (Decode.field "slug" Decode.string)
         (Decode.field "name" Decode.string)
         (Decode.field "kind" collectibleKindDecoder)
         (Decode.field "transfer_policy" collectibleTransferPolicyDecoder)
         (Decode.field "art" Decode.string)
+        (Decode.field "state" collectibleCatalogEntryStateDecoder)
+        (Decode.field "max_editions" Decode.int)
+        (Decode.field "minted_count" Decode.int)
 
 collectibleCatalogEntryEncoder : CollectibleCatalogEntry -> Encode.Value
 collectibleCatalogEntryEncoder collectibleCatalogEntry =
@@ -209,6 +261,9 @@ collectibleCatalogEntryEncoder collectibleCatalogEntry =
         , ( "kind", collectibleKindEncoder collectibleCatalogEntry.kind )
         , ( "transfer_policy", collectibleTransferPolicyEncoder collectibleCatalogEntry.transferPolicy )
         , ( "art", Encode.string collectibleCatalogEntry.art )
+        , ( "state", collectibleCatalogEntryStateEncoder collectibleCatalogEntry.state )
+        , ( "max_editions", Encode.int collectibleCatalogEntry.maxEditions )
+        , ( "minted_count", Encode.int collectibleCatalogEntry.mintedCount )
         ]
 
 type alias CollectibleCatalogResponse =

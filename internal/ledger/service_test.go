@@ -117,7 +117,7 @@ func TestServiceAcceptSubmissionDelegates(t *testing.T) {
 	store := &memoryStore{}
 	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
 
-	result := service.AcceptSubmission(context.Background(), newTestUserID(t), newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-1"))
+	result := service.AcceptSubmission(context.Background(), UserReviewer{ID: newTestUserID(t)}, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-1"))
 	if _, matched := result.(SubmissionAccepted); !matched {
 		t.Fatalf("result = %T, want SubmissionAccepted", result)
 	}
@@ -126,12 +126,77 @@ func TestServiceAcceptSubmissionDelegates(t *testing.T) {
 	}
 }
 
+func newTestOrganizationID(t *testing.T) core.OrganizationID {
+	t.Helper()
+	created, matched := core.NewOrganizationID().(core.OrganizationIDCreated)
+	if !matched {
+		t.Fatalf("organization id rejected")
+	}
+	return created.Value
+}
+
+// TestOrganizationReviewerAcceptsWithSystemActor pins the org-credential
+// review contract: the review draft carries the system actor (an org
+// credential has no user feed) and the store command carries the
+// organization reviewer for in-transaction authorization.
+func TestOrganizationReviewerAcceptsWithSystemActor(t *testing.T) {
+	store := &memoryStore{}
+	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
+	reviewer := OrganizationReviewer{ID: newTestOrganizationID(t)}
+
+	result := service.AcceptSubmission(context.Background(), reviewer, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "org-accept-1"))
+	if _, matched := result.(SubmissionAccepted); !matched {
+		t.Fatalf("result = %T, want SubmissionAccepted", result)
+	}
+	if store.acceptCommand.Reviewer != Reviewer(reviewer) {
+		t.Fatalf("store reviewer = %#v, want the organization reviewer", store.acceptCommand.Reviewer)
+	}
+	if _, matched := store.acceptCommand.Draft.Actor.(event.ActorSystem); !matched {
+		t.Fatalf("draft actor = %T, want ActorSystem for an organization reviewer", store.acceptCommand.Draft.Actor)
+	}
+	if len(store.acceptCommand.Draft.Recipients.Users) != 0 {
+		t.Fatalf("draft recipients = %v, want none before the store merges the worker", store.acceptCommand.Draft.Recipients.Users)
+	}
+}
+
+// TestOrganizationReviewerCannotTipOrBan pins the personal-value rule: tips
+// and bans name a user, so an organization reviewer's selections are refused
+// before a store command is built.
+func TestOrganizationReviewerCannotTipOrBan(t *testing.T) {
+	store := &memoryStore{}
+	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
+	reviewer := OrganizationReviewer{ID: newTestOrganizationID(t)}
+	note := submissionNote(t, "not accepted")
+
+	creditTip := service.ReviewAcceptSubmission(context.Background(), reviewer, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "org-tip-1"), FullCreditReviewSelection{}, CreditTipSelection{Amount: newTestAmount(t, 5)}, NoCollectibleTipSelection{})
+	if rejected, matched := creditTip.(AcceptRejected); !matched || rejected.Reason.Code() != core.ErrorCodeInvalidArgument {
+		t.Fatalf("credit tip result = %#v, want AcceptRejected invalid_argument", creditTip)
+	}
+	collectibleTip := service.ReviewAcceptSubmission(context.Background(), reviewer, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "org-tip-2"), FullCreditReviewSelection{}, NoTipSelection{}, CollectibleTipSelected{ID: newTestCollectibleID(t)})
+	if rejected, matched := collectibleTip.(AcceptRejected); !matched || rejected.Reason.Code() != core.ErrorCodeInvalidArgument {
+		t.Fatalf("collectible tip result = %#v, want AcceptRejected invalid_argument", collectibleTip)
+	}
+	ban := service.RejectSubmission(context.Background(), reviewer, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "org-ban-1"), note, NoCreditReviewSelection{}, NoTipSelection{}, BanImplementorSelection{})
+	if rejected, matched := ban.(RejectRejected); !matched || rejected.Reason.Code() != core.ErrorCodeInvalidArgument {
+		t.Fatalf("ban result = %#v, want RejectRejected invalid_argument", ban)
+	}
+}
+
+func newTestCollectibleID(t *testing.T) core.CollectibleID {
+	t.Helper()
+	created, matched := core.NewCollectibleID().(core.CollectibleIDCreated)
+	if !matched {
+		t.Fatalf("collectible id rejected")
+	}
+	return created.Value
+}
+
 func TestServiceRejectSubmissionDelegates(t *testing.T) {
 	store := &memoryStore{}
 	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
 	note := submissionNote(t, "needs current data")
 
-	result := service.RejectSubmission(context.Background(), newTestUserID(t), newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "reject-1"), note, NoCreditReviewSelection{}, NoTipSelection{}, BanImplementorSelection{})
+	result := service.RejectSubmission(context.Background(), UserReviewer{ID: newTestUserID(t)}, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "reject-1"), note, NoCreditReviewSelection{}, NoTipSelection{}, BanImplementorSelection{})
 	if _, matched := result.(SubmissionRejected); !matched {
 		t.Fatalf("result = %T, want SubmissionRejected", result)
 	}
@@ -144,15 +209,16 @@ func TestServiceRejectSubmissionDelegates(t *testing.T) {
 }
 
 type memoryStore struct {
-	fundCommand    FundStoreCommand
-	grantCommand   GrantStoreCommand
-	acceptCommand  AcceptStoreCommand
-	refundCommand  RefundStoreCommand
-	rejectCommand  RejectStoreCommand
-	orgFundCommand OrganizationFundStoreCommand
-	worker         core.UserID
-	payout         PayoutOutcome
-	tip            TipOutcome
+	fundCommand         FundStoreCommand
+	grantCommand        GrantStoreCommand
+	acceptCommand       AcceptStoreCommand
+	refundCommand       RefundStoreCommand
+	rejectCommand       RejectStoreCommand
+	orgFundCommand      OrganizationFundStoreCommand
+	peerTransferCommand PeerTransferStoreCommand
+	worker              core.UserID
+	payout              PayoutOutcome
+	tip                 TipOutcome
 	// events, when set, captures the drafts the store "recorded" inside its
 	// mutations, so emission tests can assert on them.
 	events *eventtest.CapturingStore
@@ -193,7 +259,7 @@ func (store *memoryStore) FundTask(_ context.Context, command FundStoreCommand) 
 func (store *memoryStore) AcceptSubmission(_ context.Context, command AcceptStoreCommand) AcceptResult {
 	store.acceptCommand = command
 	draft := command.Draft.WithRecipients(store.worker)
-	payoutDrafts, _ := ReviewEventDrafts(draft, command.RequesterUserID, command.TaskID, store.reviewPayout(), store.reviewTip())
+	payoutDrafts, _ := ReviewEventDrafts(draft, command.Reviewer, command.TaskID, store.reviewPayout(), store.reviewTip())
 	recorded := append([]event.Draft{draft}, payoutDrafts...)
 	store.record(recorded...)
 	return SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, Payout: store.reviewPayout(), Tip: store.reviewTip(), Execution: FirstExecution{}, RecordedEvents: recorded}
@@ -208,7 +274,7 @@ func (store *memoryStore) RequestChanges(_ context.Context, command RequestChang
 func (store *memoryStore) RejectSubmission(_ context.Context, command RejectStoreCommand) RejectResult {
 	store.rejectCommand = command
 	draft := command.Draft.WithRecipients(store.worker)
-	payoutDrafts, _ := ReviewEventDrafts(draft, command.RequesterUserID, command.TaskID, store.reviewPayout(), store.reviewTip())
+	payoutDrafts, _ := ReviewEventDrafts(draft, command.Reviewer, command.TaskID, store.reviewPayout(), store.reviewTip())
 	recorded := append([]event.Draft{draft}, payoutDrafts...)
 	store.record(recorded...)
 	return SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, Payout: store.reviewPayout(), Tip: store.reviewTip(), Execution: FirstExecution{}, RecordedEvents: recorded}
@@ -335,6 +401,17 @@ func (store *memoryStore) GrantCredits(_ context.Context, command GrantStoreComm
 	draft := command.Draft.WithRecipients(recipients...)
 	store.record(draft)
 	return CreditsGranted{EntryID: command.EntryID, Amount: command.Amount, RecipientUserIDs: recipients, Execution: FirstExecution{}, RecordedEvents: []event.Draft{draft}}
+}
+
+func (store *memoryStore) PeerTransfer(_ context.Context, command PeerTransferStoreCommand) SendResult {
+	store.peerTransferCommand = command
+	receivers := []core.UserID{}
+	if target, matched := command.Target.(TransferToUser); matched {
+		receivers = append(receivers, target.ID)
+	}
+	draft := command.Draft.WithRecipients(receivers...)
+	store.record(draft)
+	return CreditsSent{DebitEntryID: command.DebitEntryID, Amount: command.Amount, ReceiverUserIDs: receivers, Execution: FirstExecution{}, RecordedEvents: []event.Draft{draft}}
 }
 
 func TestNewGrantNoteTrimsAndBounds(t *testing.T) {

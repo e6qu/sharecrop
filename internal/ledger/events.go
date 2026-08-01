@@ -6,16 +6,21 @@ import (
 )
 
 // ReviewEventDrafts derives the payout_received / tip_received drafts a
-// review produced, mirroring the review draft's subject with the reviewing
-// requester as actor. The worker is each variant's audience; the requester is
-// the actor, so their inbox stays clean (the fan-out skips the actor) while
-// their feed still shows the movement. The store records the returned drafts
-// inside the review transaction.
-func ReviewEventDrafts(reviewDraft event.Draft, requester core.UserID, taskID core.TaskID, payout PayoutOutcome, tip TipOutcome) ([]event.Draft, *core.DomainError) {
-	actor := event.ActorUser{ID: requester}
+// review produced, mirroring the review draft's subject with the reviewer as
+// actor. The worker is each variant's audience; a user reviewer is also the
+// actor, so their inbox stays clean (the fan-out skips the actor) while
+// their feed still shows the movement. An organization reviewer has no user
+// feed, so its drafts carry the system actor and the worker alone. The store
+// records the returned drafts inside the review transaction.
+func ReviewEventDrafts(reviewDraft event.Draft, reviewer Reviewer, taskID core.TaskID, payout PayoutOutcome, tip TipOutcome) ([]event.Draft, *core.DomainError) {
+	actor, extraRecipients, actorProblem := reviewerActor(reviewer)
+	if actorProblem != nil {
+		return nil, actorProblem
+	}
 	drafts := make([]event.Draft, 0, 2)
 	appendDraft := func(kind event.Kind, metadata event.Metadata, worker core.UserID) *core.DomainError {
-		draftResult := event.NewDraft(kind, actor, reviewDraft.Subject, metadata, event.NewRecipients(worker, requester))
+		recipients := event.NewRecipients(append([]core.UserID{worker}, extraRecipients.Users...)...)
+		draftResult := event.NewDraft(kind, actor, reviewDraft.Subject, metadata, recipients)
 		created, matched := draftResult.(event.DraftCreated)
 		if !matched {
 			reason := draftResult.(event.DraftRejected).Reason

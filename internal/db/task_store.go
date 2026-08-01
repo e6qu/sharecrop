@@ -144,6 +144,12 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 			return task.ChangeTaskStateStoreRejected{Reason: rejected.reason}
 		}
 	}
+	// releasedHolders are the users whose reservations a cancel releases,
+	// resolved under the task row lock BEFORE the release so they can be
+	// merged into the cancel event's recipients. Resolving them outside this
+	// transaction would race an approval/release happening in between and
+	// drop that holder from the notification.
+	releasedHolders := []core.UserID{}
 	if state == task.StateCancelled {
 		// Cancelling a funded task that has not been awarded settles it: the
 		// allocated credits and every held collectible are returned to their
@@ -151,6 +157,11 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 		if reason := settleFundedTaskOnCancel(ctx, tx, taskID); reason != nil {
 			return task.ChangeTaskStateStoreRejected{Reason: *reason}
 		}
+		holders, holdersReason := lockedReservationHolders(ctx, tx, taskID.String())
+		if holdersReason != nil {
+			return task.ChangeTaskStateStoreRejected{Reason: *holdersReason}
+		}
+		releasedHolders = holders
 		// A cancelled task can never be reserved, submitted to, or reviewed
 		// again, so every reservation still held on it must be released in the
 		// same transaction. Otherwise it dangles forever: the expiry sweep
@@ -174,15 +185,15 @@ func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, 
 	}
 
 	// The plan's draft is recorded in this same transaction, with the task
-	// creator (resolved under the row lock above) merged into its
-	// recipients.
+	// creator (resolved under the row lock above) and the holders whose
+	// reservations a cancel released merged into its recipients.
 	recorded := []event.Draft{}
 	if record, planMatched := plan.(event.Record); planMatched {
 		creatorID, creatorProblem := parseReviewWorker(rawCreatedBy)
 		if creatorProblem != nil {
 			return task.ChangeTaskStateStoreRejected{Reason: *creatorProblem}
 		}
-		draft := record.Draft.WithRecipients(creatorID)
+		draft := record.Draft.WithRecipients(append([]core.UserID{creatorID}, releasedHolders...)...)
 		if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
 			return task.ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record task state event failed")}
 		}
@@ -298,7 +309,7 @@ func refundTaskCreditFunding(ctx context.Context, tx Tx, taskID core.TaskID, ide
 }
 
 // releaseReservationsOnCancel terminates every non-terminal reservation on a
-// task that is being cancelled. A reservation in requested/active/submitted
+// task that is being cancelled. A reservation in active/submitted
 // moves to cancelled_by_requester, the same terminal state the owner-driven
 // submission rejection uses (see internal/db/ledger_store.go). Terminal
 // reservations are left untouched.
@@ -306,7 +317,7 @@ func releaseReservationsOnCancel(ctx context.Context, tx Tx, taskID core.TaskID)
 	if _, err := tx.Exec(ctx, `
 		update task_reservations
 		set state = $2, state_recorded_at = now()
-		where task_id = $1 and state in ('requested', 'active', 'submitted')
+		where task_id = $1 and state in ('active', 'submitted')
 	`, taskID.String(), task.ReservationStateCancelledByRequester.String()); err != nil {
 		reason := core.NewDomainError(core.ErrorCodeInvalidState, "release reservations on cancel failed")
 		return &reason
@@ -347,15 +358,21 @@ func (store TaskStore) ListTasks(ctx context.Context, scope task.ListScope, filt
 }
 
 func (store TaskStore) CreateReservation(ctx context.Context, reservationID core.TaskReservationID, command task.ReservationCommand) task.CreateReservationStoreResult {
+	// The lapsed-reservation housekeeping runs in its own committed
+	// transaction first (not inside the create transaction): recording the
+	// expiry event drafts takes the event fence, and the fence must stay the
+	// last lock a transaction acquires (see insertDomainEventInTx), which
+	// would not hold if the housekeeping ran before this transaction's task
+	// row lock.
+	if err := store.releaseExpiredReservations(ctx); err != nil {
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
+	}
+
 	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create reservation transaction failed")}
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-
-	if _, err := tx.Exec(ctx, expireReservationsSQL); err != nil {
-		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release expired reservations failed")}
-	}
 
 	var policy string
 	var state string
@@ -401,13 +418,13 @@ func (store TaskStore) CreateReservation(ctx context.Context, reservationID core
 			and coalesce(user_id::text, '') = coalesce($3::text, '')
 			and coalesce(team_id::text, '') = coalesce($4::text, '')
 			and coalesce(organization_id::text, '') = coalesce($5::text, '')
-			and state in ('requested', 'active')
+			and state = 'active'
 		)
 	`, command.TaskID.String(), assigneeColumns.kind, assigneeColumns.userID, assigneeColumns.teamID, assigneeColumns.organizationID).Scan(&existing); err != nil {
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check existing reservation failed")}
 	}
 	if existing {
-		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "assignee already has an active or pending reservation")}
+		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "assignee already has an active reservation")}
 	}
 
 	_, err = tx.Exec(ctx, `
@@ -452,13 +469,13 @@ func (store TaskStore) ChangeReservationState(ctx context.Context, taskID core.T
 	commandTag, err := tx.Exec(ctx, `
 		update task_reservations
 		set state = $2, state_recorded_at = now()
-		where id = $1 and task_id = $3 and state in ('requested', 'active')
+		where id = $1 and task_id = $3 and state = 'active'
 	`, reservationID.String(), state.String(), taskID.String())
 	if err != nil {
 		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation state was not changed")}
 	}
 	if commandTag != 1 {
-		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation is not pending or active")}
+		return task.ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "reservation is not active")}
 	}
 
 	// The plan's draft is recorded in this same transaction, with the
@@ -751,15 +768,108 @@ func intPointer(value int) *int {
 	return &value
 }
 
-const expireReservationsSQL = `
-	update task_reservations
-	set state = 'expired', state_recorded_at = now()
-	where state in ('requested', 'active') and expires_at <= now()
-`
-
+// releaseExpiredReservations is the request-path housekeeping shared by the
+// list/read paths: it releases lapsed reservations in its own transaction,
+// recording the reservation_expired event drafts alongside (the
+// in-transaction outbox). Whichever caller wins the release — a read path or
+// the lifecycle sweep — records the events; the loser's UPDATE matches no
+// rows and records nothing, so holder and owner learn exactly once. The
+// drafts recorded here are dispatched by the event dispatch sweep (the read
+// paths return no drafts to dispatch inline).
 func (store TaskStore) releaseExpiredReservations(ctx context.Context) error {
-	_, err := store.db.Exec(ctx, expireReservationsSQL)
-	return err
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := releaseExpiredReservationsInTx(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// releaseExpiredReservationsInTx moves every reservation whose expires_at
+// instant has passed to the expired state and records one
+// reservation_expired event draft per released row (recipients: the holder
+// and the task owner, actor: system) inside the caller's transaction. It
+// returns the recorded drafts so sweep callers can dispatch them inline.
+func releaseExpiredReservationsInTx(ctx context.Context, tx Tx) ([]event.Draft, error) {
+	rows, err := tx.Query(ctx, `
+		update task_reservations
+		set state = 'expired', state_recorded_at = now()
+		where state = 'active' and expires_at <= now()
+		returning id::text, task_id::text, requested_by_user_id::text
+	`)
+	if err != nil {
+		return nil, err
+	}
+	type releasedRow struct {
+		reservationID string
+		taskID        string
+		holderID      string
+	}
+	released := make([]releasedRow, 0)
+	for rows.Next() {
+		var row releasedRow
+		if scanErr := rows.Scan(&row.reservationID, &row.taskID, &row.holderID); scanErr != nil {
+			rows.Close()
+			return nil, scanErr
+		}
+		released = append(released, row)
+	}
+	rowsErr := rows.Err()
+	rows.Close()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	drafts := make([]event.Draft, 0, len(released))
+	for _, row := range released {
+		draft, draftErr := expiredReservationDraft(ctx, tx, row.reservationID, row.taskID, row.holderID)
+		if draftErr != nil {
+			return nil, draftErr
+		}
+		if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+			return nil, err
+		}
+		drafts = append(drafts, draft)
+	}
+	return drafts, nil
+}
+
+// expiredReservationDraft builds the reservation_expired draft for one
+// released row, resolving the task owner inside the transaction.
+func expiredReservationDraft(ctx context.Context, tx Tx, rawReservationID string, rawTaskID string, rawHolderID string) (event.Draft, error) {
+	var rawOwnerID string
+	if err := tx.QueryRow(ctx, "select created_by_user_id::text from tasks where id = $1", rawTaskID).Scan(&rawOwnerID); err != nil {
+		return event.Draft{}, err
+	}
+	taskIDCreated, taskIDMatched := core.ParseTaskID(rawTaskID).(core.TaskIDCreated)
+	if !taskIDMatched {
+		return event.Draft{}, ErrNoRows
+	}
+	reservationIDCreated, reservationIDMatched := core.ParseTaskReservationID(rawReservationID).(core.TaskReservationIDCreated)
+	if !reservationIDMatched {
+		return event.Draft{}, ErrNoRows
+	}
+	holderIDCreated, holderIDMatched := core.ParseUserID(rawHolderID).(core.UserIDCreated)
+	if !holderIDMatched {
+		return event.Draft{}, ErrNoRows
+	}
+	ownerIDCreated, ownerIDMatched := core.ParseUserID(rawOwnerID).(core.UserIDCreated)
+	if !ownerIDMatched {
+		return event.Draft{}, ErrNoRows
+	}
+	subject := event.NoSubjectRefs()
+	subject.Task = event.TaskSubject{ID: taskIDCreated.Value}
+	subject.Reservation = event.ReservationSubject{ID: reservationIDCreated.Value}
+	draftResult := event.NewDraft(event.KindReservationExpired, event.ActorSystem{}, subject,
+		event.TaskMetadata(taskIDCreated.Value), event.NewRecipients(holderIDCreated.Value, ownerIDCreated.Value))
+	created, matched := draftResult.(event.DraftCreated)
+	if !matched {
+		return event.Draft{}, ErrNoRows
+	}
+	return created.Value, nil
 }
 
 type reservationInitialStateResult interface {
@@ -782,8 +892,6 @@ func reservationInitialState(policy string) reservationInitialStateResult {
 	switch policy {
 	case task.ParticipationPolicyReservationRequired.String():
 		return reservationInitialStateAccepted{value: task.ReservationStateActive}
-	case task.ParticipationPolicyApprovalRequired.String():
-		return reservationInitialStateAccepted{value: task.ReservationStateRequested}
 	case task.ParticipationPolicyOpen.String():
 		return reservationInitialStateRejected{reason: core.NewDomainError(core.ErrorCodeConflict, "task does not require reservation")}
 	default:

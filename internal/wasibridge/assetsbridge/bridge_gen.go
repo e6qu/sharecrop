@@ -14,14 +14,23 @@ import (
 
 // Method names namespace each assets.Store method on the wire.
 const (
-	methodCreateCollectible            = "assets.CreateCollectible"
-	methodListCollectibles             = "assets.ListCollectibles"
-	methodListCollectiblesByOwner      = "assets.ListCollectiblesByOwner"
-	methodFundCollectibleReward        = "assets.FundCollectibleReward"
-	methodRefundCollectibleReward      = "assets.RefundCollectibleReward"
-	methodGiftCollectible              = "assets.GiftCollectible"
-	methodAwardOrganizationCollectible = "assets.AwardOrganizationCollectible"
-	methodTaskHeldCollectibles         = "assets.TaskHeldCollectibles"
+	methodCreateCollectible                   = "assets.CreateCollectible"
+	methodListCollectibles                    = "assets.ListCollectibles"
+	methodListCollectiblesByOwner             = "assets.ListCollectiblesByOwner"
+	methodFundCollectibleReward               = "assets.FundCollectibleReward"
+	methodRefundCollectibleReward             = "assets.RefundCollectibleReward"
+	methodGiftCollectible                     = "assets.GiftCollectible"
+	methodAwardOrganizationCollectible        = "assets.AwardOrganizationCollectible"
+	methodTaskHeldCollectibles                = "assets.TaskHeldCollectibles"
+	methodListCatalogEntries                  = "assets.ListCatalogEntries"
+	methodAddCatalogEntry                     = "assets.AddCatalogEntry"
+	methodWithdrawCatalogEntry                = "assets.WithdrawCatalogEntry"
+	methodDeleteCatalogEntry                  = "assets.DeleteCatalogEntry"
+	methodAwardFromCatalog                    = "assets.AwardFromCatalog"
+	methodWithdrawCollectible                 = "assets.WithdrawCollectible"
+	methodDeleteWithdrawnCollectible          = "assets.DeleteWithdrawnCollectible"
+	methodTransferCollectibleToOrganization   = "assets.TransferCollectibleToOrganization"
+	methodTransferCollectibleFromOrganization = "assets.TransferCollectibleFromOrganization"
 )
 
 type createCollectibleArgs struct {
@@ -57,6 +66,41 @@ type awardOrganizationCollectibleArgs struct {
 
 type taskHeldCollectiblesArgs struct {
 	TaskID string `json:"taskid"`
+}
+
+type listCatalogEntriesArgs struct {
+}
+
+type addCatalogEntryArgs struct {
+	CatalogEntry catalogEntryWire `json:"catalogentry"`
+}
+
+type withdrawCatalogEntryArgs struct {
+	CatalogSlug string `json:"catalogslug"`
+}
+
+type deleteCatalogEntryArgs struct {
+	CatalogSlug string `json:"catalogslug"`
+}
+
+type awardFromCatalogArgs struct {
+	AwardFromCatalogCommand awardFromCatalogCommandWire `json:"awardfromcatalogcommand"`
+}
+
+type withdrawCollectibleArgs struct {
+	WithdrawCommand withdrawCollectibleCommandWire `json:"withdrawcommand"`
+}
+
+type deleteWithdrawnCollectibleArgs struct {
+	CollectibleID string `json:"collectibleid"`
+}
+
+type transferCollectibleToOrganizationArgs struct {
+	TransferToOrganizationCommand transferToOrganizationCommandWire `json:"transfertoorganizationcommand"`
+}
+
+type transferCollectibleFromOrganizationArgs struct {
+	TransferFromOrganizationCommand transferFromOrganizationCommandWire `json:"transferfromorganizationcommand"`
 }
 
 // Dispatch services one store call against store: decode the arguments, call the
@@ -156,6 +200,92 @@ func Dispatch(ctx context.Context, store assets.Store, method string, args []byt
 			return nil, err
 		}
 		return json.Marshal(encodeTaskHeldResult(store.TaskHeldCollectibles(ctx, argTaskID)))
+	case methodListCatalogEntries:
+		var decoded listCatalogEntriesArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode ListCatalogEntries args: %w", err)
+		}
+		return json.Marshal(encodeCatalogListResult(store.ListCatalogEntries(ctx)))
+	case methodAddCatalogEntry:
+		var decoded addCatalogEntryArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode AddCatalogEntry args: %w", err)
+		}
+		argCatalogEntry, err := decodeCatalogEntry(decoded.CatalogEntry)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeCatalogMutationResult(store.AddCatalogEntry(ctx, argCatalogEntry)))
+	case methodWithdrawCatalogEntry:
+		var decoded withdrawCatalogEntryArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode WithdrawCatalogEntry args: %w", err)
+		}
+		argCatalogSlug, err := decodeCatalogSlug(decoded.CatalogSlug)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeCatalogMutationResult(store.WithdrawCatalogEntry(ctx, argCatalogSlug)))
+	case methodDeleteCatalogEntry:
+		var decoded deleteCatalogEntryArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode DeleteCatalogEntry args: %w", err)
+		}
+		argCatalogSlug, err := decodeCatalogSlug(decoded.CatalogSlug)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeCatalogMutationResult(store.DeleteCatalogEntry(ctx, argCatalogSlug)))
+	case methodAwardFromCatalog:
+		var decoded awardFromCatalogArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode AwardFromCatalog args: %w", err)
+		}
+		argAwardFromCatalogCommand, err := decodeAwardFromCatalogCommand(decoded.AwardFromCatalogCommand)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeCreateResult(store.AwardFromCatalog(ctx, argAwardFromCatalogCommand)))
+	case methodWithdrawCollectible:
+		var decoded withdrawCollectibleArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode WithdrawCollectible args: %w", err)
+		}
+		argWithdrawCommand, err := decodeWithdrawCollectibleCommand(decoded.WithdrawCommand)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeWithdrawResult(store.WithdrawCollectible(ctx, argWithdrawCommand)))
+	case methodDeleteWithdrawnCollectible:
+		var decoded deleteWithdrawnCollectibleArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode DeleteWithdrawnCollectible args: %w", err)
+		}
+		argCollectibleID, err := corewire.DecodeCollectibleID(decoded.CollectibleID)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeDeleteCollectibleResult(store.DeleteWithdrawnCollectible(ctx, argCollectibleID)))
+	case methodTransferCollectibleToOrganization:
+		var decoded transferCollectibleToOrganizationArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode TransferCollectibleToOrganization args: %w", err)
+		}
+		argTransferToOrganizationCommand, err := decodeTransferToOrganizationCommand(decoded.TransferToOrganizationCommand)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeGiftResult(store.TransferCollectibleToOrganization(ctx, argTransferToOrganizationCommand)))
+	case methodTransferCollectibleFromOrganization:
+		var decoded transferCollectibleFromOrganizationArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("assets bridge: decode TransferCollectibleFromOrganization args: %w", err)
+		}
+		argTransferFromOrganizationCommand, err := decodeTransferFromOrganizationCommand(decoded.TransferFromOrganizationCommand)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeGiftResult(store.TransferCollectibleFromOrganization(ctx, argTransferFromOrganizationCommand)))
 	default:
 		return nil, fmt.Errorf("assets bridge: unknown method %q", method)
 	}
@@ -186,7 +316,7 @@ func (g GuestStore) CreateCollectible(ctx context.Context, argCollectible assets
 	if err != nil {
 		return assets.CreateStoreRejected{Reason: guestError(err)}
 	}
-	var wire acceptedRejectedWire
+	var wire collectibleResultWire
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return assets.CreateStoreRejected{Reason: guestError(err)}
 	}
@@ -333,6 +463,186 @@ func (g GuestStore) TaskHeldCollectibles(ctx context.Context, argTaskID core.Tas
 	result, err := decodeTaskHeldResult(wire)
 	if err != nil {
 		return assets.TaskHeldCollectiblesRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) ListCatalogEntries(ctx context.Context) assets.CatalogListResult {
+	args, err := json.Marshal(listCatalogEntriesArgs{})
+	if err != nil {
+		return assets.CatalogListRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodListCatalogEntries, args)
+	if err != nil {
+		return assets.CatalogListRejected{Reason: guestError(err)}
+	}
+	var wire catalogListResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.CatalogListRejected{Reason: guestError(err)}
+	}
+	result, err := decodeCatalogListResult(wire)
+	if err != nil {
+		return assets.CatalogListRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) AddCatalogEntry(ctx context.Context, argCatalogEntry assets.CatalogEntry) assets.CatalogMutationResult {
+	args, err := json.Marshal(addCatalogEntryArgs{CatalogEntry: encodeCatalogEntry(argCatalogEntry)})
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodAddCatalogEntry, args)
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	var wire catalogMutationResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	result, err := decodeCatalogMutationResult(wire)
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) WithdrawCatalogEntry(ctx context.Context, argCatalogSlug assets.CatalogSlug) assets.CatalogMutationResult {
+	args, err := json.Marshal(withdrawCatalogEntryArgs{CatalogSlug: encodeCatalogSlug(argCatalogSlug)})
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodWithdrawCatalogEntry, args)
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	var wire catalogMutationResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	result, err := decodeCatalogMutationResult(wire)
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) DeleteCatalogEntry(ctx context.Context, argCatalogSlug assets.CatalogSlug) assets.CatalogMutationResult {
+	args, err := json.Marshal(deleteCatalogEntryArgs{CatalogSlug: encodeCatalogSlug(argCatalogSlug)})
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodDeleteCatalogEntry, args)
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	var wire catalogMutationResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	result, err := decodeCatalogMutationResult(wire)
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) AwardFromCatalog(ctx context.Context, argAwardFromCatalogCommand assets.AwardFromCatalogStoreCommand) assets.CreateStoreResult {
+	args, err := json.Marshal(awardFromCatalogArgs{AwardFromCatalogCommand: encodeAwardFromCatalogCommand(argAwardFromCatalogCommand)})
+	if err != nil {
+		return assets.CreateStoreRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodAwardFromCatalog, args)
+	if err != nil {
+		return assets.CreateStoreRejected{Reason: guestError(err)}
+	}
+	var wire collectibleResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.CreateStoreRejected{Reason: guestError(err)}
+	}
+	result, err := decodeCreateResult(wire)
+	if err != nil {
+		return assets.CreateStoreRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) WithdrawCollectible(ctx context.Context, argWithdrawCommand assets.WithdrawCollectibleStoreCommand) assets.WithdrawResult {
+	args, err := json.Marshal(withdrawCollectibleArgs{WithdrawCommand: encodeWithdrawCollectibleCommand(argWithdrawCommand)})
+	if err != nil {
+		return assets.WithdrawRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodWithdrawCollectible, args)
+	if err != nil {
+		return assets.WithdrawRejected{Reason: guestError(err)}
+	}
+	var wire withdrawResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.WithdrawRejected{Reason: guestError(err)}
+	}
+	result, err := decodeWithdrawResult(wire)
+	if err != nil {
+		return assets.WithdrawRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) DeleteWithdrawnCollectible(ctx context.Context, argCollectibleID core.CollectibleID) assets.DeleteCollectibleResult {
+	args, err := json.Marshal(deleteWithdrawnCollectibleArgs{CollectibleID: corewire.EncodeCollectibleID(argCollectibleID)})
+	if err != nil {
+		return assets.DeleteCollectibleRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodDeleteWithdrawnCollectible, args)
+	if err != nil {
+		return assets.DeleteCollectibleRejected{Reason: guestError(err)}
+	}
+	var wire acceptedRejectedWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.DeleteCollectibleRejected{Reason: guestError(err)}
+	}
+	result, err := decodeDeleteCollectibleResult(wire)
+	if err != nil {
+		return assets.DeleteCollectibleRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) TransferCollectibleToOrganization(ctx context.Context, argTransferToOrganizationCommand assets.TransferToOrganizationStoreCommand) assets.GiftResult {
+	args, err := json.Marshal(transferCollectibleToOrganizationArgs{TransferToOrganizationCommand: encodeTransferToOrganizationCommand(argTransferToOrganizationCommand)})
+	if err != nil {
+		return assets.GiftRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodTransferCollectibleToOrganization, args)
+	if err != nil {
+		return assets.GiftRejected{Reason: guestError(err)}
+	}
+	var wire collectibleResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.GiftRejected{Reason: guestError(err)}
+	}
+	result, err := decodeGiftResult(wire)
+	if err != nil {
+		return assets.GiftRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) TransferCollectibleFromOrganization(ctx context.Context, argTransferFromOrganizationCommand assets.TransferFromOrganizationStoreCommand) assets.GiftResult {
+	args, err := json.Marshal(transferCollectibleFromOrganizationArgs{TransferFromOrganizationCommand: encodeTransferFromOrganizationCommand(argTransferFromOrganizationCommand)})
+	if err != nil {
+		return assets.GiftRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodTransferCollectibleFromOrganization, args)
+	if err != nil {
+		return assets.GiftRejected{Reason: guestError(err)}
+	}
+	var wire collectibleResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return assets.GiftRejected{Reason: guestError(err)}
+	}
+	result, err := decodeGiftResult(wire)
+	if err != nil {
+		return assets.GiftRejected{Reason: guestError(err)}
 	}
 	return result
 }

@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -91,6 +93,43 @@ type withPointer struct {
 	shape := shapes["withPointer"]
 	if len(shape.Fields) != 1 || shape.Fields[0].Kind != FieldString {
 		t.Fatalf("fields = %#v, want a single optional string field (pointer unwrapped)", shape.Fields)
+	}
+}
+
+// TestWebhookSubscriptionRequestRequiredFieldsAreHonest pins the required
+// derivation against the real internal/http source for one known case: the
+// generator marks a field required exactly when its json tag lacks
+// ,omitempty, so webhookSubscriptionRequest must declare only url and kinds
+// required — the owner/audience/filter fields are optional and generated
+// clients must not be forced to send them.
+func TestWebhookSubscriptionRequestRequiredFieldsAreHonest(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("..", "http", "webhooks.go"))
+	if err != nil {
+		t.Fatalf("read internal/http/webhooks.go: %v", err)
+	}
+	shapes := parseStructShapes(t, string(source))
+	shape, ok := shapes["webhookSubscriptionRequest"]
+	if !ok {
+		t.Fatalf("webhookSubscriptionRequest not found in internal/http/webhooks.go")
+	}
+	required := map[string]bool{}
+	for _, field := range shape.Fields {
+		required[field.JSONName] = field.Required
+	}
+	for _, name := range []string{"url", "kinds"} {
+		if !required[name] {
+			t.Errorf("%s must be required", name)
+		}
+	}
+	for _, name := range []string{"organization_id", "audience", "filter_task_type", "filter_min_credit_reward"} {
+		requiredValue, present := required[name]
+		if !present {
+			t.Errorf("%s missing from the request shape", name)
+			continue
+		}
+		if requiredValue {
+			t.Errorf("%s must be optional (the handler treats an absent value as valid)", name)
+		}
 	}
 }
 

@@ -52,7 +52,7 @@ func TestNewCollectibleNameRejectsBlank(t *testing.T) {
 func TestServiceMintCreatesMintedCollectible(t *testing.T) {
 	store := &memoryStore{}
 	service := NewService(store, eventtest.NewRecorder())
-	minted, matched := service.Mint(context.Background(), CollectibleOwnerKindUser, newUserID(t).String(), "", name(t, "Gold badge"), CollectibleKindBadge, TransferPolicyNonTransferableExceptPayout, "golden-sickle").(CollectibleMinted)
+	minted, matched := service.Mint(context.Background(), newUserID(t), CollectibleOwnerKindUser, newUserID(t).String(), "", name(t, "Gold badge"), CollectibleKindBadge, TransferPolicyNonTransferableExceptPayout, "golden-sickle").(CollectibleMinted)
 	if !matched {
 		t.Fatalf("mint was rejected")
 	}
@@ -69,7 +69,7 @@ func TestServiceMintScopesOrganizationOwnedCollectible(t *testing.T) {
 	service := NewService(store, eventtest.NewRecorder())
 	organizationID := newOrganizationID(t).String()
 
-	minted, matched := service.Mint(context.Background(), CollectibleOwnerKindOrganization, organizationID, "", name(t, "Org badge"), CollectibleKindBadge, TransferPolicyTransferableWithinOrg, "harvest-star").(CollectibleMinted)
+	minted, matched := service.Mint(context.Background(), newUserID(t), CollectibleOwnerKindOrganization, organizationID, "", name(t, "Org badge"), CollectibleKindBadge, TransferPolicyTransferableWithinOrg, "harvest-star").(CollectibleMinted)
 	if !matched {
 		t.Fatalf("mint was rejected")
 	}
@@ -95,7 +95,7 @@ func (store *memoryStore) record(draft event.Draft) {
 
 func (store *memoryStore) CreateCollectible(_ context.Context, collectible Collectible) CreateStoreResult {
 	store.created = append(store.created, collectible)
-	return CreateStoreAccepted{}
+	return CreateStoreAccepted{Value: collectible}
 }
 
 func (store *memoryStore) ListCollectibles(_ context.Context, _ core.UserID, _ core.Page) ListStoreResult {
@@ -126,6 +126,45 @@ func (store *memoryStore) AwardOrganizationCollectible(_ context.Context, comman
 
 func (store *memoryStore) TaskHeldCollectibles(_ context.Context, _ core.TaskID) TaskHeldCollectiblesResult {
 	return TaskHeldCollectiblesFound{IDs: nil}
+}
+
+func (store *memoryStore) ListCatalogEntries(_ context.Context) CatalogListResult {
+	return CatalogListed{Values: []CatalogListing{}}
+}
+
+func (store *memoryStore) AddCatalogEntry(_ context.Context, entry CatalogEntry) CatalogMutationResult {
+	return CatalogMutated{Value: entry}
+}
+
+func (store *memoryStore) WithdrawCatalogEntry(_ context.Context, _ CatalogSlug) CatalogMutationResult {
+	return CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (store *memoryStore) DeleteCatalogEntry(_ context.Context, _ CatalogSlug) CatalogMutationResult {
+	return CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (store *memoryStore) AwardFromCatalog(_ context.Context, command AwardFromCatalogStoreCommand) CreateStoreResult {
+	return CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (store *memoryStore) WithdrawCollectible(_ context.Context, command WithdrawCollectibleStoreCommand) WithdrawResult {
+	store.record(command.Draft)
+	return CollectibleWithdrawn{Value: Collectible{ID: command.CollectibleID, State: CollectibleStateWithdrawn, Catalog: NoCatalogRef{}, Edition: NoEditionNumber{}, Issuer: NoIssuer{}}, RecordedEvents: []event.Draft{command.Draft}}
+}
+
+func (store *memoryStore) DeleteWithdrawnCollectible(_ context.Context, _ core.CollectibleID) DeleteCollectibleResult {
+	return DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (store *memoryStore) TransferCollectibleToOrganization(_ context.Context, command TransferToOrganizationStoreCommand) GiftResult {
+	store.record(command.Draft)
+	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerKind: CollectibleOwnerKindOrganization, OwnerID: command.OrganizationID.String(), Catalog: NoCatalogRef{}, Edition: NoEditionNumber{}, Issuer: NoIssuer{}}, RecordedEvents: []event.Draft{command.Draft}}
+}
+
+func (store *memoryStore) TransferCollectibleFromOrganization(_ context.Context, command TransferFromOrganizationStoreCommand) GiftResult {
+	store.record(command.Draft)
+	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerKind: CollectibleOwnerKindUser, OwnerID: command.ToUserID.String(), Catalog: NoCatalogRef{}, Edition: NoEditionNumber{}, Issuer: NoIssuer{}}, RecordedEvents: []event.Draft{command.Draft}}
 }
 
 func name(t *testing.T, raw string) CollectibleName {

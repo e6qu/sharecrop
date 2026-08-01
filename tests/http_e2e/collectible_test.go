@@ -275,15 +275,18 @@ func TestMintRejectsIssuerControlledRewardOnFunding(t *testing.T) {
 }
 
 type collectibleHTTPResponse struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Kind           string `json:"kind"`
-	State          string `json:"state"`
-	TransferPolicy string `json:"transfer_policy"`
-	OwnerID        string `json:"owner_id"`
-	OwnerKind      string `json:"owner_kind"`
-	OrganizationID string `json:"organization_id"`
-	Art            string `json:"art"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Kind              string `json:"kind"`
+	State             string `json:"state"`
+	TransferPolicy    string `json:"transfer_policy"`
+	OwnerID           string `json:"owner_id"`
+	OwnerKind         string `json:"owner_kind"`
+	OrganizationID    string `json:"organization_id"`
+	Art               string `json:"art"`
+	CatalogSlug       string `json:"catalog_slug"`
+	EditionNumber     int64  `json:"edition_number"`
+	IssuerDisplayName string `json:"issuer_display_name"`
 }
 
 func TestDefaultCollectibleCatalogAwardAndTransfer(t *testing.T) {
@@ -305,7 +308,8 @@ func TestDefaultCollectibleCatalogAwardAndTransfer(t *testing.T) {
 	defer forbidden.Body.Close()
 	assertStatus(t, forbidden, http.StatusForbidden)
 
-	// The catalog exposes the 25 default collectibles, each with a sprite slug.
+	// The catalog is DB-backed now (admins can add entries), so it exposes at
+	// least the 25 seeded defaults, each with a sprite slug.
 	catalogResponse := getWithBearer(t, server.URL+"/api/collectibles/catalog", admin.AccessToken)
 	defer catalogResponse.Body.Close()
 	assertStatus(t, catalogResponse, http.StatusOK)
@@ -318,11 +322,20 @@ func TestDefaultCollectibleCatalogAwardAndTransfer(t *testing.T) {
 	if err := json.NewDecoder(catalogResponse.Body).Decode(&catalog); err != nil {
 		t.Fatalf("decode catalog: %v", err)
 	}
-	if len(catalog.Entries) != 25 {
-		t.Fatalf("catalog has %d entries, want 25", len(catalog.Entries))
+	if len(catalog.Entries) < 25 {
+		t.Fatalf("catalog has %d entries, want at least the 25 seeded defaults", len(catalog.Entries))
 	}
-	if catalog.Entries[0].Slug == "" || catalog.Entries[0].Art == "" {
-		t.Fatalf("catalog entry missing slug/art: %+v", catalog.Entries[0])
+	slugs := map[string]bool{}
+	for _, entry := range catalog.Entries {
+		if entry.Slug == "" || entry.Art == "" {
+			t.Fatalf("catalog entry missing slug/art: %+v", entry)
+		}
+		slugs[entry.Slug] = true
+	}
+	for _, seeded := range []string{"harvest-star", "golden-egg", "cornucopia"} {
+		if !slugs[seeded] {
+			t.Fatalf("catalog is missing seeded entry %q", seeded)
+		}
 	}
 
 	// Awarding a default mints a fresh copy owned by the recipient, carrying the

@@ -231,8 +231,8 @@ func newTestTaskID(t *testing.T) core.TaskID {
 // parser: every listed scope parses back to itself.
 func TestAllScopesRoundTripThroughParseScope(t *testing.T) {
 	scopes := AllScopes()
-	if len(scopes) != 21 {
-		t.Fatalf("AllScopes() has %d scopes, want 21", len(scopes))
+	if len(scopes) != 22 {
+		t.Fatalf("AllScopes() has %d scopes, want 22", len(scopes))
 	}
 	for _, scope := range scopes {
 		parsed, matched := ParseScope(scope.String()).(ScopeAccepted)

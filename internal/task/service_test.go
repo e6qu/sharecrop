@@ -105,7 +105,11 @@ func TestServiceReserveIssuesTaskScopedWorkerCredentialWhenImmediatelyActive(t *
 	}
 }
 
-func TestServiceApproveReservationIssuesTaskScopedWorkerCredential(t *testing.T) {
+// TestServiceReserveYieldsActiveReservationWithCredential pins the
+// no-approval-gate contract: reserving a task always creates an immediately
+// active reservation and reveals a task-scoped worker credential in the same
+// call — there is no approval step.
+func TestServiceReserveYieldsActiveReservationWithCredential(t *testing.T) {
 	store := newTaskMemoryStore()
 	issuer := &stubCredentialIssuer{}
 	service := NewService(store, newTaskPermissionStore(), issuer, eventtest.NewRecorder())
@@ -114,25 +118,16 @@ func TestServiceApproveReservationIssuesTaskScopedWorkerCredential(t *testing.T)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 	created := service.Create(context.Background(), command).(TaskCreated)
 	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
+
 	reserved := service.Reserve(context.Background(), worker, created.Value.ID).(ReservationCreated)
-
-	// Reset the issuer so we can attribute this credential specifically to
-	// the approval call, not the reserve call above (the fake store always
-	// creates reservations already Active, but ApproveReservation should
-	// still mint its own credential independent of reserve's).
-	issuer.owner = core.UserID{}
-	issuer.taskID = core.TaskID{}
-
-	result := service.ApproveReservation(context.Background(), requester, created.Value.ID, reserved.Value.ID)
-	changed, matched := result.(ReservationStateChanged)
-	if !matched {
-		t.Fatalf("result = %T, want ReservationStateChanged", result)
+	if reserved.Value.State != ReservationStateActive {
+		t.Fatalf("reservation state = %s, want active", reserved.Value.State.String())
 	}
-	if changed.IssuedWorkerCredentialSecret == "" {
-		t.Fatalf("expected a task-scoped credential secret to be issued on approval")
+	if reserved.IssuedWorkerCredentialSecret == "" {
+		t.Fatalf("expected a task-scoped credential secret on reserve")
 	}
-	if issuer.owner != worker.ID {
-		t.Fatalf("credential issued for %s, want the worker %s", issuer.owner.String(), worker.ID.String())
+	if issuer.owner != worker.ID || issuer.taskID != created.Value.ID {
+		t.Fatalf("credential issued for (%s, %s), want the worker and task", issuer.owner.String(), issuer.taskID.String())
 	}
 }
 
@@ -360,9 +355,25 @@ func (store *taskMemoryStore) ChangeTaskState(_ context.Context, taskID core.Tas
 	}
 	value.State = state
 	store.tasks[taskID.String()] = value
+	// Mirror the db store: a cancel resolves the holders it releases inside
+	// the mutation and merges them into the event recipients.
+	releasedHolders := []core.UserID{}
+	if state == StateCancelled {
+		for reservationKey := range store.reservations {
+			reservation := store.reservations[reservationKey]
+			if reservation.TaskID != taskID {
+				continue
+			}
+			if reservation.State == ReservationStateActive || reservation.State == ReservationStateSubmitted {
+				releasedHolders = append(releasedHolders, reservation.RequestedBy)
+				reservation.State = ReservationStateCancelledByRequester
+				store.reservations[reservationKey] = reservation
+			}
+		}
+	}
 	recorded := []event.Draft{}
 	if record, planMatched := plan.(event.Record); planMatched {
-		draft := record.Draft.WithRecipients(value.CreatedBy)
+		draft := record.Draft.WithRecipients(append([]core.UserID{value.CreatedBy}, releasedHolders...)...)
 		store.record(draft)
 		recorded = []event.Draft{draft}
 	}

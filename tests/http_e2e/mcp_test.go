@@ -178,7 +178,7 @@ func TestMCPReservationTools(t *testing.T) {
 	owner := registerUser(t, server, "mcp-reservation-owner")
 	worker := registerUser(t, server, "mcp-reservation-worker")
 
-	createTaskResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicApprovalTaskRequestJSON(owner.SubjectID)), owner.AccessToken)
+	createTaskResponse := postJSONWithBearer(t, server.URL+"/api/tasks", []byte(publicReservationTaskRequestJSON(owner.SubjectID)), owner.AccessToken)
 	defer createTaskResponse.Body.Close()
 	assertStatus(t, createTaskResponse, http.StatusCreated)
 	taskBody := decodeTaskHTTPResponse(t, createTaskResponse)
@@ -196,8 +196,8 @@ func TestMCPReservationTools(t *testing.T) {
 	if err := json.Unmarshal([]byte(reserve), &reservePayload); err != nil {
 		t.Fatalf("decode reserve payload: %v", err)
 	}
-	if reservePayload.Reservation.State != "requested" {
-		t.Fatalf("reservation state = %q, want requested", reservePayload.Reservation.State)
+	if reservePayload.Reservation.State != "active" {
+		t.Fatalf("reservation state = %q, want active (no approval gate)", reservePayload.Reservation.State)
 	}
 
 	list := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, ownerSession, `2`, "sharecrop.list_task_reservations", `{"task_id":"`+taskBody.ID+`"}`)))
@@ -205,9 +205,9 @@ func TestMCPReservationTools(t *testing.T) {
 		t.Fatalf("reservation list missing reservation id: %s", list)
 	}
 
-	approve := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, ownerSession, `3`, "sharecrop.approve_task_reservation", `{"task_id":"`+taskBody.ID+`","reservation_id":"`+reservePayload.Reservation.ID+`"}`)))
-	if !strings.Contains(approve, `"state":"active"`) {
-		t.Fatalf("approve response missing active state: %s", approve)
+	cancel := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, ownerSession, `3`, "sharecrop.cancel_task_reservation", `{"task_id":"`+taskBody.ID+`","reservation_id":"`+reservePayload.Reservation.ID+`"}`)))
+	if !strings.Contains(cancel, `"state":"cancelled_by_requester"`) {
+		t.Fatalf("cancel response missing cancelled state: %s", cancel)
 	}
 }
 

@@ -274,6 +274,10 @@ type fakeServices struct {
 	listTaskCount int
 	// eventFeed is the stored-event stream ListEvents serves.
 	eventFeed []event.StoredEvent
+	// catalogListings is what ListCollectibleCatalog serves.
+	catalogListings []assets.CatalogListing
+	// collectibles is what ListCollectibles serves.
+	collectibles []assets.Collectible
 }
 
 func (services fakeServices) ListTasks(_ context.Context, _ auth.Subject, _ task.ListScope, _ task.ListFilters, page core.Page) task.ListResult {
@@ -411,23 +415,19 @@ func (services fakeServices) GetSubmission(_ context.Context, subject auth.Subje
 	}}
 }
 
-func (services fakeServices) ListTaskSubmissions(_ context.Context, _ auth.UserSubject, _ core.TaskID, _ core.Page) submission.ListResult {
+func (services fakeServices) ListTaskSubmissions(_ context.Context, _ auth.Subject, _ core.TaskID, _ core.Page) submission.ListResult {
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 
-func (services fakeServices) AcceptSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey) ledger.AcceptResult {
+func (services fakeServices) ReviewAcceptSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.CollectibleTipSelection) ledger.AcceptResult {
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
-func (services fakeServices) ReviewAcceptSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.CollectibleTipSelection) ledger.AcceptResult {
-	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
-}
-
-func (services fakeServices) RequestChanges(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, note submission.ReviewNote) ledger.RequestChangesResult {
+func (services fakeServices) RequestChanges(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, note submission.ReviewNote) ledger.RequestChangesResult {
 	return ledger.ChangesRequested{TaskID: taskID, SubmissionID: submissionID, ReviewNote: note.String()}
 }
 
-func (services fakeServices) RejectSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ submission.ReviewNote, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.BanSelection) ledger.RejectResult {
+func (services fakeServices) RejectSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ submission.ReviewNote, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.BanSelection) ledger.RejectResult {
 	return ledger.SubmissionRejected{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
@@ -536,20 +536,13 @@ func (services fakeServices) ListReservations(_ context.Context, subject auth.Su
 	userID := fakeUserID(subject)
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationsListed{Values: []task.Reservation{{
-		ID:          reservationID.Value,
-		TaskID:      taskID,
-		Assignee:    task.UserAssignee{UserID: userID},
-		State:       task.ReservationStateRequested,
-		RequestedBy: userID,
+		ID:                reservationID.Value,
+		TaskID:            taskID,
+		Assignee:          task.UserAssignee{UserID: userID},
+		State:             task.ReservationStateRequested,
+		RequestedBy:       userID,
+		HolderDisplayName: auth.NewDisplayName("ada").(auth.DisplayNameAccepted).Value,
 	}}}
-}
-
-func (services fakeServices) ApproveReservation(_ context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
-	return fakeReservationStateChange(subject, taskID, reservationID, task.ReservationStateActive)
-}
-
-func (services fakeServices) DeclineReservation(_ context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
-	return fakeReservationStateChange(subject, taskID, reservationID, task.ReservationStateDeclined)
 }
 
 func (services fakeServices) CancelReservation(_ context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
@@ -646,13 +639,20 @@ func (services fakeServices) RevokeOrgCredential(_ context.Context, organization
 	return orgcred.CredentialRevoked{Value: orgcred.Credential{ID: credentialID, OrganizationID: organizationID, Label: mustLabel("Fake org credential"), Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead}), State: agent.StateRevoked}}
 }
 
-func (services fakeServices) MintCollectible(_ context.Context, ownerKind string, ownerID string, organizationID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
+func (services fakeServices) ListCollectibleCatalog(_ context.Context) assets.CatalogListResult {
+	return assets.CatalogListed{Values: services.catalogListings}
+}
+
+func (services fakeServices) MintCollectible(_ context.Context, _ core.UserID, ownerKind string, ownerID string, organizationID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
 	collectibleID := core.NewCollectibleID().(core.CollectibleIDCreated)
 	return assets.CollectibleMinted{Value: assets.Collectible{ID: collectibleID.Value, Name: name, Kind: kind, State: assets.CollectibleStateMinted, Policy: policy, OwnerKind: ownerKind, OwnerID: ownerID, OrganizationID: organizationID, Art: art}}
 }
 
 func (services fakeServices) ListCollectibles(_ context.Context, _ core.UserID, _ core.Page) assets.ListResult {
-	return assets.CollectiblesListed{Values: []assets.Collectible{}}
+	if services.collectibles == nil {
+		return assets.CollectiblesListed{Values: []assets.Collectible{}}
+	}
+	return assets.CollectiblesListed{Values: services.collectibles}
 }
 
 func (services fakeServices) ListCollectiblesByOwner(_ context.Context, _ string, _ string, _ core.Page) assets.ListResult {
@@ -661,6 +661,38 @@ func (services fakeServices) ListCollectiblesByOwner(_ context.Context, _ string
 
 func (services fakeServices) TransferCollectible(_ context.Context, _ core.UserID, _ core.UserID, collectibleID core.CollectibleID) assets.GiftResult {
 	return assets.CollectibleGifted{Value: assets.Collectible{ID: collectibleID, State: assets.CollectibleStateMinted}}
+}
+
+func (services fakeServices) TransferCollectibleToOrganization(_ context.Context, _ core.UserID, organizationID core.OrganizationID, collectibleID core.CollectibleID) assets.GiftResult {
+	return assets.CollectibleGifted{Value: assets.Collectible{ID: collectibleID, State: assets.CollectibleStateMinted, OwnerKind: assets.CollectibleOwnerKindOrganization, OwnerID: organizationID.String(), OrganizationID: organizationID.String()}}
+}
+
+func (services fakeServices) TransferCollectibleFromOrganization(_ context.Context, _ core.UserID, _ core.OrganizationID, to core.UserID, collectibleID core.CollectibleID) assets.GiftResult {
+	return assets.CollectibleGifted{Value: assets.Collectible{ID: collectibleID, State: assets.CollectibleStateMinted, OwnerKind: assets.CollectibleOwnerKindUser, OwnerID: to.String()}}
+}
+
+func (services fakeServices) AwardOrganizationCollectible(_ context.Context, _ core.OrganizationID, collectibleID core.CollectibleID, recipient core.UserID) assets.GiftResult {
+	return assets.CollectibleGifted{Value: assets.Collectible{ID: collectibleID, State: assets.CollectibleStateMinted, OwnerKind: assets.CollectibleOwnerKindUser, OwnerID: recipient.String()}}
+}
+
+func (services fakeServices) AddCatalogEntry(_ context.Context, entry assets.CatalogEntry) assets.CatalogMutationResult {
+	return assets.CatalogMutated{Value: entry}
+}
+
+func (services fakeServices) WithdrawCatalogEntry(_ context.Context, slug assets.CatalogSlug) assets.CatalogMutationResult {
+	return assets.CatalogMutated{Value: assets.CatalogEntry{Slug: slug, State: assets.CatalogEntryStateWithdrawn, Cap: assets.NoEditionCap{}}}
+}
+
+func (services fakeServices) DeleteCatalogEntry(_ context.Context, slug assets.CatalogSlug) assets.CatalogMutationResult {
+	return assets.CatalogMutated{Value: assets.CatalogEntry{Slug: slug, State: assets.CatalogEntryStateWithdrawn, Cap: assets.NoEditionCap{}}}
+}
+
+func (services fakeServices) WithdrawCollectible(_ context.Context, _ core.UserID, collectibleID core.CollectibleID) assets.WithdrawResult {
+	return assets.CollectibleWithdrawn{Value: assets.Collectible{ID: collectibleID, State: assets.CollectibleStateWithdrawn}}
+}
+
+func (services fakeServices) DeleteWithdrawnCollectible(_ context.Context, _ core.CollectibleID) assets.DeleteCollectibleResult {
+	return assets.CollectibleDeleted{}
 }
 
 func (services fakeServices) FundCollectibleReward(_ context.Context, _ core.UserID, _ core.TaskID, collectibleID core.CollectibleID) assets.FundRewardResult {
@@ -688,6 +720,11 @@ func (services fakeServices) GrantCredits(_ context.Context, _ core.UserID, _ le
 	return ledger.CreditsGranted{EntryID: entryID.Value, Amount: amount}
 }
 
+func (services fakeServices) SendCredits(_ context.Context, _ core.UserID, _ ledger.TransferSource, _ ledger.TransferTarget, amount ledger.CreditAmount, _ ledger.TransferNote, _ ledger.IdempotencyKey) ledger.SendResult {
+	entryID := core.NewLedgerEntryID().(core.LedgerEntryIDCreated)
+	return ledger.CreditsSent{DebitEntryID: entryID.Value, Amount: amount, Execution: ledger.FirstExecution{}}
+}
+
 func (services fakeServices) ListNotifications(_ context.Context, _ core.UserID, filter notification.StateFilter, _ core.Page) notification.ListResult {
 	// The subject kind echoes the received filter so tool tests can assert the
 	// state argument threads through to the service call.
@@ -695,7 +732,13 @@ func (services fakeServices) ListNotifications(_ context.Context, _ core.UserID,
 	if _, matched := filter.(notification.UnreadOnly); matched {
 		echoed = "unread_only"
 	}
-	return notification.NotificationsListed{Values: []notification.Notification{{Kind: notification.KindTaskFunded, State: notification.StateUnread, Subject: notification.Subject{Kind: echoed, ID: "echo"}}}, Total: 1}
+	return notification.NotificationsListed{Values: []notification.Notification{{
+		Kind:             notification.KindTaskFunded,
+		State:            notification.StateUnread,
+		Subject:          notification.Subject{Kind: echoed, ID: "echo"},
+		ActorDisplayName: auth.NewDisplayName("mara").(auth.DisplayNameAccepted).Value,
+		SubjectTitle:     notification.TaskSubjectTitle{Title: "Review the release"},
+	}}, Total: 1}
 }
 
 func (services fakeServices) MarkNotificationRead(_ context.Context, recipient core.UserID, notificationID core.NotificationID) notification.MarkReadResult {
@@ -770,7 +813,7 @@ func (services fakeServices) ListAuditEvents(_ context.Context, _ audit.ListFilt
 	return audit.EventsListed{Values: []audit.Event{}}
 }
 
-func (services fakeServices) AwardCollectible(_ context.Context, _ string, recipientKind string, recipientID string, organizationID string) assets.MintResult {
+func (services fakeServices) AwardCollectible(_ context.Context, _ core.UserID, _ string, recipientKind string, recipientID string, organizationID string) assets.MintResult {
 	collectibleID := core.NewCollectibleID().(core.CollectibleIDCreated)
 	return assets.CollectibleMinted{Value: assets.Collectible{ID: collectibleID.Value, State: assets.CollectibleStateMinted, OwnerKind: recipientKind, OwnerID: recipientID, OrganizationID: organizationID}}
 }

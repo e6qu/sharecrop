@@ -20,6 +20,15 @@ type collectibleSummary struct {
 	OwnerKind      string `json:"owner_kind"`
 	OrganizationID string `json:"organization_id"`
 	Art            string `json:"art"`
+	// CatalogSlug names the catalog entry a catalog-awarded instance came
+	// from; empty for custom mints (mirroring REST's collectible response).
+	CatalogSlug string `json:"catalog_slug"`
+	// EditionNumber is the mint sequence number of an edition instance; 0
+	// for unnumbered instances (badges, uniques).
+	EditionNumber int64 `json:"edition_number"`
+	// IssuerDisplayName names the user who minted or awarded the instance.
+	// Resolved on the list read paths; mutation results leave it empty.
+	IssuerDisplayName string `json:"issuer_display_name"`
 }
 
 type collectiblesListPayload struct {
@@ -33,6 +42,14 @@ type catalogEntryPayload struct {
 	Kind           string `json:"kind"`
 	TransferPolicy string `json:"transfer_policy"`
 	Art            string `json:"art"`
+	// State is the entry lifecycle: available (awardable) or withdrawn (its
+	// instances stay in circulation, but awarding is refused).
+	State string `json:"state"`
+	// MaxEditions bounds how many instances may ever be minted: 1 for
+	// uniques, the declared run size for editions, 0 for uncapped badges.
+	MaxEditions int64 `json:"max_editions"`
+	// MintedCount counts the entry's live (non-withdrawn) instances.
+	MintedCount int64 `json:"minted_count"`
 }
 
 type catalogPayload struct {
@@ -46,17 +63,55 @@ func (collectiblesListPayload) payloadValue() {}
 func (catalogPayload) payloadValue() {}
 
 func collectibleToSummary(value assets.Collectible) collectibleSummary {
-	return collectibleSummary{
-		ID:             value.ID.String(),
-		Name:           value.Name.String(),
-		Kind:           value.Kind.String(),
-		State:          value.State.String(),
-		TransferPolicy: value.Policy.String(),
-		OwnerID:        value.OwnerID,
-		OwnerKind:      value.OwnerKind,
-		OrganizationID: value.OrganizationID,
-		Art:            value.Art,
+	catalogSlug := ""
+	if fromCatalog, matched := value.Catalog.(assets.FromCatalog); matched {
+		catalogSlug = fromCatalog.Slug.String()
 	}
+	editionNumber := int64(0)
+	if numbered, matched := value.Edition.(assets.EditionNumbered); matched {
+		editionNumber = numbered.Number
+	}
+	return collectibleSummary{
+		ID:                value.ID.String(),
+		Name:              value.Name.String(),
+		Kind:              value.Kind.String(),
+		State:             value.State.String(),
+		TransferPolicy:    value.Policy.String(),
+		OwnerID:           value.OwnerID,
+		OwnerKind:         value.OwnerKind,
+		OrganizationID:    value.OrganizationID,
+		Art:               value.Art,
+		CatalogSlug:       catalogSlug,
+		EditionNumber:     editionNumber,
+		IssuerDisplayName: value.IssuerDisplayName.String(),
+	}
+}
+
+// parsedCollectibleTemplate is the validated (name, kind, transfer policy)
+// triple shared by mint_collectible and add_catalog_entry.
+type parsedCollectibleTemplate struct {
+	name   assets.CollectibleName
+	kind   assets.CollectibleKind
+	policy assets.TransferPolicy
+}
+
+func parseMCPCollectibleTemplate(rawName string, rawKind string, rawPolicy string) (parsedCollectibleTemplate, toolResult) {
+	nameResult := assets.NewCollectibleName(rawName)
+	name, nameMatched := nameResult.(assets.CollectibleNameAccepted)
+	if !nameMatched {
+		return parsedCollectibleTemplate{}, toolProtocolError{code: codeInvalidParams, message: nameResult.(assets.CollectibleNameRejected).Reason.Description()}
+	}
+	kindResult := assets.ParseCollectibleKind(rawKind)
+	kind, kindMatched := kindResult.(assets.CollectibleKindAccepted)
+	if !kindMatched {
+		return parsedCollectibleTemplate{}, toolProtocolError{code: codeInvalidParams, message: kindResult.(assets.CollectibleKindRejected).Reason.Description()}
+	}
+	policyResult := assets.ParseTransferPolicy(rawPolicy)
+	policy, policyMatched := policyResult.(assets.TransferPolicyAccepted)
+	if !policyMatched {
+		return parsedCollectibleTemplate{}, toolProtocolError{code: codeInvalidParams, message: policyResult.(assets.TransferPolicyRejected).Reason.Description()}
+	}
+	return parsedCollectibleTemplate{name: name.Value, kind: kind.Value, policy: policy.Value}, nil
 }
 
 func (server Server) callMintCollectible(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -69,22 +124,11 @@ func (server Server) callMintCollectible(ctx context.Context, subject auth.UserS
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
 	}
-	nameResult := assets.NewCollectibleName(args.Name)
-	name, nameMatched := nameResult.(assets.CollectibleNameAccepted)
-	if !nameMatched {
-		return toolProtocolError{code: codeInvalidParams, message: nameResult.(assets.CollectibleNameRejected).Reason.Description()}
+	template, templateProblem := parseMCPCollectibleTemplate(args.Name, args.Kind, args.TransferPolicy)
+	if templateProblem != nil {
+		return templateProblem
 	}
-	kindResult := assets.ParseCollectibleKind(args.Kind)
-	kind, kindMatched := kindResult.(assets.CollectibleKindAccepted)
-	if !kindMatched {
-		return toolProtocolError{code: codeInvalidParams, message: kindResult.(assets.CollectibleKindRejected).Reason.Description()}
-	}
-	policyResult := assets.ParseTransferPolicy(args.TransferPolicy)
-	policy, policyMatched := policyResult.(assets.TransferPolicyAccepted)
-	if !policyMatched {
-		return toolProtocolError{code: codeInvalidParams, message: policyResult.(assets.TransferPolicyRejected).Reason.Description()}
-	}
-	result := server.services.MintCollectible(ctx, assets.CollectibleOwnerKindUser, subject.ID.String(), "", name.Value, kind.Value, policy.Value, args.Art)
+	result := server.services.MintCollectible(ctx, subject.ID, assets.CollectibleOwnerKindUser, subject.ID.String(), "", template.name, template.kind, template.policy, args.Art)
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
 		return toolFailed{code: result.(assets.MintRejected).Reason.Code(), message: result.(assets.MintRejected).Reason.Description()}
@@ -93,23 +137,33 @@ func (server Server) callMintCollectible(ctx context.Context, subject auth.UserS
 }
 
 func (server Server) callCollectibleCatalog(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
-	entries := assets.Catalog()
-	payload := catalogPayload{Entries: make([]catalogEntryPayload, 0, len(entries))}
-	for index := range entries {
-		payload.Entries = append(payload.Entries, catalogEntryPayload{
-			Slug:           entries[index].Slug,
-			Name:           entries[index].Name,
-			Kind:           entries[index].Kind.String(),
-			TransferPolicy: entries[index].Policy.String(),
-			Art:            entries[index].Art,
-		})
+	result := server.services.ListCollectibleCatalog(ctx)
+	listed, matched := result.(assets.CatalogListed)
+	if !matched {
+		rejected := result.(assets.CatalogListRejected)
+		return toolFailed{code: rejected.Reason.Code(), message: rejected.Reason.Description()}
+	}
+	// Every entry is listed — including withdrawn ones, whose instances
+	// remain in circulation — with an explicit state marker, matching REST:
+	// hiding a withdrawn entry would make existing instances unexplainable,
+	// and awarding from one is refused at award time anyway.
+	payload := catalogPayload{Entries: make([]catalogEntryPayload, 0, len(listed.Values))}
+	for index := range listed.Values {
+		entry := catalogEntryToPayload(listed.Values[index].Entry)
+		entry.MintedCount = listed.Values[index].LiveInstanceCount
+		payload.Entries = append(payload.Entries, entry)
 	}
 	return marshalPayload(payload)
 }
 
+// callTransferCollectible moves an owned collectible to another user (the
+// default) or donates it to an organization's trophy case, mirroring REST's
+// transfer body: target_kind is "user" (default when absent) or
+// "organization", and recipient_id is the matching user or organization id.
 func (server Server) callTransferCollectible(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	var args struct {
 		CollectibleID string `json:"collectible_id"`
+		TargetKind    string `json:"target_kind"`
 		RecipientID   string `json:"recipient_id"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
@@ -118,19 +172,86 @@ func (server Server) callTransferCollectible(ctx context.Context, subject auth.U
 	collectibleIDResult := core.ParseCollectibleID(args.CollectibleID)
 	collectibleID, collectibleMatched := collectibleIDResult.(core.CollectibleIDCreated)
 	if !collectibleMatched {
-		return toolProtocolError{code: codeInvalidParams, message: collectibleIDResult.(core.CollectibleIDRejected).Reason.Description()}
+		return invalidIDArgument("collectible_id")
 	}
-	recipientResult := core.ParseUserID(args.RecipientID)
-	recipient, recipientMatched := recipientResult.(core.UserIDCreated)
-	if !recipientMatched {
-		return toolProtocolError{code: codeInvalidParams, message: recipientResult.(core.UserIDRejected).Reason.Description()}
+	var result assets.GiftResult
+	switch args.TargetKind {
+	case "", "user":
+		recipientResult := core.ParseUserID(args.RecipientID)
+		recipient, recipientMatched := recipientResult.(core.UserIDCreated)
+		if !recipientMatched {
+			return invalidIDArgument("recipient_id")
+		}
+		result = server.services.TransferCollectible(ctx, subject.ID, recipient.Value, collectibleID.Value)
+	case "organization":
+		organizationIDResult := core.ParseOrganizationID(args.RecipientID)
+		organizationID, organizationMatched := organizationIDResult.(core.OrganizationIDCreated)
+		if !organizationMatched {
+			return invalidIDArgument("recipient_id")
+		}
+		result = server.services.TransferCollectibleToOrganization(ctx, subject.ID, organizationID.Value, collectibleID.Value)
+	default:
+		return toolProtocolError{code: codeInvalidParams, message: "target_kind must be user or organization"}
 	}
-	result := server.services.TransferCollectible(ctx, subject.ID, recipient.Value, collectibleID.Value)
 	gifted, matched := result.(assets.CollectibleGifted)
 	if !matched {
 		return toolFailed{code: result.(assets.GiftRejected).Reason.Code(), message: result.(assets.GiftRejected).Reason.Description()}
 	}
 	return marshalPayload(collectibleToSummary(gifted.Value))
+}
+
+// callTransferOrgCollectible moves an organization-owned collectible to a
+// user. A personal agent credential acts as its user, whose
+// manage_collectibles permission is verified inside the store transaction
+// (mirroring REST's org-transfer route); an organization credential acts for
+// its own organization only, with the permission inherent (org-wide
+// credentials act with org-admin parity), through the member-award path — so
+// the recipient must then be an active member of the organization.
+func (server Server) callTransferOrgCollectible(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
+	var args struct {
+		OrganizationID string `json:"organization_id"`
+		CollectibleID  string `json:"collectible_id"`
+		RecipientID    string `json:"recipient_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	collectibleIDResult := core.ParseCollectibleID(args.CollectibleID)
+	collectibleID, collectibleMatched := collectibleIDResult.(core.CollectibleIDCreated)
+	if !collectibleMatched {
+		return invalidIDArgument("collectible_id")
+	}
+	recipientResult := core.ParseUserID(args.RecipientID)
+	recipient, recipientMatched := recipientResult.(core.UserIDCreated)
+	if !recipientMatched {
+		return invalidIDArgument("recipient_id")
+	}
+	switch typed := subject.(type) {
+	case auth.UserSubject:
+		organizationIDResult := core.ParseOrganizationID(args.OrganizationID)
+		organizationID, organizationMatched := organizationIDResult.(core.OrganizationIDCreated)
+		if !organizationMatched {
+			return invalidIDArgument("organization_id")
+		}
+		result := server.services.TransferCollectibleFromOrganization(ctx, typed.ID, organizationID.Value, recipient.Value, collectibleID.Value)
+		gifted, matched := result.(assets.CollectibleGifted)
+		if !matched {
+			return toolFailed{code: result.(assets.GiftRejected).Reason.Code(), message: result.(assets.GiftRejected).Reason.Description()}
+		}
+		return marshalPayload(collectibleToSummary(gifted.Value))
+	case auth.OrgSubject:
+		if args.OrganizationID != "" && args.OrganizationID != typed.ID.String() {
+			return toolFailed{code: core.ErrorCodePermissionDenied, message: "an organization credential may only transfer its own organization's collectibles"}
+		}
+		result := server.services.AwardOrganizationCollectible(ctx, typed.ID, collectibleID.Value, recipient.Value)
+		gifted, matched := result.(assets.CollectibleGifted)
+		if !matched {
+			return toolFailed{code: result.(assets.GiftRejected).Reason.Code(), message: result.(assets.GiftRejected).Reason.Description()}
+		}
+		return marshalPayload(collectibleToSummary(gifted.Value))
+	default:
+		return toolFailed{code: core.ErrorCodePermissionDenied, message: "a personal agent credential or an organization credential is required"}
+	}
 }
 
 func (server Server) callListCollectibles(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -165,7 +286,7 @@ func (server Server) callFundCollectibleReward(ctx context.Context, subject auth
 	collectibleIDResult := core.ParseCollectibleID(args.CollectibleID)
 	collectibleID, collectibleMatched := collectibleIDResult.(core.CollectibleIDCreated)
 	if !collectibleMatched {
-		return toolProtocolError{code: codeInvalidParams, message: collectibleIDResult.(core.CollectibleIDRejected).Reason.Description()}
+		return invalidIDArgument("collectible_id")
 	}
 	result := server.services.FundCollectibleReward(ctx, subject.ID, taskID, collectibleID.Value)
 	funded, matched := result.(assets.RewardFunded)
@@ -249,10 +370,172 @@ func (server Server) callAwardCollectible(ctx context.Context, subject auth.User
 	if strings.TrimSpace(args.RecipientID) == "" {
 		return toolProtocolError{code: codeInvalidParams, message: "recipient id is required"}
 	}
-	result := server.services.AwardCollectible(ctx, strings.TrimSpace(args.Slug), recipientKind, strings.TrimSpace(args.RecipientID), strings.TrimSpace(args.OrganizationID))
+	result := server.services.AwardCollectible(ctx, subject.ID, strings.TrimSpace(args.Slug), recipientKind, strings.TrimSpace(args.RecipientID), strings.TrimSpace(args.OrganizationID))
 	minted, matched := result.(assets.CollectibleMinted)
 	if !matched {
 		return toolFailed{code: result.(assets.MintRejected).Reason.Code(), message: result.(assets.MintRejected).Reason.Description()}
 	}
 	return marshalPayload(collectibleToSummary(minted.Value))
+}
+
+// deletedPayload is the wire shape of the two hard-delete admin tools,
+// mirroring REST's empty "deleted" response.
+type deletedPayload struct {
+	Status string `json:"status"`
+}
+
+func (deletedPayload) payloadValue() {}
+
+func (catalogEntryPayload) payloadValue() {}
+
+func catalogEntryToPayload(entry assets.CatalogEntry) catalogEntryPayload {
+	maxEditions := int64(0)
+	if capped, matched := entry.Cap.(assets.EditionCapOf); matched {
+		maxEditions = capped.Limit
+	}
+	return catalogEntryPayload{
+		Slug:           entry.Slug.String(),
+		Name:           entry.Name.String(),
+		Kind:           entry.Kind.String(),
+		TransferPolicy: entry.Policy.String(),
+		Art:            entry.Art,
+		State:          entry.State.String(),
+		MaxEditions:    maxEditions,
+	}
+}
+
+// callAddCatalogEntry creates a new awardable catalog entry, mirroring
+// REST's POST /api/admin/collectibles/catalog field-for-field. The admin
+// re-check happened in dispatch (requireAdminSubjectForTool).
+func (server Server) callAddCatalogEntry(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		Slug           string `json:"slug"`
+		Name           string `json:"name"`
+		Kind           string `json:"kind"`
+		TransferPolicy string `json:"transfer_policy"`
+		Art            string `json:"art"`
+		MaxEditions    int64  `json:"max_editions"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	slugResult := assets.NewCatalogSlug(args.Slug)
+	slug, slugMatched := slugResult.(assets.CatalogSlugAccepted)
+	if !slugMatched {
+		return toolProtocolError{code: codeInvalidParams, message: slugResult.(assets.CatalogSlugRejected).Reason.Description()}
+	}
+	template, templateProblem := parseMCPCollectibleTemplate(args.Name, args.Kind, args.TransferPolicy)
+	if templateProblem != nil {
+		return templateProblem
+	}
+	if args.MaxEditions < 0 {
+		return toolProtocolError{code: codeInvalidParams, message: "max_editions cannot be negative"}
+	}
+	var editionCap assets.EditionCap = assets.NoEditionCap{}
+	if args.MaxEditions > 0 {
+		editionCap = assets.EditionCapOf{Limit: args.MaxEditions}
+	}
+	result := server.services.AddCatalogEntry(ctx, assets.CatalogEntry{
+		Slug:   slug.Value,
+		Name:   template.name,
+		Kind:   template.kind,
+		Policy: template.policy,
+		Art:    args.Art,
+		State:  assets.CatalogEntryStateAvailable,
+		Cap:    editionCap,
+	})
+	mutated, matched := result.(assets.CatalogMutated)
+	if !matched {
+		return toolFailed{code: result.(assets.CatalogMutationRejected).Reason.Code(), message: result.(assets.CatalogMutationRejected).Reason.Description()}
+	}
+	return marshalPayload(catalogEntryToPayload(mutated.Value))
+}
+
+func parseMCPCatalogSlug(arguments json.RawMessage) (assets.CatalogSlug, toolResult) {
+	var args struct {
+		Slug string `json:"slug"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return assets.CatalogSlug{}, invalidArguments()
+	}
+	slugResult := assets.NewCatalogSlug(args.Slug)
+	slug, matched := slugResult.(assets.CatalogSlugAccepted)
+	if !matched {
+		return assets.CatalogSlug{}, toolProtocolError{code: codeInvalidParams, message: slugResult.(assets.CatalogSlugRejected).Reason.Description()}
+	}
+	return slug.Value, nil
+}
+
+// callWithdrawCatalogEntry marks an entry no longer awardable; existing
+// instances are unaffected. Admin-gated in dispatch.
+func (server Server) callWithdrawCatalogEntry(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	slug, problem := parseMCPCatalogSlug(arguments)
+	if problem != nil {
+		return problem
+	}
+	result := server.services.WithdrawCatalogEntry(ctx, slug)
+	mutated, matched := result.(assets.CatalogMutated)
+	if !matched {
+		return toolFailed{code: result.(assets.CatalogMutationRejected).Reason.Code(), message: result.(assets.CatalogMutationRejected).Reason.Description()}
+	}
+	return marshalPayload(catalogEntryToPayload(mutated.Value))
+}
+
+// callDeleteCatalogEntry removes a withdrawn entry that no live instance
+// references; a not-yet-withdrawn entry or one with live instances is
+// refused with a conflict. Admin-gated in dispatch.
+func (server Server) callDeleteCatalogEntry(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	slug, problem := parseMCPCatalogSlug(arguments)
+	if problem != nil {
+		return problem
+	}
+	result := server.services.DeleteCatalogEntry(ctx, slug)
+	if _, matched := result.(assets.CatalogMutated); !matched {
+		return toolFailed{code: result.(assets.CatalogMutationRejected).Reason.Code(), message: result.(assets.CatalogMutationRejected).Reason.Description()}
+	}
+	return marshalPayload(deletedPayload{Status: "deleted"})
+}
+
+// callWithdrawCollectible removes a catalog-minted instance from its holder;
+// the former holder learns through the collectible_withdrawn event.
+// Admin-gated in dispatch.
+func (server Server) callWithdrawCollectible(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		CollectibleID string `json:"collectible_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	collectibleIDResult := core.ParseCollectibleID(args.CollectibleID)
+	collectibleID, collectibleMatched := collectibleIDResult.(core.CollectibleIDCreated)
+	if !collectibleMatched {
+		return invalidIDArgument("collectible_id")
+	}
+	result := server.services.WithdrawCollectible(ctx, subject.ID, collectibleID.Value)
+	withdrawn, matched := result.(assets.CollectibleWithdrawn)
+	if !matched {
+		return toolFailed{code: result.(assets.WithdrawRejected).Reason.Code(), message: result.(assets.WithdrawRejected).Reason.Description()}
+	}
+	return marshalPayload(collectibleToSummary(withdrawn.Value))
+}
+
+// callDeleteWithdrawnCollectible hard-deletes a withdrawn instance; every
+// other state is refused with a conflict. Admin-gated in dispatch.
+func (server Server) callDeleteWithdrawnCollectible(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		CollectibleID string `json:"collectible_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	collectibleIDResult := core.ParseCollectibleID(args.CollectibleID)
+	collectibleID, collectibleMatched := collectibleIDResult.(core.CollectibleIDCreated)
+	if !collectibleMatched {
+		return invalidIDArgument("collectible_id")
+	}
+	result := server.services.DeleteWithdrawnCollectible(ctx, collectibleID.Value)
+	if _, matched := result.(assets.CollectibleDeleted); !matched {
+		return toolFailed{code: result.(assets.DeleteCollectibleRejected).Reason.Code(), message: result.(assets.DeleteCollectibleRejected).Reason.Description()}
+	}
+	return marshalPayload(deletedPayload{Status: "deleted"})
 }

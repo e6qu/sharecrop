@@ -58,7 +58,7 @@ func TestReviewAcceptEmitsAcceptedPayoutAndTip(t *testing.T) {
 	service := NewService(store, eventtest.RecorderOver(events), noopAuditRecorder{})
 	requester := newTestUserID(t)
 
-	if _, matched := service.ReviewAcceptSubmission(context.Background(), requester, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-emit-1"), FullCreditReviewSelection{}, CreditTipSelection{Amount: newTestAmount(t, 5)}, NoCollectibleTipSelection{}).(SubmissionAccepted); !matched {
+	if _, matched := service.ReviewAcceptSubmission(context.Background(), UserReviewer{ID: requester}, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-emit-1"), FullCreditReviewSelection{}, CreditTipSelection{Amount: newTestAmount(t, 5)}, NoCollectibleTipSelection{}).(SubmissionAccepted); !matched {
 		t.Fatalf("accept rejected")
 	}
 
@@ -88,7 +88,7 @@ func TestReviewAcceptWithoutRewardStillEmitsAcceptedToWorker(t *testing.T) {
 	worker := newTestUserID(t)
 	service := NewService(&memoryStore{worker: worker, events: events}, eventtest.RecorderOver(events), noopAuditRecorder{})
 
-	if _, matched := service.AcceptSubmission(context.Background(), newTestUserID(t), newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-emit-2")).(SubmissionAccepted); !matched {
+	if _, matched := service.AcceptSubmission(context.Background(), UserReviewer{ID: newTestUserID(t)}, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-emit-2")).(SubmissionAccepted); !matched {
 		t.Fatalf("accept rejected")
 	}
 	appended := events.Appended()
@@ -106,10 +106,10 @@ func TestRequestChangesAndRejectEmitReviewEvents(t *testing.T) {
 	service := NewService(&memoryStore{worker: worker, events: events}, eventtest.RecorderOver(events), noopAuditRecorder{})
 	requester := newTestUserID(t)
 
-	if _, matched := service.RequestChanges(context.Background(), requester, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "changes-emit-1"), submissionNote(t, "needs current data")).(ChangesRequested); !matched {
+	if _, matched := service.RequestChanges(context.Background(), UserReviewer{ID: requester}, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "changes-emit-1"), submissionNote(t, "needs current data")).(ChangesRequested); !matched {
 		t.Fatalf("request changes rejected")
 	}
-	if _, matched := service.RejectSubmission(context.Background(), requester, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "reject-emit-1"), submissionNote(t, "stale numbers"), NoCreditReviewSelection{}, NoTipSelection{}, NoBanSelection{}).(SubmissionRejected); !matched {
+	if _, matched := service.RejectSubmission(context.Background(), UserReviewer{ID: requester}, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "reject-emit-1"), submissionNote(t, "stale numbers"), NoCreditReviewSelection{}, NoTipSelection{}, NoBanSelection{}).(SubmissionRejected); !matched {
 		t.Fatalf("reject rejected")
 	}
 

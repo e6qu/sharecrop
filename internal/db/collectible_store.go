@@ -4,11 +4,30 @@ import (
 	"context"
 
 	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// collectibleColumns is the shared collectible row projection (including the
+// provenance columns added by migration 000051).
+const collectibleColumns = `id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind,
+	coalesce(organization_id::text, ''), art, coalesce(catalog_slug, ''), edition_number, coalesce(issued_by_user_id::text, '')`
+
+// collectibleListColumns is collectibleColumns qualified for the left join
+// that resolves the issuer's display name on the list read paths (mutation
+// paths keep the unjoined projection so their FOR UPDATE locks stay simple).
+const collectibleListColumns = `collectibles.id::text, collectibles.name, collectibles.kind, collectibles.state,
+	collectibles.transfer_policy, collectibles.owner_user_id::text, collectibles.owner_kind,
+	coalesce(collectibles.organization_id::text, ''), collectibles.art, coalesce(collectibles.catalog_slug, ''),
+	collectibles.edition_number, coalesce(collectibles.issued_by_user_id::text, ''),
+	coalesce(coalesce(nullif(users.display_name, ''), split_part(users.email, '@', 1)), '')`
+
+// collectibleIssuerJoin joins the issuer's user row for display-name
+// resolution; issuerless (pre-provenance) rows keep an empty name.
+const collectibleIssuerJoin = "left join users on users.id = collectibles.issued_by_user_id"
 
 type CollectibleStore struct {
 	db Beginner
@@ -22,23 +41,77 @@ func NewCollectibleStoreFromHandle(handle Beginner) CollectibleStore {
 	return CollectibleStore{db: handle}
 }
 
+// CreateCollectible mints a custom collectible, enforcing the kind
+// semantics for custom mints inside one transaction: at most one live unique
+// per (issuer, name), and edition numbering per (issuer, name). The partial
+// unique indexes from migration 000051 back the application checks.
 func (store CollectibleStore) CreateCollectible(ctx context.Context, collectible assets.Collectible) assets.CreateStoreResult {
-	_, err := store.db.Exec(ctx, `
-		insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id, owner_kind, organization_id, art)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`, collectible.ID.String(), collectible.Name.String(), collectible.Kind.String(), collectible.State.String(), collectible.Policy.String(), collectible.OwnerID, collectible.OwnerKind, nullableText(collectible.OrganizationID), collectible.Art)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
+		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin mint collectible transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	issuer := ""
+	if issuedBy, matched := collectible.Issuer.(assets.IssuedBy); matched {
+		issuer = issuedBy.ID.String()
+	}
+
+	created := collectible
+	created.Edition = assets.NoEditionNumber{}
+	var editionNumber *int64
+	if issuer != "" {
+		switch collectible.Kind {
+		case assets.CollectibleKindUnique:
+			var liveExists bool
+			if err := tx.QueryRow(ctx, `
+				select exists(
+					select 1 from collectibles
+					where kind = 'unique' and catalog_slug is null
+					and issued_by_user_id = $1 and name = $2 and state <> 'withdrawn'
+				)
+			`, issuer, collectible.Name.String()).Scan(&liveExists); err != nil {
+				return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check unique collectible failed")}
+			}
+			if liveExists {
+				return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "a live instance of this unique collectible already exists")}
+			}
+		case assets.CollectibleKindEdition:
+			var next int64
+			if err := tx.QueryRow(ctx, `
+				select coalesce(max(edition_number), 0) + 1 from collectibles
+				where catalog_slug is null and issued_by_user_id = $1 and name = $2
+			`, issuer, collectible.Name.String()).Scan(&next); err != nil {
+				return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "number collectible edition failed")}
+			}
+			editionNumber = &next
+			created.Edition = assets.EditionNumbered{Number: next}
+		}
+	}
+
+	_, err = tx.Exec(ctx, `
+		insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id, owner_kind, organization_id, art, catalog_slug, edition_number, issued_by_user_id)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, null, $10, $11)
+	`, collectible.ID.String(), collectible.Name.String(), collectible.Kind.String(), collectible.State.String(), collectible.Policy.String(), collectible.OwnerID, collectible.OwnerKind, nullableText(collectible.OrganizationID), collectible.Art, editionNumber, nullableText(issuer))
+	if err != nil {
+		if isUniqueViolation(err) {
+			return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "collectible uniqueness constraint was violated")}
+		}
 		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert collectible failed")}
 	}
-	return assets.CreateStoreAccepted{}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit mint collectible transaction failed")}
+	}
+	return assets.CreateStoreAccepted{Value: created}
 }
 
 func (store CollectibleStore) ListCollectibles(ctx context.Context, owner core.UserID, page core.Page) assets.ListStoreResult {
 	rows, err := store.db.Query(ctx, `
-		select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, coalesce(organization_id::text, ''), art
+		select `+collectibleListColumns+`
 		from collectibles
-		where owner_user_id = $1 and owner_kind = 'user'
-		order by created_at desc, id
+		`+collectibleIssuerJoin+`
+		where collectibles.owner_user_id = $1 and collectibles.owner_kind = 'user'
+		order by collectibles.created_at desc, collectibles.id
 		limit $2 offset $3
 	`, owner.String(), page.Limit(), page.Offset())
 	if err != nil {
@@ -78,10 +151,11 @@ func (store CollectibleStore) TaskHeldCollectibles(ctx context.Context, taskID c
 
 func (store CollectibleStore) ListCollectiblesByOwner(ctx context.Context, ownerKind string, ownerID string, page core.Page) assets.ListStoreResult {
 	rows, err := store.db.Query(ctx, `
-		select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, coalesce(organization_id::text, ''), art
+		select `+collectibleListColumns+`
 		from collectibles
-		where owner_user_id = $1 and owner_kind = $2
-		order by created_at desc, id
+		`+collectibleIssuerJoin+`
+		where collectibles.owner_user_id = $1 and collectibles.owner_kind = $2
+		order by collectibles.created_at desc, collectibles.id
 		limit $3 offset $4
 	`, ownerID, ownerKind, page.Limit(), page.Offset())
 	if err != nil {
@@ -91,12 +165,13 @@ func (store CollectibleStore) ListCollectiblesByOwner(ctx context.Context, owner
 	return collectListedCollectibles(rows)
 }
 
-// collectListedCollectibles scans every row of a collectibles query into the
+// collectListedCollectibles scans every row of a collectibles list query
+// (projected with the trailing issuer display-name column) into the
 // listed-store result, rejecting on the first unparsable row.
 func collectListedCollectibles(rows Rows) assets.ListStoreResult {
 	values := make([]assets.Collectible, 0)
 	for rows.Next() {
-		parsed := scanCollectible(rows)
+		parsed := scanCollectibleWithIssuerName(rows)
 		accepted, matched := parsed.(collectibleParsed)
 		if !matched {
 			return assets.ListStoreRejected{Reason: parsed.(collectibleParseRejected).reason}
@@ -409,7 +484,7 @@ func requireSharedCollectibleOrganization(ctx context.Context, tx Tx, collectibl
 }
 
 func lockCollectible(ctx context.Context, tx Tx, collectibleID core.CollectibleID) collectibleParseResult {
-	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, coalesce(organization_id::text, ''), art from collectibles where id = $1 for update", collectibleID.String())
+	rows, err := tx.Query(ctx, "select "+collectibleColumns+" from collectibles where id = $1 for update", collectibleID.String())
 	if err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock collectible failed")}
 	}
@@ -421,7 +496,7 @@ func lockCollectible(ctx context.Context, tx Tx, collectibleID core.CollectibleI
 }
 
 func findCollectible(ctx context.Context, tx Tx, rawCollectibleID string) collectibleParseResult {
-	rows, err := tx.Query(ctx, "select id::text, name, kind, state, transfer_policy, owner_user_id::text, owner_kind, coalesce(organization_id::text, ''), art from collectibles where id = $1", rawCollectibleID)
+	rows, err := tx.Query(ctx, "select "+collectibleColumns+" from collectibles where id = $1", rawCollectibleID)
 	if err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read collectible failed")}
 	}
@@ -442,13 +517,51 @@ func scanCollectible(rows Rows) collectibleParseResult {
 	var rawOwnerKind string
 	var rawOrganizationID string
 	var rawArt string
-	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner, &rawOwnerKind, &rawOrganizationID, &rawArt); err != nil {
+	var rawCatalogSlug string
+	var editionNumber *int64
+	var rawIssuer string
+	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner, &rawOwnerKind, &rawOrganizationID, &rawArt, &rawCatalogSlug, &editionNumber, &rawIssuer); err != nil {
 		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan collectible failed")}
 	}
-	return parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner, rawOwnerKind, rawOrganizationID, rawArt)
+	return parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner, rawOwnerKind, rawOrganizationID, rawArt, rawCatalogSlug, editionNumber, rawIssuer)
 }
 
-func parseCollectible(rawID string, rawName string, rawKind string, rawState string, rawPolicy string, rawOwner string, rawOwnerKind string, rawOrganizationID string, rawArt string) collectibleParseResult {
+// scanCollectibleWithIssuerName scans a list-projection row (the collectible
+// columns plus the resolved issuer display name).
+func scanCollectibleWithIssuerName(rows Rows) collectibleParseResult {
+	var rawID string
+	var rawName string
+	var rawKind string
+	var rawState string
+	var rawPolicy string
+	var rawOwner string
+	var rawOwnerKind string
+	var rawOrganizationID string
+	var rawArt string
+	var rawCatalogSlug string
+	var editionNumber *int64
+	var rawIssuer string
+	var rawIssuerName string
+	if err := rows.Scan(&rawID, &rawName, &rawKind, &rawState, &rawPolicy, &rawOwner, &rawOwnerKind, &rawOrganizationID, &rawArt, &rawCatalogSlug, &editionNumber, &rawIssuer, &rawIssuerName); err != nil {
+		return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan collectible failed")}
+	}
+	parsed := parseCollectible(rawID, rawName, rawKind, rawState, rawPolicy, rawOwner, rawOwnerKind, rawOrganizationID, rawArt, rawCatalogSlug, editionNumber, rawIssuer)
+	accepted, matched := parsed.(collectibleParsed)
+	if !matched {
+		return parsed
+	}
+	if rawIssuerName != "" {
+		nameResult := auth.NewDisplayName(rawIssuerName)
+		name, nameMatched := nameResult.(auth.DisplayNameAccepted)
+		if !nameMatched {
+			return collectibleParseRejected{reason: nameResult.(auth.DisplayNameRejected).Reason}
+		}
+		accepted.value.IssuerDisplayName = name.Value
+	}
+	return collectibleParsed{value: accepted.value}
+}
+
+func parseCollectible(rawID string, rawName string, rawKind string, rawState string, rawPolicy string, rawOwner string, rawOwnerKind string, rawOrganizationID string, rawArt string, rawCatalogSlug string, editionNumber *int64, rawIssuer string) collectibleParseResult {
 	idResult := core.ParseCollectibleID(rawID)
 	collectibleID, idMatched := idResult.(core.CollectibleIDCreated)
 	if !idMatched {
@@ -482,6 +595,28 @@ func parseCollectible(rawID string, rawName string, rawKind string, rawState str
 			return collectibleParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible organization is invalid")}
 		}
 	}
+	var catalogRef assets.CatalogRef = assets.NoCatalogRef{}
+	if rawCatalogSlug != "" {
+		slugResult := assets.NewCatalogSlug(rawCatalogSlug)
+		slug, slugMatched := slugResult.(assets.CatalogSlugAccepted)
+		if !slugMatched {
+			return collectibleParseRejected{reason: slugResult.(assets.CatalogSlugRejected).Reason}
+		}
+		catalogRef = assets.FromCatalog{Slug: slug.Value}
+	}
+	var editionRef assets.EditionRef = assets.NoEditionNumber{}
+	if editionNumber != nil {
+		editionRef = assets.EditionNumbered{Number: *editionNumber}
+	}
+	var issuerRef assets.IssuerRef = assets.NoIssuer{}
+	if rawIssuer != "" {
+		issuerResult := core.ParseUserID(rawIssuer)
+		issuerCreated, issuerMatched := issuerResult.(core.UserIDCreated)
+		if !issuerMatched {
+			return collectibleParseRejected{reason: issuerResult.(core.UserIDRejected).Reason}
+		}
+		issuerRef = assets.IssuedBy{ID: issuerCreated.Value}
+	}
 	return collectibleParsed{value: assets.Collectible{
 		ID:             collectibleID.Value,
 		Name:           name.Value,
@@ -492,6 +627,9 @@ func parseCollectible(rawID string, rawName string, rawKind string, rawState str
 		OwnerID:        rawOwner,
 		OrganizationID: rawOrganizationID,
 		Art:            rawArt,
+		Catalog:        catalogRef,
+		Edition:        editionRef,
+		Issuer:         issuerRef,
 	}}
 }
 
@@ -500,4 +638,484 @@ func nullableText(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+// catalogEntryColumns is the shared catalog entry projection.
+const catalogEntryColumns = "slug, name, kind, transfer_policy, art, state, max_editions"
+
+type catalogEntryParseResult interface {
+	catalogEntryParseResult()
+}
+
+type catalogEntryParsed struct {
+	value assets.CatalogEntry
+}
+
+type catalogEntryParseRejected struct {
+	reason core.DomainError
+}
+
+func (catalogEntryParsed) catalogEntryParseResult() {}
+
+func (catalogEntryParseRejected) catalogEntryParseResult() {}
+
+func scanCatalogEntry(rows Rows) catalogEntryParseResult {
+	var rawSlug, rawName, rawKind, rawPolicy, rawArt, rawState string
+	var maxEditions *int64
+	if err := rows.Scan(&rawSlug, &rawName, &rawKind, &rawPolicy, &rawArt, &rawState, &maxEditions); err != nil {
+		return catalogEntryParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan catalog entry failed")}
+	}
+	return parseCatalogEntry(rawSlug, rawName, rawKind, rawPolicy, rawArt, rawState, maxEditions)
+}
+
+func parseCatalogEntry(rawSlug string, rawName string, rawKind string, rawPolicy string, rawArt string, rawState string, maxEditions *int64) catalogEntryParseResult {
+	slugResult := assets.NewCatalogSlug(rawSlug)
+	slug, slugMatched := slugResult.(assets.CatalogSlugAccepted)
+	if !slugMatched {
+		return catalogEntryParseRejected{reason: slugResult.(assets.CatalogSlugRejected).Reason}
+	}
+	nameResult := assets.NewCollectibleName(rawName)
+	name, nameMatched := nameResult.(assets.CollectibleNameAccepted)
+	if !nameMatched {
+		return catalogEntryParseRejected{reason: nameResult.(assets.CollectibleNameRejected).Reason}
+	}
+	kindResult := assets.ParseCollectibleKind(rawKind)
+	kind, kindMatched := kindResult.(assets.CollectibleKindAccepted)
+	if !kindMatched {
+		return catalogEntryParseRejected{reason: kindResult.(assets.CollectibleKindRejected).Reason}
+	}
+	policyResult := assets.ParseTransferPolicy(rawPolicy)
+	policy, policyMatched := policyResult.(assets.TransferPolicyAccepted)
+	if !policyMatched {
+		return catalogEntryParseRejected{reason: policyResult.(assets.TransferPolicyRejected).Reason}
+	}
+	stateResult := assets.ParseCatalogEntryState(rawState)
+	state, stateMatched := stateResult.(assets.CatalogEntryStateAccepted)
+	if !stateMatched {
+		return catalogEntryParseRejected{reason: stateResult.(assets.CatalogEntryStateRejected).Reason}
+	}
+	var cap assets.EditionCap = assets.NoEditionCap{}
+	if maxEditions != nil {
+		cap = assets.EditionCapOf{Limit: *maxEditions}
+	}
+	return catalogEntryParsed{value: assets.CatalogEntry{
+		Slug:   slug.Value,
+		Name:   name.Value,
+		Kind:   kind.Value,
+		Policy: policy.Value,
+		Art:    rawArt,
+		State:  state.Value,
+		Cap:    cap,
+	}}
+}
+
+func (store CollectibleStore) ListCatalogEntries(ctx context.Context) assets.CatalogListResult {
+	// The correlated subquery counts each entry's live (non-withdrawn)
+	// instances in the same read, so the listing reports circulation without
+	// a per-entry round trip.
+	rows, err := store.db.Query(ctx, `
+		select `+catalogEntryColumns+`,
+			(select count(*) from collectibles where collectibles.catalog_slug = collectible_catalog_entries.slug and collectibles.state <> 'withdrawn') as live_instances
+		from collectible_catalog_entries
+		order by created_at asc, slug asc
+	`)
+	if err != nil {
+		return assets.CatalogListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list catalog entries failed")}
+	}
+	defer rows.Close()
+	values := make([]assets.CatalogListing, 0)
+	for rows.Next() {
+		parsed := scanCatalogListing(rows)
+		accepted, matched := parsed.(catalogListingParsed)
+		if !matched {
+			return assets.CatalogListRejected{Reason: parsed.(catalogListingParseRejected).reason}
+		}
+		values = append(values, accepted.value)
+	}
+	if rows.Err() != nil {
+		return assets.CatalogListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read catalog entries failed")}
+	}
+	return assets.CatalogListed{Values: values}
+}
+
+type catalogListingParseResult interface {
+	catalogListingParseResult()
+}
+
+type catalogListingParsed struct {
+	value assets.CatalogListing
+}
+
+type catalogListingParseRejected struct {
+	reason core.DomainError
+}
+
+func (catalogListingParsed) catalogListingParseResult() {}
+
+func (catalogListingParseRejected) catalogListingParseResult() {}
+
+// scanCatalogListing scans one catalog row projected with the trailing
+// live-instance count column.
+func scanCatalogListing(rows Rows) catalogListingParseResult {
+	var rawSlug, rawName, rawKind, rawPolicy, rawArt, rawState string
+	var maxEditions *int64
+	var liveInstances int64
+	if err := rows.Scan(&rawSlug, &rawName, &rawKind, &rawPolicy, &rawArt, &rawState, &maxEditions, &liveInstances); err != nil {
+		return catalogListingParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan catalog listing failed")}
+	}
+	parsed := parseCatalogEntry(rawSlug, rawName, rawKind, rawPolicy, rawArt, rawState, maxEditions)
+	entry, matched := parsed.(catalogEntryParsed)
+	if !matched {
+		return catalogListingParseRejected{reason: parsed.(catalogEntryParseRejected).reason}
+	}
+	return catalogListingParsed{value: assets.CatalogListing{Entry: entry.value, LiveInstanceCount: liveInstances}}
+}
+
+func maxEditionsColumn(cap assets.EditionCap) *int64 {
+	if capped, matched := cap.(assets.EditionCapOf); matched {
+		limit := capped.Limit
+		return &limit
+	}
+	return nil
+}
+
+func (store CollectibleStore) AddCatalogEntry(ctx context.Context, entry assets.CatalogEntry) assets.CatalogMutationResult {
+	_, err := store.db.Exec(ctx, `
+		insert into collectible_catalog_entries (slug, name, kind, transfer_policy, art, state, max_editions)
+		values ($1, $2, $3, $4, $5, $6, $7)
+	`, entry.Slug.String(), entry.Name.String(), entry.Kind.String(), entry.Policy.String(), entry.Art, entry.State.String(), maxEditionsColumn(entry.Cap))
+	if err != nil {
+		if isUniqueViolation(err) {
+			return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "catalog slug already exists")}
+		}
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert catalog entry failed")}
+	}
+	return assets.CatalogMutated{Value: entry}
+}
+
+func (store CollectibleStore) findCatalogEntry(ctx context.Context, querier Querier, slug assets.CatalogSlug, forUpdate bool) catalogEntryParseResult {
+	query := "select " + catalogEntryColumns + " from collectible_catalog_entries where slug = $1"
+	if forUpdate {
+		query += " for update"
+	}
+	rows, err := querier.Query(ctx, query, slug.String())
+	if err != nil {
+		return catalogEntryParseRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read catalog entry failed")}
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return catalogEntryParseRejected{reason: core.NewDomainError(core.ErrorCodeNotFound, "catalog entry was not found")}
+	}
+	return scanCatalogEntry(rows)
+}
+
+// WithdrawCatalogEntry marks an available entry withdrawn: it can no longer
+// be awarded, while existing instances stay untouched.
+func (store CollectibleStore) WithdrawCatalogEntry(ctx context.Context, slug assets.CatalogSlug) assets.CatalogMutationResult {
+	tag, err := store.db.Exec(ctx, `
+		update collectible_catalog_entries
+		set state = 'withdrawn', state_recorded_at = now()
+		where slug = $1 and state = 'available'
+	`, slug.String())
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "withdraw catalog entry failed")}
+	}
+	if tag != 1 {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "catalog entry is not available to withdraw")}
+	}
+	result := store.findCatalogEntry(ctx, store.db, slug, false)
+	entry, matched := result.(catalogEntryParsed)
+	if !matched {
+		return assets.CatalogMutationRejected{Reason: result.(catalogEntryParseRejected).reason}
+	}
+	return assets.CatalogMutated{Value: entry.value}
+}
+
+// DeleteCatalogEntry removes a withdrawn entry that no live (non-withdrawn)
+// instance references.
+func (store CollectibleStore) DeleteCatalogEntry(ctx context.Context, slug assets.CatalogSlug) assets.CatalogMutationResult {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin delete catalog entry transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	result := store.findCatalogEntry(ctx, tx, slug, true)
+	entry, matched := result.(catalogEntryParsed)
+	if !matched {
+		return assets.CatalogMutationRejected{Reason: result.(catalogEntryParseRejected).reason}
+	}
+	if entry.value.State != assets.CatalogEntryStateWithdrawn {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only withdrawn catalog entries can be deleted")}
+	}
+	var liveInstances bool
+	if err := tx.QueryRow(ctx, `
+		select exists(select 1 from collectibles where catalog_slug = $1 and state <> 'withdrawn')
+	`, slug.String()).Scan(&liveInstances); err != nil {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check catalog entry instances failed")}
+	}
+	if liveInstances {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "catalog entry still has live instances")}
+	}
+	if _, err := tx.Exec(ctx, "delete from collectible_catalog_entries where slug = $1", slug.String()); err != nil {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "delete catalog entry failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit delete catalog entry failed")}
+	}
+	return assets.CatalogMutated{Value: entry.value}
+}
+
+// AwardFromCatalog mints one instance of an available catalog entry inside a
+// transaction that locks the entry row, so uniqueness checks and edition
+// numbering serialize per entry (the partial unique indexes back them up).
+func (store CollectibleStore) AwardFromCatalog(ctx context.Context, command assets.AwardFromCatalogStoreCommand) assets.CreateStoreResult {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin award collectible transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	entryResult := store.findCatalogEntry(ctx, tx, command.Slug, true)
+	entry, entryMatched := entryResult.(catalogEntryParsed)
+	if !entryMatched {
+		return assets.CreateStoreRejected{Reason: entryResult.(catalogEntryParseRejected).reason}
+	}
+	if entry.value.State != assets.CatalogEntryStateAvailable {
+		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "catalog entry is withdrawn and can no longer be awarded")}
+	}
+
+	var editionRef assets.EditionRef = assets.NoEditionNumber{}
+	var editionNumber *int64
+	switch entry.value.Kind {
+	case assets.CollectibleKindUnique:
+		var liveExists bool
+		if err := tx.QueryRow(ctx, `
+			select exists(select 1 from collectibles where catalog_slug = $1 and state <> 'withdrawn')
+		`, command.Slug.String()).Scan(&liveExists); err != nil {
+			return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check unique catalog instance failed")}
+		}
+		if liveExists {
+			return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "unique collectible already has a live instance")}
+		}
+	case assets.CollectibleKindEdition:
+		var next int64
+		if err := tx.QueryRow(ctx, `
+			select coalesce(max(edition_number), 0) + 1 from collectibles where catalog_slug = $1
+		`, command.Slug.String()).Scan(&next); err != nil {
+			return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "number catalog edition failed")}
+		}
+		if capped, matched := entry.value.Cap.(assets.EditionCapOf); matched && next > capped.Limit {
+			return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "edition cap reached; no further instances can be minted")}
+		}
+		editionNumber = &next
+		editionRef = assets.EditionNumbered{Number: next}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		insert into collectibles (id, name, kind, state, transfer_policy, owner_user_id, owner_kind, organization_id, art, catalog_slug, edition_number, issued_by_user_id)
+		values ($1, $2, $3, 'minted', $4, $5, $6, $7, $8, $9, $10, $11)
+	`, command.NewID.String(), entry.value.Name.String(), entry.value.Kind.String(), entry.value.Policy.String(),
+		command.OwnerID, command.OwnerKind, nullableText(command.OrganizationID), entry.value.Art,
+		command.Slug.String(), editionNumber, command.Issuer.String()); err != nil {
+		if isUniqueViolation(err) {
+			return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "collectible uniqueness constraint was violated")}
+		}
+		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert awarded collectible failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit award collectible transaction failed")}
+	}
+	return assets.CreateStoreAccepted{Value: assets.Collectible{
+		ID:             command.NewID,
+		Name:           entry.value.Name,
+		Kind:           entry.value.Kind,
+		State:          assets.CollectibleStateMinted,
+		Policy:         entry.value.Policy,
+		OwnerKind:      command.OwnerKind,
+		OwnerID:        command.OwnerID,
+		OrganizationID: command.OrganizationID,
+		Art:            entry.value.Art,
+		Catalog:        assets.FromCatalog{Slug: command.Slug},
+		Edition:        editionRef,
+		Issuer:         assets.IssuedBy{ID: command.Issuer},
+	}}
+}
+
+// WithdrawCollectible removes a catalog-minted instance from its holder
+// (state -> withdrawn). Escrowed instances are refused (a task reward
+// references them); the former holder is merged into the event draft's
+// recipients inside the transaction.
+func (store CollectibleStore) WithdrawCollectible(ctx context.Context, command assets.WithdrawCollectibleStoreCommand) assets.WithdrawResult {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin withdraw collectible transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	collectibleResult := lockCollectible(ctx, tx, command.CollectibleID)
+	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
+	if !collectibleMatched {
+		return assets.WithdrawRejected{Reason: collectibleResult.(collectibleParseRejected).reason}
+	}
+	if _, fromCatalog := collectible.value.Catalog.(assets.FromCatalog); !fromCatalog {
+		return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "only catalog collectibles can be withdrawn")}
+	}
+	if collectible.value.State == assets.CollectibleStateEscrowed {
+		return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "collectible is held as a task reward and cannot be withdrawn")}
+	}
+	if collectible.value.State != assets.CollectibleStateMinted {
+		return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "collectible is not withdrawable in its current state")}
+	}
+
+	if _, err := tx.Exec(ctx, "update collectibles set state = 'withdrawn', state_recorded_at = now() where id = $1", command.CollectibleID.String()); err != nil {
+		return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "withdraw collectible failed")}
+	}
+
+	draft := command.Draft
+	if collectible.value.OwnerKind == assets.CollectibleOwnerKindUser {
+		holderResult := core.ParseUserID(collectible.value.OwnerID)
+		holder, holderMatched := holderResult.(core.UserIDCreated)
+		if !holderMatched {
+			return assets.WithdrawRejected{Reason: holderResult.(core.UserIDRejected).Reason}
+		}
+		draft = draft.WithRecipients(holder.Value)
+	}
+	if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+		return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record collectible withdrawn event failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit withdraw collectible failed")}
+	}
+	withdrawn := collectible.value
+	withdrawn.State = assets.CollectibleStateWithdrawn
+	return assets.CollectibleWithdrawn{Value: withdrawn, RecordedEvents: []event.Draft{draft}}
+}
+
+// DeleteWithdrawnCollectible hard-deletes a withdrawn instance after
+// verifying no task escrow references it.
+func (store CollectibleStore) DeleteWithdrawnCollectible(ctx context.Context, collectibleID core.CollectibleID) assets.DeleteCollectibleResult {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return assets.DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin delete collectible transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var escrowed bool
+	if err := tx.QueryRow(ctx, "select exists(select 1 from task_fund_collectibles where collectible_id = $1)", collectibleID.String()).Scan(&escrowed); err != nil {
+		return assets.DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check collectible escrow reference failed")}
+	}
+	if escrowed {
+		return assets.DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "collectible is referenced by a task reward escrow")}
+	}
+	tag, err := tx.Exec(ctx, "delete from collectibles where id = $1 and state = 'withdrawn'", collectibleID.String())
+	if err != nil {
+		return assets.DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "delete collectible failed")}
+	}
+	if tag != 1 {
+		return assets.DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "only withdrawn collectibles can be deleted")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit delete collectible failed")}
+	}
+	return assets.CollectibleDeleted{}
+}
+
+// TransferCollectibleToOrganization donates a user-owned collectible to an
+// organization: ownership, availability, and transfer policy are enforced
+// here; a within-organization policy additionally requires the collectible's
+// organization to be the receiving one and the sender to be an active
+// member.
+func (store CollectibleStore) TransferCollectibleToOrganization(ctx context.Context, command assets.TransferToOrganizationStoreCommand) assets.GiftResult {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin transfer collectible transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	collectibleResult := lockCollectible(ctx, tx, command.CollectibleID)
+	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
+	if !collectibleMatched {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to transfer")}
+	}
+	if collectible.value.OwnerKind != assets.CollectibleOwnerKindUser || collectible.value.OwnerID != command.FromUserID.String() {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to transfer")}
+	}
+	if collectible.value.State != assets.CollectibleStateMinted {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to transfer")}
+	}
+	if denied, matched := assets.AllowsTransfer(collectible.value.Policy).(assets.RewardDenied); matched {
+		return assets.GiftRejected{Reason: denied.Reason}
+	}
+	if collectible.value.Policy == assets.TransferPolicyTransferableWithinOrg {
+		if collectible.value.OrganizationID != command.OrganizationID.String() {
+			return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "within-organization collectible can only be donated to its own organization")}
+		}
+		if reason, rejected := requireSharedCollectibleOrganization(ctx, tx, collectible.value, command.FromUserID, command.FromUserID); rejected {
+			return assets.GiftRejected{Reason: reason}
+		}
+	}
+
+	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, owner_kind = 'organization', organization_id = $2, state_recorded_at = now() where id = $1", command.CollectibleID.String(), command.OrganizationID.String()); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer collectible failed")}
+	}
+	if err := recordEventDraftInTx(ctx, tx, command.Draft); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record collectible transfer event failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit transfer collectible failed")}
+	}
+	transferred := collectible.value
+	transferred.OwnerKind = assets.CollectibleOwnerKindOrganization
+	transferred.OwnerID = command.OrganizationID.String()
+	transferred.OrganizationID = command.OrganizationID.String()
+	return assets.CollectibleGifted{Value: transferred, RecordedEvents: []event.Draft{command.Draft}}
+}
+
+// TransferCollectibleFromOrganization moves an organization-owned
+// collectible to a user, authorized in-transaction by the acting member's
+// manage_collectibles permission.
+func (store CollectibleStore) TransferCollectibleFromOrganization(ctx context.Context, command assets.TransferFromOrganizationStoreCommand) assets.GiftResult {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin transfer collectible transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	check := organizationMemberPermission(ctx, tx, command.OrganizationID.String(), command.ActingUserID, org.PermissionManageCollectibles)
+	if _, denied := check.(org.PermissionDenied); denied {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "transferring organization collectibles requires the manage_collectibles permission")}
+	}
+
+	collectibleResult := lockCollectible(ctx, tx, command.CollectibleID)
+	collectible, collectibleMatched := collectibleResult.(collectibleParsed)
+	if !collectibleMatched {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible is not available to transfer")}
+	}
+	if collectible.value.OwnerKind != assets.CollectibleOwnerKindOrganization || collectible.value.OrganizationID != command.OrganizationID.String() {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "collectible does not belong to this organization")}
+	}
+	if collectible.value.State != assets.CollectibleStateMinted {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "collectible is not available to transfer")}
+	}
+	if denied, matched := assets.AllowsTransfer(collectible.value.Policy).(assets.RewardDenied); matched {
+		return assets.GiftRejected{Reason: denied.Reason}
+	}
+
+	// Mirror AwardOrganizationCollectible: leaving the organization clears
+	// the organization scope column.
+	if _, err := tx.Exec(ctx, "update collectibles set owner_user_id = $2, owner_kind = 'user', organization_id = null, state_recorded_at = now() where id = $1", command.CollectibleID.String(), command.ToUserID.String()); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "transfer collectible failed")}
+	}
+	if err := recordEventDraftInTx(ctx, tx, command.Draft); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record collectible transfer event failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit transfer collectible failed")}
+	}
+	transferred := collectible.value
+	transferred.OwnerKind = assets.CollectibleOwnerKindUser
+	transferred.OwnerID = command.ToUserID.String()
+	transferred.OrganizationID = ""
+	return assets.CollectibleGifted{Value: transferred, RecordedEvents: []event.Draft{command.Draft}}
 }

@@ -3,7 +3,6 @@ package event
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/notification"
@@ -20,8 +19,8 @@ func newUserID(t *testing.T) core.UserID {
 
 func TestParseKindRoundTripsEveryKind(t *testing.T) {
 	kinds := AllKinds()
-	if len(kinds) != 21 {
-		t.Fatalf("AllKinds() has %d kinds, want 21", len(kinds))
+	if len(kinds) != 23 {
+		t.Fatalf("AllKinds() has %d kinds, want 23", len(kinds))
 	}
 	for _, kind := range kinds {
 		parsed, matched := ParseKind(kind.String()).(KindParsed)
@@ -117,9 +116,13 @@ func (store *fakeEventStore) ListForOrganization(context.Context, core.Organizat
 
 type fakeNotificationStore struct {
 	created []notification.Notification
+	failing bool
 }
 
 func (store *fakeNotificationStore) Create(_ context.Context, value notification.Notification) notification.CreateStoreResult {
+	if store.failing {
+		return notification.CreateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "injected notification store failure")}
+	}
 	store.created = append(store.created, value)
 	return notification.CreateStoreAccepted{}
 }
@@ -136,38 +139,28 @@ func (store *fakeNotificationStore) MarkRead(context.Context, core.UserID, core.
 	return notification.MarkReadStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "not stored")}
 }
 
-func TestEmitAppendsAndFansOutToRecipientsExceptActor(t *testing.T) {
+func mustDraft(t *testing.T, kind Kind, actor Actor, subject Subject, recipients Recipients) Draft {
+	t.Helper()
+	created, matched := NewDraft(kind, actor, subject, EmptyMetadata(), recipients).(DraftCreated)
+	if !matched {
+		t.Fatalf("draft rejected")
+	}
+	return created.Value
+}
+
+func TestDispatchFansOutToRecipientsExceptActor(t *testing.T) {
 	eventStore := &fakeEventStore{}
 	notificationStore := &fakeNotificationStore{}
 	recorder := NewRecorder(eventStore, notification.NewService(notificationStore))
-	recorder.now = func() time.Time { return time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC) }
 
 	actor := newUserID(t)
 	owner := newUserID(t)
 	taskID, _ := core.NewTaskID().(core.TaskIDCreated)
 	subject := NoSubjectRefs()
 	subject.Task = TaskSubject{ID: taskID.Value}
+	draft := mustDraft(t, KindReservationRequested, ActorUser{ID: actor}, subject, NewRecipients(actor, owner))
 
-	result := recorder.Emit(context.Background(), EmitCommand{
-		Kind:       KindReservationRequested,
-		Actor:      ActorUser{ID: actor},
-		Subject:    subject,
-		Metadata:   EmptyMetadata(),
-		Recipients: NewRecipients(actor, owner),
-	})
-	emitted, matched := result.(EventEmitted)
-	if !matched {
-		t.Fatalf("emit rejected: %+v", result)
-	}
-	if emitted.Value.Cursor.Sequence() != 1 {
-		t.Fatalf("cursor = %d", emitted.Value.Cursor.Sequence())
-	}
-	if len(eventStore.appended) != 1 || len(eventStore.recipients[0].Users) != 2 {
-		t.Fatalf("event not appended with both recipients")
-	}
-	if !eventStore.appended[0].OccurredAt.Equal(time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)) {
-		t.Fatalf("occurred_at not stamped by recorder clock")
-	}
+	recorder.Dispatch(context.Background(), draft)
 
 	// notification.Service skips the actor, so only the owner gets an inbox row.
 	if len(notificationStore.created) != 1 {
@@ -186,29 +179,55 @@ func TestEmitAppendsAndFansOutToRecipientsExceptActor(t *testing.T) {
 	if _, sourced := created.Source.(notification.FromEvent); !sourced {
 		t.Fatalf("notification must be keyed by its source event")
 	}
-	if len(eventStore.dispatched) != 1 || eventStore.dispatched[0] != eventStore.appended[0].ID {
-		t.Fatalf("emit must dispatch the appended event inline")
+	if len(eventStore.dispatched) != 1 || eventStore.dispatched[0] != draft.ID {
+		t.Fatalf("dispatch must complete the store-side step for the draft")
 	}
 }
 
-func TestEmitFeedOnlyKindCreatesNoNotification(t *testing.T) {
+func TestDispatchFeedOnlyKindCreatesNoNotification(t *testing.T) {
 	eventStore := &fakeEventStore{}
 	notificationStore := &fakeNotificationStore{}
 	recorder := NewRecorder(eventStore, notification.NewService(notificationStore))
 
 	actor := newUserID(t)
-	result := recorder.Emit(context.Background(), EmitCommand{
-		Kind:       KindTaskOpened,
-		Actor:      ActorUser{ID: actor},
-		Subject:    NoSubjectRefs(),
-		Metadata:   EmptyMetadata(),
-		Recipients: NewRecipients(actor),
-	})
-	if _, matched := result.(EventEmitted); !matched {
-		t.Fatalf("emit rejected: %+v", result)
-	}
+	draft := mustDraft(t, KindTaskOpened, ActorUser{ID: actor}, NoSubjectRefs(), NewRecipients(actor))
+	recorder.Dispatch(context.Background(), draft)
 	if len(notificationStore.created) != 0 {
 		t.Fatalf("feed-only kind must not notify")
+	}
+	if len(eventStore.dispatched) != 1 {
+		t.Fatalf("feed-only kind must still be marked dispatched")
+	}
+}
+
+// TestDispatchLeavesRowRecordedWhenFanOutFails is the recorder half of the
+// unrecoverable-loss fix: a failed inbox fan-out must not flip the event to
+// dispatched, so the recovery sweep retries the whole idempotent step later.
+func TestDispatchLeavesRowRecordedWhenFanOutFails(t *testing.T) {
+	eventStore := &fakeEventStore{}
+	notificationStore := &fakeNotificationStore{failing: true}
+	recorder := NewRecorder(eventStore, notification.NewService(notificationStore))
+
+	actor := newUserID(t)
+	owner := newUserID(t)
+	taskID, _ := core.NewTaskID().(core.TaskIDCreated)
+	subject := NoSubjectRefs()
+	subject.Task = TaskSubject{ID: taskID.Value}
+	draft := mustDraft(t, KindReservationExpired, ActorUser{ID: actor}, subject, NewRecipients(actor, owner))
+
+	recorder.Dispatch(context.Background(), draft)
+	if len(eventStore.dispatched) != 0 {
+		t.Fatalf("failed fan-out must leave the event recorded, got %d store dispatches", len(eventStore.dispatched))
+	}
+
+	// The failure clears; the retried dispatch completes both legs.
+	notificationStore.failing = false
+	recorder.Dispatch(context.Background(), draft)
+	if len(notificationStore.created) != 1 {
+		t.Fatalf("retried fan-out created %d notifications, want 1", len(notificationStore.created))
+	}
+	if len(eventStore.dispatched) != 1 {
+		t.Fatalf("retried dispatch must complete the store-side step")
 	}
 }
 

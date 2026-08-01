@@ -31,7 +31,34 @@ func CollectibleDiff(got, want assets.Collectible) string {
 		return fmt.Sprintf("organization_id: %s != %s", got.OrganizationID, want.OrganizationID)
 	case got.Art != want.Art:
 		return fmt.Sprintf("art: %s != %s", got.Art, want.Art)
+	case catalogSlugOf(got) != catalogSlugOf(want):
+		return fmt.Sprintf("catalog: %s != %s", catalogSlugOf(got), catalogSlugOf(want))
+	case editionOf(got) != editionOf(want):
+		return fmt.Sprintf("edition: %d != %d", editionOf(got), editionOf(want))
+	case issuerOf(got) != issuerOf(want):
+		return fmt.Sprintf("issuer: %s != %s", issuerOf(got), issuerOf(want))
 	default:
 		return ""
 	}
+}
+
+func catalogSlugOf(value assets.Collectible) string {
+	if fromCatalog, matched := value.Catalog.(assets.FromCatalog); matched {
+		return fromCatalog.Slug.String()
+	}
+	return ""
+}
+
+func editionOf(value assets.Collectible) int64 {
+	if numbered, matched := value.Edition.(assets.EditionNumbered); matched {
+		return numbered.Number
+	}
+	return 0
+}
+
+func issuerOf(value assets.Collectible) string {
+	if issuedBy, matched := value.Issuer.(assets.IssuedBy); matched {
+		return issuedBy.ID.String()
+	}
+	return ""
 }
