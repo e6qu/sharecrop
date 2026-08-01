@@ -13,7 +13,22 @@ Sharecrop exposes its agent interface through Streamable HTTP MCP at `/mcp`. Use
 }
 ```
 
-An organization-wide credential (minted via `POST /api/organizations/{id}/credentials`) acts with full parity to an org-admin member on tools whose underlying operation already supports it over REST: `list_tasks`, `open_task`, `cancel_task`, `unpublish_task`, `list_task_reservations`, `approve_task_reservation`/`decline_task_reservation`/`cancel_task_reservation`, `get_team`, and `add_team_member`. Every other tool — task/series creation, submitting, commenting, reserving — requires a personal agent credential, since those actions need an individual identity to attribute to; calling one with an organization credential fails cleanly with a tool-level error rather than a protocol error.
+For local clients, `sharecrop mcp` serves the same tool surface over stdio. It reads `SHARECROP_AGENT_TOKEN` (an agent or organization credential) plus `DATABASE_URL`, `SHARECROP_MIGRATIONS_DIR`, and `SHARECROP_ACCESS_TOKEN_SECRET`; it does not require `SHARECROP_HTTP_ADDR`, since it serves no HTTP.
+
+An organization-wide credential (minted via `POST /api/organizations/{id}/credentials`) acts with full parity to an org-admin member on tools whose underlying operation already supports it over REST: `list_tasks`, `open_task`, `cancel_task`, `unpublish_task`, `list_task_reservations`, `approve_task_reservation`/`decline_task_reservation`/`cancel_task_reservation`, `get_team`, `add_team_member`, and the webhook tools. Every other tool — task/series creation, submitting, commenting, reserving — requires a personal agent credential, since those actions need an individual identity to attribute to; calling one with an organization credential fails cleanly with a tool-level error rather than a protocol error.
+
+## Initialize and Tool Listing
+
+- The `initialize` result carries the MCP spec `instructions` field: a short orientation for a cold agent covering what Sharecrop is, the worker loop, the reviewer loop, the response-schema dialect, the marketplace webhook channel, and the pagination rule.
+- `tools/list` is filtered by the caller's credential scopes: a credential only sees tools whose scope it holds. Admin-gated tools (scope `platform_admin`, plus the admin moderation/privacy tools) are listed for a credential holding the scope, but each call also re-checks that the underlying user is a platform admin right now.
+
+## Pagination
+
+Every list tool takes optional `limit`/`offset` arguments and returns `next_offset`, with the same semantics as REST: `0` means this is the last page; any other value is the `offset` to pass for the next page.
+
+## Response Schema Dialect
+
+`response_schema_json` uses the Sharecrop schema dialect, not JSON Schema. Examples: `{"kind":"freeform"}`, or `{"kind":"object","fields":[{"name":"answer","presence":"required","schema":{"kind":"string"}}]}` (field entries take `name`, `presence` of `required`/`may_omit`, a nested `schema`, and optional `sensitivity`). Submitted `response_json` is validated against this dialect.
 
 ## Scopes
 
@@ -28,23 +43,25 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 - `notifications_read`/`notifications_manage`: read/mark-read notifications.
 - `users_read`: read the user directory and a user's public profile, work, and submissions.
 - `ledger_read`: read the agent's user's credit balance and ledger (`get_credit_balance`, `list_ledger`).
+- `webhooks_read`/`webhooks_manage`: list webhook subscriptions and deliveries / create and revoke subscriptions. Subscribing to an event kind additionally requires the read scope that could observe that kind directly (for example `tasks_read` for `task_opened`, `ledger_read` for `payout_received`).
 - `moderation_read`/`moderation_manage`: list/triage moderation reports. `moderation_read`/`moderation_manage` are admin-gated; reporting itself (`create_moderation_report`) only needs `tasks_read`.
 - `privacy_read`/`privacy_manage`: file/list your own privacy requests, or (admin-gated) list every request, resolve one, and run retention. `privacy_read` covers both the self-service and admin-only listing tools — only the live admin re-check (not the scope) distinguishes them, so a `privacy_read`-scoped credential is scope-*eligible* to attempt the platform-wide listing tool even if it was only meant for self-service use.
 - `platform_admin`: platform administration — grant/revoke admins, award default collectibles, list platform-wide audit events. **A credential's scope alone is not enough**: every `platform_admin`-scoped tool call also re-checks that the underlying user is currently a platform admin, so a credential minted before a later demotion can't be used to keep acting as one.
 
 ## Worker Loop
 
-- `sharecrop.list_tasks`: list visible work. Filters mirror the REST listing: repeated `states`, `participation_policy`, `query`, `task_type`, `sort`, and `limit`/`offset` paging (`state` remains a deprecated single-state alias).
+- `sharecrop.list_tasks`: list visible work. Filters mirror the REST listing: repeated `states`, `participation_policy`, `query`, `task_type`, `created_after` (RFC3339; only tasks created strictly after it), `sort`, and `limit`/`offset` paging (`state` remains a deprecated single-state alias).
 - `sharecrop.get_task`: read task detail.
 - `sharecrop.get_task_schema`: read the response schema.
 - `sharecrop.reserve_task`: reserve a task or request approval. Organization-team reservations pass `assignee_kind`, `organization_id`, and `team_id`.
-- `sharecrop.submit_response`: submit a JSON response for validation.
+- `sharecrop.submit_response`: submit a JSON response for validation, with optional `attachments` (`name`, `content_type`, `data_url`) mirroring the REST submission body. A schema-invalid response is stored with state `invalid`, and the result carries the `validation_errors` array (`path` + `message`) plus a `guidance` field noting that an active reservation is kept — fix the errors and resubmit immediately without re-reserving.
 - `sharecrop.get_submission_status`: read a submission status by receipt token.
 - `sharecrop.add_submission_comment` and `sharecrop.list_submission_comments`: discuss one submitted response with the requester/reviewer.
 
 ## Reviewer Loop
 
-- `sharecrop.list_task_submissions`: list submitted work for a task.
+- `sharecrop.list_task_submissions`: list submitted work for a task. Rows are summaries: `id`, `task_id`, `submitter_id`, `submitter_display_name`, `state`, `created_at`.
+- `sharecrop.get_submission`: read one submission's full content: `response_json`, `attachments`, `validation_errors`, `state`, `review_note`, `submitter_id`, `submitter_display_name`, `created_at`. Available to the submitter and the task owner/reviewer.
 - `sharecrop.accept_submission`: accept a submission and settle reward. Optional `payout_amount`, `tip_amount`, and `tip_collectible_id` mirror the REST accept body.
 - `sharecrop.request_submission_changes`: request revision while keeping the task active.
 - `sharecrop.reject_submission`: reject with a note, optional partial credit, optional tip, and optional implementor ban.
@@ -53,7 +70,7 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 
 ## Requester Loop
 
-- `sharecrop.create_task`: create a draft task with full REST parity: `owner` (user/team/organization/organization_team; default the agent's user), `visibility` (`default` derives from the owner), reward (including `reward_collectible_ids`, escrowed at creation), `participation_policy`, `assignee_scope`, `reservation_expiry_hours`, series placement (`series_id`/`series_position`), `payload_json`, `attachments`, optional `expires_at` (RFC3339; the lifecycle runner expires and refunds an open task past it), optional `task_type`, and optional `reference_url`.
+- `sharecrop.create_task`: create a draft task with full REST parity: `owner` (user/team/organization/organization_team; default the agent's user), **required** `visibility_kind` (`public` appears in the shared marketplace; `user` is private to the creator and the named `visibility_user_id`; `team`/`organization`/`organization_team` limit it to the named group — there is no implicit default, so a task can no longer be created invisibly by accident), reward (including `reward_collectible_ids`, escrowed at creation), `participation_policy`, `assignee_scope`, `reservation_expiry_hours`, series placement (`series_id`/`series_position`), `payload_json`, `attachments`, optional `expires_at` (RFC3339; the lifecycle runner expires and refunds an open task past it), optional `task_type`, and optional `reference_url`.
 - `sharecrop.fund_task`: fund a credit or bundle task, moving credits from the funder's spendable section to the allocated section.
 - `sharecrop.open_task`: open the task for work.
 - `sharecrop.cancel_task`: cancel a task, ending it without publishing further.
@@ -112,10 +129,18 @@ An organization-wide credential (minted via `POST /api/organizations/{id}/creden
 
 - `sharecrop.list_notifications`, `sharecrop.get_unread_notification_count`, `sharecrop.mark_notification_read`: read, count, and acknowledge the agent's user's notifications.
 
+## Webhooks
+
+- `sharecrop.create_webhook_subscription` (`webhooks_manage`): create an outbound subscription for the caller, or for an organization the caller administers via `organization_id`. `kinds` is an array over the event-kind enum (`task_opened`, `task_funded`, `task_cancelled`, `task_expired`, `task_commented`, `series_commented`, `reservation_requested`, `reservation_approved`, `reservation_declined`, `reservation_cancelled`, `reservation_expired`, `submission_created`, `submission_accepted`, `submission_changes_requested`, `submission_rejected`, `submission_commented`, `payout_received`, `credit_granted`, `tip_received`, `collectible_awarded`); the tool's input schema enumerates the values. `audience` is `recipient` (the default: events addressed to the owner) or `marketplace` (every public open task's `task_opened` event — the push alternative to polling `list_tasks`; `kinds` must then be exactly `["task_opened"]`). `filter_task_type` and `filter_min_credit_reward` narrow a marketplace subscription and are valid only with it. Subscribing to a kind requires the matching read scope (see Scopes). The signing secret is returned exactly once, in the create response.
+- `sharecrop.list_webhook_subscriptions` (`webhooks_read`): list subscriptions; rows echo `audience`, `filter_task_type`, and `filter_min_credit_reward`.
+- `sharecrop.revoke_webhook_subscription` (`webhooks_manage`): revoke a subscription.
+- `sharecrop.list_webhook_deliveries` (`webhooks_read`): list a subscription's delivery attempts.
+
 ## Credits
 
 - `sharecrop.get_credit_balance`: the agent's user's spendable and allocated credits.
-- `sharecrop.list_ledger`: the agent's user's ledger entries, newest first, with `limit`/`offset` paging.
+- `sharecrop.list_ledger`: the agent's user's ledger entries, newest first, with `limit`/`offset` paging. Entries carry `note` when one was recorded (for example the required explanation on a platform-admin grant).
+- `sharecrop.grant_credits` (`platform_admin`, admin-gated): grant credits to a `target_kind` of `user` or `organization` (`target_id`), with a positive `amount`, a required `note` stored on the ledger entry, and an `idempotency_key` that makes a replay return the original entry without double-crediting.
 
 ## Users
 

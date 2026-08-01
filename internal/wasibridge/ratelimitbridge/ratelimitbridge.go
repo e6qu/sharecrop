@@ -30,7 +30,8 @@ type GuestRateLimiter struct {
 	prefix string
 }
 
-// NewGuestRateLimiter builds a guest limiter for the "ip" or "subject" limiter.
+// NewGuestRateLimiter builds a guest limiter for the "ip", "subject", or
+// "register" limiter.
 func NewGuestRateLimiter(invoke Invoker, prefix string) GuestRateLimiter {
 	return GuestRateLimiter{invoke: invoke, prefix: prefix}
 }
@@ -88,16 +89,20 @@ func (g GuestRateLimiter) call(op, key string) ([]byte, error) {
 var _ httpserver.RateLimiter = GuestRateLimiter{}
 
 // Dispatch services one rate-limit call against the host's real limiters. method
-// is "ratelimit.<prefix>.<op>"; the prefix picks ip vs subject. The context is
-// unused (RateLimiter has none) but kept for a uniform dispatcher signature.
-func Dispatch(_ context.Context, ipLimiter, subjectLimiter httpserver.RateLimiter, method string, args []byte) ([]byte, error) {
+// is "ratelimit.<prefix>.<op>"; the prefix picks ip vs subject vs register. The
+// context is unused (RateLimiter has none) but kept for a uniform dispatcher
+// signature.
+func Dispatch(_ context.Context, ipLimiter, subjectLimiter, registrationLimiter httpserver.RateLimiter, method string, args []byte) ([]byte, error) {
 	parts := strings.SplitN(method, ".", 3)
 	if len(parts) != 3 || parts[0] != "ratelimit" {
 		return nil, fmt.Errorf("ratelimit bridge: unknown method %q", method)
 	}
 	limiter := ipLimiter
-	if parts[1] == "subject" {
+	switch parts[1] {
+	case "subject":
 		limiter = subjectLimiter
+	case "register":
+		limiter = registrationLimiter
 	}
 	switch parts[2] {
 	case "Allow":

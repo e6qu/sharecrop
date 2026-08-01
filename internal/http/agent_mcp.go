@@ -41,8 +41,8 @@ type mcpServices struct {
 	webhookService       webhook.Service
 }
 
-func (services mcpServices) CreateWebhookSubscription(ctx context.Context, owner webhook.Owner, endpoint webhook.EndpointURL, kinds webhook.KindFilter) webhook.CreateResult {
-	return services.webhookService.Create(ctx, owner, endpoint, kinds)
+func (services mcpServices) CreateWebhookSubscription(ctx context.Context, owner webhook.Owner, endpoint webhook.EndpointURL, kinds webhook.KindFilter, audience webhook.Audience) webhook.CreateResult {
+	return services.webhookService.Create(ctx, owner, endpoint, kinds, audience)
 }
 
 func (services mcpServices) ListWebhookSubscriptions(ctx context.Context, owner webhook.Owner, page core.Page) webhook.ListResult {
@@ -93,6 +93,10 @@ func (services mcpServices) GetSubmissionStatus(ctx context.Context, token submi
 	return services.submissionService.FindByReceipt(ctx, token)
 }
 
+func (services mcpServices) GetSubmission(ctx context.Context, subject auth.Subject, submissionID core.SubmissionID) submission.GetResult {
+	return services.submissionService.Get(ctx, subject, submissionID)
+}
+
 func (services mcpServices) ListTaskSubmissions(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, page core.Page) submission.ListResult {
 	return services.submissionService.ListForTask(ctx, subject, taskID, page)
 }
@@ -113,8 +117,8 @@ func (services mcpServices) RejectSubmission(ctx context.Context, requester core
 	return services.ledgerService.RejectSubmission(ctx, requester, taskID, submissionID, key, note, creditSelection, tipSelection, banSelection)
 }
 
-func (services mcpServices) ListSeries(ctx context.Context, subject auth.UserSubject) task.ListSeriesResult {
-	return services.taskService.ListSeries(ctx, subject, core.DefaultPage())
+func (services mcpServices) ListSeries(ctx context.Context, subject auth.UserSubject, page core.Page) task.ListSeriesResult {
+	return services.taskService.ListSeries(ctx, subject, page)
 }
 
 func (services mcpServices) GetSeries(ctx context.Context, subject auth.UserSubject, seriesID core.TaskSeriesID) task.GetSeriesResult {
@@ -313,6 +317,10 @@ func (services mcpServices) ListLedger(ctx context.Context, owner core.UserID, p
 	return services.ledgerService.ListEntries(ctx, owner, page)
 }
 
+func (services mcpServices) GrantCredits(ctx context.Context, actingAdmin core.UserID, target ledger.GrantTarget, amount ledger.CreditAmount, note ledger.GrantNote, key ledger.IdempotencyKey) ledger.GrantResult {
+	return services.ledgerService.GrantCredits(ctx, actingAdmin, target, amount, note, key)
+}
+
 func (services mcpServices) ListUsers(ctx context.Context, query string, page core.Page) auth.UserDirectoryResult {
 	return services.authService.ListUsers(ctx, query, page)
 }
@@ -387,6 +395,7 @@ func (server Server) getTask(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, *fundingErr)
 		return
 	}
+	response.CreatorDisplayName = got.CreatorDisplayName.String()
 	writeTaskResponse(w, http.StatusOK, response)
 }
 

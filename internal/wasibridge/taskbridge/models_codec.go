@@ -3,6 +3,7 @@ package taskbridge
 import (
 	"fmt"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/wasibridge/attachmentwire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
@@ -174,12 +175,14 @@ func decodeTasks(wires []taskWire) ([]task.Task, error) {
 // ---- task.ListItem ----
 
 type listItemWire struct {
-	Task           taskWire           `json:"task"`
-	ActiveAssignee activeAssigneeWire `json:"active_assignee"`
+	Task               taskWire           `json:"task"`
+	ActiveAssignee     activeAssigneeWire `json:"active_assignee"`
+	CreatorDisplayName string             `json:"creator_display_name"`
+	PendingReviewCount int64              `json:"pending_review_count"`
 }
 
 func encodeListItem(item task.ListItem) listItemWire {
-	return listItemWire{Task: encodeTask(item.Task), ActiveAssignee: encodeActiveAssignee(item.ActiveAssignee)}
+	return listItemWire{Task: encodeTask(item.Task), ActiveAssignee: encodeActiveAssignee(item.ActiveAssignee), CreatorDisplayName: item.CreatorDisplayName.String(), PendingReviewCount: item.PendingReviewCount}
 }
 
 func decodeListItem(wire listItemWire) (task.ListItem, error) {
@@ -191,7 +194,11 @@ func decodeListItem(wire listItemWire) (task.ListItem, error) {
 	if err != nil {
 		return task.ListItem{}, err
 	}
-	return task.ListItem{Task: value, ActiveAssignee: assignee}, nil
+	creatorName, err := decodeTaskDisplayName(wire.CreatorDisplayName)
+	if err != nil {
+		return task.ListItem{}, err
+	}
+	return task.ListItem{Task: value, ActiveAssignee: assignee, CreatorDisplayName: creatorName, PendingReviewCount: wire.PendingReviewCount}, nil
 }
 
 func encodeListItems(values []task.ListItem) []listItemWire {
@@ -313,20 +320,22 @@ func decodeSeriesDetail(wire *seriesDetailWire) (task.SeriesDetail, error) {
 // ---- task.Reservation ----
 
 type reservationWire struct {
-	ID          string       `json:"id"`
-	TaskID      string       `json:"task_id"`
-	Assignee    assigneeWire `json:"assignee"`
-	State       string       `json:"state"`
-	RequestedBy string       `json:"requested_by"`
+	ID                string       `json:"id"`
+	TaskID            string       `json:"task_id"`
+	Assignee          assigneeWire `json:"assignee"`
+	State             string       `json:"state"`
+	RequestedBy       string       `json:"requested_by"`
+	HolderDisplayName string       `json:"holder_display_name"`
 }
 
 func encodeReservation(reservation task.Reservation) reservationWire {
 	return reservationWire{
-		ID:          corewire.EncodeTaskReservationID(reservation.ID),
-		TaskID:      corewire.EncodeTaskID(reservation.TaskID),
-		Assignee:    encodeAssignee(reservation.Assignee),
-		State:       encodeReservationState(reservation.State),
-		RequestedBy: corewire.EncodeUserID(reservation.RequestedBy),
+		ID:                corewire.EncodeTaskReservationID(reservation.ID),
+		TaskID:            corewire.EncodeTaskID(reservation.TaskID),
+		Assignee:          encodeAssignee(reservation.Assignee),
+		State:             encodeReservationState(reservation.State),
+		RequestedBy:       corewire.EncodeUserID(reservation.RequestedBy),
+		HolderDisplayName: reservation.HolderDisplayName.String(),
 	}
 }
 
@@ -351,7 +360,11 @@ func decodeReservation(wire reservationWire) (task.Reservation, error) {
 	if err != nil {
 		return task.Reservation{}, err
 	}
-	return task.Reservation{ID: id, TaskID: taskID, Assignee: assignee, State: state, RequestedBy: requestedBy}, nil
+	holderName, err := decodeTaskDisplayName(wire.HolderDisplayName)
+	if err != nil {
+		return task.Reservation{}, err
+	}
+	return task.Reservation{ID: id, TaskID: taskID, Assignee: assignee, State: state, RequestedBy: requestedBy, HolderDisplayName: holderName}, nil
 }
 
 func encodeReservations(values []task.Reservation) []reservationWire {
@@ -377,20 +390,24 @@ func decodeReservations(wires []reservationWire) ([]task.Reservation, error) {
 // ---- comments ----
 
 type seriesCommentWire struct {
-	ID        string `json:"id"`
-	SeriesID  string `json:"series_id"`
-	AuthorID  string `json:"author_id"`
-	Body      string `json:"body"`
-	CreatedAt string `json:"created_at"`
+	ID       string `json:"id"`
+	SeriesID string `json:"series_id"`
+	AuthorID string `json:"author_id"`
+	// AuthorDisplayName is empty on the create command (the store resolves
+	// it) and populated on every read model the store returns.
+	AuthorDisplayName string `json:"author_display_name,omitempty"`
+	Body              string `json:"body"`
+	CreatedAt         string `json:"created_at"`
 }
 
 func encodeSeriesComment(comment task.SeriesComment) seriesCommentWire {
 	return seriesCommentWire{
-		ID:        corewire.EncodeSeriesCommentID(comment.ID),
-		SeriesID:  corewire.EncodeTaskSeriesID(comment.SeriesID),
-		AuthorID:  corewire.EncodeUserID(comment.AuthorID),
-		Body:      encodeCommentBody(comment.Body),
-		CreatedAt: corewire.EncodeTime(comment.CreatedAt),
+		ID:                corewire.EncodeSeriesCommentID(comment.ID),
+		SeriesID:          corewire.EncodeTaskSeriesID(comment.SeriesID),
+		AuthorID:          corewire.EncodeUserID(comment.AuthorID),
+		AuthorDisplayName: comment.AuthorDisplayName.String(),
+		Body:              encodeCommentBody(comment.Body),
+		CreatedAt:         corewire.EncodeTime(comment.CreatedAt),
 	}
 }
 
@@ -415,7 +432,11 @@ func decodeSeriesComment(wire seriesCommentWire) (task.SeriesComment, error) {
 	if err != nil {
 		return task.SeriesComment{}, err
 	}
-	return task.SeriesComment{ID: id, SeriesID: seriesID, AuthorID: authorID, Body: body, CreatedAt: createdAt}, nil
+	authorName, err := decodeOptionalTaskDisplayName(wire.AuthorDisplayName)
+	if err != nil {
+		return task.SeriesComment{}, err
+	}
+	return task.SeriesComment{ID: id, SeriesID: seriesID, AuthorID: authorID, AuthorDisplayName: authorName, Body: body, CreatedAt: createdAt}, nil
 }
 
 func encodeSeriesComments(values []task.SeriesComment) []seriesCommentWire {
@@ -439,20 +460,24 @@ func decodeSeriesComments(wires []seriesCommentWire) ([]task.SeriesComment, erro
 }
 
 type taskCommentWire struct {
-	ID        string `json:"id"`
-	TaskID    string `json:"task_id"`
-	AuthorID  string `json:"author_id"`
-	Body      string `json:"body"`
-	CreatedAt string `json:"created_at"`
+	ID       string `json:"id"`
+	TaskID   string `json:"task_id"`
+	AuthorID string `json:"author_id"`
+	// AuthorDisplayName is empty on the create command (the store resolves
+	// it) and populated on every read model the store returns.
+	AuthorDisplayName string `json:"author_display_name,omitempty"`
+	Body              string `json:"body"`
+	CreatedAt         string `json:"created_at"`
 }
 
 func encodeTaskComment(comment task.TaskComment) taskCommentWire {
 	return taskCommentWire{
-		ID:        corewire.EncodeTaskCommentID(comment.ID),
-		TaskID:    corewire.EncodeTaskID(comment.TaskID),
-		AuthorID:  corewire.EncodeUserID(comment.AuthorID),
-		Body:      encodeCommentBody(comment.Body),
-		CreatedAt: corewire.EncodeTime(comment.CreatedAt),
+		ID:                corewire.EncodeTaskCommentID(comment.ID),
+		TaskID:            corewire.EncodeTaskID(comment.TaskID),
+		AuthorID:          corewire.EncodeUserID(comment.AuthorID),
+		AuthorDisplayName: comment.AuthorDisplayName.String(),
+		Body:              encodeCommentBody(comment.Body),
+		CreatedAt:         corewire.EncodeTime(comment.CreatedAt),
 	}
 }
 
@@ -477,7 +502,11 @@ func decodeTaskComment(wire taskCommentWire) (task.TaskComment, error) {
 	if err != nil {
 		return task.TaskComment{}, err
 	}
-	return task.TaskComment{ID: id, TaskID: taskID, AuthorID: authorID, Body: body, CreatedAt: createdAt}, nil
+	authorName, err := decodeOptionalTaskDisplayName(wire.AuthorDisplayName)
+	if err != nil {
+		return task.TaskComment{}, err
+	}
+	return task.TaskComment{ID: id, TaskID: taskID, AuthorID: authorID, AuthorDisplayName: authorName, Body: body, CreatedAt: createdAt}, nil
 }
 
 func encodeTaskComments(values []task.TaskComment) []taskCommentWire {
@@ -498,4 +527,24 @@ func decodeTaskComments(wires []taskCommentWire) ([]task.TaskComment, error) {
 		values = append(values, value)
 	}
 	return values, nil
+}
+
+// decodeTaskDisplayName reconstructs a display name enrichment field carried
+// on a task read model.
+func decodeTaskDisplayName(raw string) (auth.DisplayName, error) {
+	result := auth.NewDisplayName(raw)
+	accepted, matched := result.(auth.DisplayNameAccepted)
+	if !matched {
+		return auth.DisplayName{}, fmt.Errorf("display name is invalid")
+	}
+	return accepted.Value, nil
+}
+
+// decodeOptionalTaskDisplayName decodes a display-name enrichment field that
+// is legitimately empty on commands (the store resolves it on reads).
+func decodeOptionalTaskDisplayName(raw string) (auth.DisplayName, error) {
+	if raw == "" {
+		return auth.DisplayName{}, nil
+	}
+	return decodeTaskDisplayName(raw)
 }

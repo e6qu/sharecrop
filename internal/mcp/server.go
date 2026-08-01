@@ -43,12 +43,13 @@ type Services interface {
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
 	SubmitResponse(context.Context, submission.SubmitCommand) submission.SubmitResult
 	GetSubmissionStatus(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
+	GetSubmission(context.Context, auth.Subject, core.SubmissionID) submission.GetResult
 	ListTaskSubmissions(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult
 	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
 	ReviewAcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult
 	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult
 	RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
-	ListSeries(context.Context, auth.UserSubject) task.ListSeriesResult
+	ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
 	CreateSeries(context.Context, auth.UserSubject, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
 	UpdateSeries(context.Context, auth.UserSubject, core.TaskSeriesID, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
@@ -102,8 +103,9 @@ type Services interface {
 
 	GetCreditBalance(context.Context, core.UserID) ledger.BalanceResult
 	ListLedger(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
+	GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult
 
-	CreateWebhookSubscription(context.Context, webhook.Owner, webhook.EndpointURL, webhook.KindFilter) webhook.CreateResult
+	CreateWebhookSubscription(context.Context, webhook.Owner, webhook.EndpointURL, webhook.KindFilter, webhook.Audience) webhook.CreateResult
 	ListWebhookSubscriptions(context.Context, webhook.Owner, core.Page) webhook.ListResult
 	RevokeWebhookSubscription(context.Context, webhook.Owner, core.WebhookSubscriptionID) webhook.RevokeResult
 	ListWebhookDeliveries(context.Context, webhook.Owner, core.WebhookSubscriptionID, core.Page) webhook.ListDeliveriesResult
@@ -154,7 +156,7 @@ func (server Server) Handle(ctx context.Context, subject auth.Subject, credentia
 	case "ping":
 		return successResponse(request.ID, json.RawMessage(`{}`))
 	case "tools/list":
-		return server.handleToolsList(request)
+		return server.handleToolsList(request, credential)
 	case "tools/call":
 		return server.handleToolsCall(ctx, subject, credential, request)
 	default:
@@ -162,19 +164,41 @@ func (server Server) Handle(ctx context.Context, subject auth.Subject, credentia
 	}
 }
 
+// serverInstructions orients a cold agent: what Sharecrop is, the worker and
+// reviewer loops, the response-schema dialect, and where webhook push fits.
+// It is the MCP `initialize` result's `instructions` field.
+const serverInstructions = `Sharecrop is a task marketplace: users and agents post tasks with credit or collectible rewards, workers submit structured responses, and task owners review them.
+Worker loop: sharecrop.list_tasks with scope "public" finds open work; sharecrop.get_task and sharecrop.get_task_schema read a task and its response schema; sharecrop.reserve_task claims it when the participation policy requires a reservation; sharecrop.submit_response submits response_json matching the schema; sharecrop.list_notifications shows review outcomes; sharecrop.get_credit_balance shows earnings.
+Reviewer loop (task owners): sharecrop.list_task_submissions lists submitted work as summaries; sharecrop.get_submission reads one submission's full content; then sharecrop.accept_submission, sharecrop.request_submission_changes, or sharecrop.reject_submission settles the review.
+Requester loop: sharecrop.create_task (visibility_kind is required; "public" tasks appear in the marketplace), sharecrop.fund_task for credit rewards, then sharecrop.open_task makes it workable.
+A task's response_schema_json uses the Sharecrop schema dialect, NOT JSON Schema. Shapes: {"kind":"freeform"} or {"kind":"object","fields":[{"name":"...","presence":"required","schema":{"kind":"string"}}]}.
+A schema-invalid submission is stored with state "invalid" and its validation_errors; the reservation stays active, so fix the errors and resubmit immediately.
+Instead of polling list_tasks, sharecrop.create_webhook_subscription with audience "marketplace" pushes task_opened events for public open tasks (optionally filtered by task type or minimum credit reward).
+List tools return next_offset: 0 means the last page; otherwise pass it back as offset to continue.
+Failed tool calls return isError with one text item of compact JSON {"code":"...","message":"..."}.`
+
 func (server Server) handleInitialize(request Request) Response {
 	result := initializeResult{
 		ProtocolVersion: protocolVersion,
 		Capabilities:    capabilities{Tools: toolsCapability{}},
 		ServerInfo:      serverInfo{Name: serverName, Version: serverVersion},
+		Instructions:    serverInstructions,
 	}
 	return marshalResult(request.ID, result)
 }
 
-func (server Server) handleToolsList(request Request) Response {
+// handleToolsList reports only the tools the caller's credential is
+// scope-eligible to call, so an underscoped credential is not shown tools
+// that would always fail its scope gate. (Admin-gated tools additionally
+// re-check live platform-admin status at call time; scope eligibility is the
+// listing criterion, matching the scope check in handleToolsCall.)
+func (server Server) handleToolsList(request Request, credential CallerCredential) Response {
 	definitions := toolDefinitions()
 	entries := make([]toolListEntry, 0, len(definitions))
 	for index := range definitions {
+		if _, granted := credential.Scopes.Allows(definitions[index].Scope).(agent.ScopeGranted); !granted {
+			continue
+		}
 		entries = append(entries, toolListEntry{
 			Name:        definitions[index].Name,
 			Description: definitions[index].Description,
@@ -331,6 +355,12 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 		return server.callSubmitResponse(ctx, userActor, arguments)
 	case toolGetSubmissionStatus:
 		return server.callGetSubmissionStatus(ctx, arguments)
+	case toolGetSubmission:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callGetSubmission(ctx, userActor, arguments)
 	case toolListTaskSubmissions:
 		userActor, failure, ok := requireUserSubjectForTool(subject)
 		if !ok {
@@ -360,7 +390,7 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 		if !ok {
 			return failure
 		}
-		return server.callListTaskSeries(ctx, userActor)
+		return server.callListTaskSeries(ctx, userActor, arguments)
 	case toolGetTaskSeries:
 		userActor, failure, ok := requireUserSubjectForTool(subject)
 		if !ok {
@@ -621,6 +651,12 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 			return failure
 		}
 		return server.callListLedger(ctx, userActor, arguments)
+	case toolGrantCredits:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callGrantCredits(ctx, userActor, arguments)
 	case toolListNotifications:
 		userActor, failure, ok := requireUserSubjectForTool(subject)
 		if !ok {
@@ -788,6 +824,7 @@ type initializeResult struct {
 	ProtocolVersion string       `json:"protocolVersion"`
 	Capabilities    capabilities `json:"capabilities"`
 	ServerInfo      serverInfo   `json:"serverInfo"`
+	Instructions    string       `json:"instructions"`
 }
 
 type capabilities struct {

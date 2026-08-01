@@ -1,6 +1,10 @@
 package ledger
 
-import "github.com/e6qu/sharecrop/internal/core"
+import (
+	"strings"
+
+	"github.com/e6qu/sharecrop/internal/core"
+)
 
 // CreditAmount is a positive magnitude of Sharecrop credits in integer base units.
 type CreditAmount struct {
@@ -178,6 +182,61 @@ func ParseEntryKind(raw string) EntryKindResult {
 func (kind EntryKind) String() string {
 	return kind.value
 }
+
+// GrantNote is the required human explanation recorded with a platform-admin
+// manual credit grant.
+type GrantNote struct {
+	value string
+}
+
+type GrantNoteResult interface {
+	grantNoteResult()
+}
+
+type GrantNoteAccepted struct {
+	Value GrantNote
+}
+
+type GrantNoteRejected struct {
+	Reason core.DomainError
+}
+
+func (GrantNoteAccepted) grantNoteResult() {}
+
+func (GrantNoteRejected) grantNoteResult() {}
+
+func NewGrantNote(raw string) GrantNoteResult {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return GrantNoteRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credit grant note is required")}
+	}
+	if len(trimmed) > 500 {
+		return GrantNoteRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credit grant note is too long")}
+	}
+	return GrantNoteAccepted{Value: GrantNote{value: trimmed}}
+}
+
+func (note GrantNote) String() string {
+	return note.value
+}
+
+// GrantTarget names the account a platform-admin credit grant credits: a
+// user's personal account or an organization's account.
+type GrantTarget interface {
+	grantTarget()
+}
+
+type GrantToUser struct {
+	ID core.UserID
+}
+
+type GrantToOrganization struct {
+	ID core.OrganizationID
+}
+
+func (GrantToUser) grantTarget() {}
+
+func (GrantToOrganization) grantTarget() {}
 
 // SignupGrantAmount is the credit grant given to each new registered user.
 func SignupGrantAmount() CreditAmount {

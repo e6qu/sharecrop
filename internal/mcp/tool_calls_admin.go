@@ -19,7 +19,8 @@ type platformAdminSummary struct {
 }
 
 type platformAdminsPayload struct {
-	Admins []platformAdminSummary `json:"admins"`
+	Admins     []platformAdminSummary `json:"admins"`
+	NextOffset int                    `json:"next_offset"`
 }
 
 type moderationReportSummary struct {
@@ -37,7 +38,8 @@ type moderationReportSummary struct {
 }
 
 type moderationReportsPayload struct {
-	Reports []moderationReportSummary `json:"reports"`
+	Reports    []moderationReportSummary `json:"reports"`
+	NextOffset int                       `json:"next_offset"`
 }
 
 type privacyRequestSummary struct {
@@ -53,7 +55,8 @@ type privacyRequestSummary struct {
 }
 
 type privacyRequestsPayload struct {
-	Requests []privacyRequestSummary `json:"requests"`
+	Requests   []privacyRequestSummary `json:"requests"`
+	NextOffset int                     `json:"next_offset"`
 }
 
 type privacyRetentionPayload struct {
@@ -71,7 +74,8 @@ type auditEventSummary struct {
 }
 
 type auditEventsPayload struct {
-	Events []auditEventSummary `json:"events"`
+	Events     []auditEventSummary `json:"events"`
+	NextOffset int                 `json:"next_offset"`
 }
 
 func (platformAdminSummary) payloadValue()     {}
@@ -135,16 +139,21 @@ func auditEventToSummary(value audit.Event) auditEventSummary {
 }
 
 func (server Server) callListPlatformAdmins(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
-	result := server.services.ListPlatformAdmins(ctx, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListPlatformAdmins(ctx, page.Probe())
 	listed, matched := result.(PlatformAdminsListed)
 	if !matched {
 		return toolFailed{code: result.(PlatformAdminListRejected).Reason.Code(), message: result.(PlatformAdminListRejected).Reason.Description()}
 	}
-	summaries := make([]platformAdminSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]platformAdminSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, platformAdminToSummary(listed.Values[index]))
 	}
-	return marshalPayload(platformAdminsPayload{Admins: summaries})
+	return marshalPayload(platformAdminsPayload{Admins: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callGrantPlatformAdmin(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -198,16 +207,21 @@ func (server Server) callListAdminModerationReports(ctx context.Context, subject
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
 	}
-	result := server.services.ListAdminModerationReports(ctx, strings.TrimSpace(args.State), core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListAdminModerationReports(ctx, strings.TrimSpace(args.State), page.Probe())
 	listed, matched := result.(ModerationReportsListed)
 	if !matched {
 		return toolFailed{code: result.(ModerationReportsListRejected).Reason.Code(), message: result.(ModerationReportsListRejected).Reason.Description()}
 	}
-	summaries := make([]moderationReportSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]moderationReportSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, moderationReportToSummary(listed.Values[index]))
 	}
-	return marshalPayload(moderationReportsPayload{Reports: summaries})
+	return marshalPayload(moderationReportsPayload{Reports: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callTriageModerationReport(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -248,25 +262,32 @@ func (server Server) callCreatePrivacyRequest(ctx context.Context, subject auth.
 }
 
 func (server Server) callListPrivacyRequests(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
-	result := server.services.ListPrivacyRequests(ctx, subject.ID, core.DefaultPage())
-	return privacyRequestsListResult(result)
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	return privacyRequestsListResult(server.services.ListPrivacyRequests(ctx, subject.ID, page.Probe()), page)
 }
 
 func (server Server) callListAdminPrivacyRequests(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
-	result := server.services.ListAdminPrivacyRequests(ctx, core.DefaultPage())
-	return privacyRequestsListResult(result)
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	return privacyRequestsListResult(server.services.ListAdminPrivacyRequests(ctx, page.Probe()), page)
 }
 
-func privacyRequestsListResult(result PrivacyRequestsListResult) toolResult {
+func privacyRequestsListResult(result PrivacyRequestsListResult, page core.Page) toolResult {
 	listed, matched := result.(PrivacyRequestsListed)
 	if !matched {
 		return toolFailed{code: result.(PrivacyRequestsListRejected).Reason.Code(), message: result.(PrivacyRequestsListRejected).Reason.Description()}
 	}
-	summaries := make([]privacyRequestSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]privacyRequestSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, privacyRequestToSummary(listed.Values[index]))
 	}
-	return marshalPayload(privacyRequestsPayload{Requests: summaries})
+	return marshalPayload(privacyRequestsPayload{Requests: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callResolveAdminPrivacyRequest(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -303,10 +324,13 @@ func (server Server) callListOrganizationAuditEvents(ctx context.Context, subjec
 	if _, denied := permissionCheck.(org.PermissionDenied); denied {
 		return toolFailed{code: core.ErrorCodePermissionDenied, message: "organization audit access denied"}
 	}
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
 	filters := audit.NoListFilters()
 	filters.SubjectID = audit.SubjectIDEquals{Value: organizationID.String()}
-	result := server.services.ListAuditEvents(ctx, filters, core.DefaultPage())
-	return auditEventsListResult(result)
+	return auditEventsListResult(server.services.ListAuditEvents(ctx, filters, page.Probe()), page)
 }
 
 func (server Server) callListAdminAuditEvents(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -328,18 +352,22 @@ func (server Server) callListAdminAuditEvents(ctx context.Context, subject auth.
 	if strings.TrimSpace(args.SubjectID) != "" {
 		filters.SubjectID = audit.SubjectIDEquals{Value: strings.TrimSpace(args.SubjectID)}
 	}
-	result := server.services.ListAuditEvents(ctx, filters, core.DefaultPage())
-	return auditEventsListResult(result)
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	return auditEventsListResult(server.services.ListAuditEvents(ctx, filters, page.Probe()), page)
 }
 
-func auditEventsListResult(result audit.ListResult) toolResult {
+func auditEventsListResult(result audit.ListResult, page core.Page) toolResult {
 	listed, matched := result.(audit.EventsListed)
 	if !matched {
 		return toolFailed{code: result.(audit.ListRejected).Reason.Code(), message: result.(audit.ListRejected).Reason.Description()}
 	}
-	summaries := make([]auditEventSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]auditEventSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, auditEventToSummary(listed.Values[index]))
 	}
-	return marshalPayload(auditEventsPayload{Events: summaries})
+	return marshalPayload(auditEventsPayload{Events: summaries, NextOffset: nextOffset})
 }

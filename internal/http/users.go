@@ -15,8 +15,11 @@ import (
 const maxUserDirectoryQueryLength = 160
 
 type userProfileResponse struct {
-	ID    string                 `json:"id"`
-	Tasks []taskListItemResponse `json:"tasks"`
+	ID string `json:"id"`
+	// DisplayName names the profiled user; empty when the user has no
+	// visible directory entry (a deactivated account).
+	DisplayName string                 `json:"display_name"`
+	Tasks       []taskListItemResponse `json:"tasks"`
 }
 
 func (usersResponse) writableResponse() {}
@@ -48,7 +51,7 @@ func (server Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
 	response := usersResponse{Users: make([]userDirectoryEntryResponse, 0, visible), NextOffset: nextOffset}
 	for _, value := range listed.Values[:visible] {
-		response.Users = append(response.Users, userDirectoryEntryResponse{ID: value.ID.String(), Email: value.Email.String(), Status: value.Status})
+		response.Users = append(response.Users, userDirectoryEntryResponse{ID: value.ID.String(), Email: value.Email.String(), DisplayName: value.DisplayName.String(), Status: value.Status})
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -90,9 +93,20 @@ func (server Server) getUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := userProfileResponse{ID: userID.String(), Tasks: make([]taskListItemResponse, 0, len(listed.Values))}
+	displayName := ""
+	switch entry := server.findOwnDirectoryEntry(r.Context(), userID).(type) {
+	case directoryEntryFound:
+		displayName = entry.value.DisplayName.String()
+	case directoryEntryMissing:
+		// A deactivated account has no visible directory entry; its profile
+		// keeps an empty display name.
+	case directoryEntryRejected:
+		writeDomainError(w, entry.reason)
+		return
+	}
+	response := userProfileResponse{ID: userID.String(), DisplayName: displayName, Tasks: make([]taskListItemResponse, 0, len(listed.Values))}
 	for valueIndex := range listed.Values {
-		response.Tasks = append(response.Tasks, taskListItemToResponse(listed.Values[valueIndex]))
+		response.Tasks = append(response.Tasks, taskListItemToResponse(listed.Values[valueIndex], actor))
 	}
 	writeUserProfileResponse(w, http.StatusOK, response)
 }
@@ -109,7 +123,7 @@ func (server Server) getUserWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
-	response := tasksToResponse(listed.Values[:visible])
+	response := tasksToResponse(listed.Values[:visible], actor)
 	response.NextOffset = nextOffset
 	writeTasksResponse(w, http.StatusOK, response)
 }

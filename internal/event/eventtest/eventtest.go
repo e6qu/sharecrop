@@ -28,7 +28,7 @@ func (store *CapturingStore) Append(_ context.Context, value event.Event, recipi
 	defer store.mu.Unlock()
 	store.appended = append(store.appended, value)
 	store.recipients = append(store.recipients, recipients)
-	return event.AppendStoreAccepted{Value: event.StoredEvent{Event: value, Cursor: event.CursorFromSequence(int64(len(store.appended)))}}
+	return event.AppendStoreAccepted{Value: event.WithoutEnrichment(event.StoredEvent{Event: value, Cursor: event.CursorFromSequence(int64(len(store.appended)))})}
 }
 
 func (store *CapturingStore) ListForRecipient(context.Context, core.UserID, event.CursorFilter, core.Page) event.ListStoreResult {

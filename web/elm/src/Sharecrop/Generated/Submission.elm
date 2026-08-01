@@ -132,6 +132,7 @@ type alias SubmissionResponse =
     { id : String
     , taskID : String
     , submitterID : String
+    , submitterDisplayName : String
     , state : SubmissionState
     , responseJSON : String
     , reviewNote : String
@@ -146,14 +147,15 @@ submissionResponseDecoder =
         (Decode.field "id" Decode.string)
         (Decode.field "task_id" Decode.string)
         (Decode.field "submitter_id" Decode.string)
+        (Decode.field "submitter_display_name" Decode.string)
         (Decode.field "state" submissionStateDecoder)
         (Decode.field "response_json" Decode.string)
         (Decode.field "review_note" Decode.string)
         (Decode.field "attachments" (Decode.list submissionAttachmentResponseDecoder))
-        (Decode.field "validation_errors" (Decode.list submissionValidationErrorResponseDecoder))
         |> Decode.andThen
             (\finish ->
-                Decode.map finish
+                Decode.map2 finish
+                    (Decode.field "validation_errors" (Decode.list submissionValidationErrorResponseDecoder))
                     (Decode.field "sensitive_fields" (Decode.list submissionSensitiveFieldResponseDecoder))
             )
 
@@ -163,6 +165,7 @@ submissionResponseEncoder submissionResponse =
         [ ( "id", Encode.string submissionResponse.id )
         , ( "task_id", Encode.string submissionResponse.taskID )
         , ( "submitter_id", Encode.string submissionResponse.submitterID )
+        , ( "submitter_display_name", Encode.string submissionResponse.submitterDisplayName )
         , ( "state", submissionStateEncoder submissionResponse.state )
         , ( "response_json", Encode.string submissionResponse.responseJSON )
         , ( "review_note", Encode.string submissionResponse.reviewNote )
@@ -193,16 +196,18 @@ type alias SubmissionCommentResponse =
     { id : String
     , submissionID : String
     , authorUserID : String
+    , authorDisplayName : String
     , body : String
     , createdAt : String
     }
 
 submissionCommentResponseDecoder : Decoder SubmissionCommentResponse
 submissionCommentResponseDecoder =
-    Decode.map5 SubmissionCommentResponse
+    Decode.map6 SubmissionCommentResponse
         (Decode.field "id" Decode.string)
         (Decode.field "submission_id" Decode.string)
         (Decode.field "author_user_id" Decode.string)
+        (Decode.field "author_display_name" Decode.string)
         (Decode.field "body" Decode.string)
         (Decode.field "created_at" Decode.string)
 
@@ -212,6 +217,7 @@ submissionCommentResponseEncoder submissionCommentResponse =
         [ ( "id", Encode.string submissionCommentResponse.id )
         , ( "submission_id", Encode.string submissionCommentResponse.submissionID )
         , ( "author_user_id", Encode.string submissionCommentResponse.authorUserID )
+        , ( "author_display_name", Encode.string submissionCommentResponse.authorDisplayName )
         , ( "body", Encode.string submissionCommentResponse.body )
         , ( "created_at", Encode.string submissionCommentResponse.createdAt )
         ]

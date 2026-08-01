@@ -2,7 +2,9 @@ package db
 
 import (
 	"encoding/json"
+	"time"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
@@ -21,7 +23,7 @@ type sensitiveFieldDTO struct {
 	RedactedAt string `json:"redacted_at"`
 }
 
-func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID string, rawState string, rawResponse string, rawReviewNote string, rawValidationErrors string, rawSensitiveFields string, rawAttachments string) submissionRowResult {
+func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID string, rawSubmitterName string, rawState string, rawResponse string, rawReviewNote string, rawValidationErrors string, rawSensitiveFields string, rawAttachments string, rawCreatedAt string) submissionRowResult {
 	submissionIDResult := core.ParseSubmissionID(rawSubmissionID)
 	submissionID, submissionIDMatched := submissionIDResult.(core.SubmissionIDCreated)
 	if !submissionIDMatched {
@@ -84,16 +86,29 @@ func parseSubmissionRow(rawSubmissionID string, rawTaskID string, rawUserID stri
 		return submissionRowRejected{reason: attachmentsResult.(attachmentsRejected).reason}
 	}
 
+	submitterNameResult := auth.NewDisplayName(rawSubmitterName)
+	submitterName, submitterNameMatched := submitterNameResult.(auth.DisplayNameAccepted)
+	if !submitterNameMatched {
+		return submissionRowRejected{reason: submitterNameResult.(auth.DisplayNameRejected).Reason}
+	}
+
+	createdAt, createdAtErr := time.Parse(time.RFC3339, rawCreatedAt)
+	if createdAtErr != nil {
+		return submissionRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "submission created_at is invalid")}
+	}
+
 	return submissionRowAccepted{value: submission.Submission{
-		ID:              submissionID.Value,
-		TaskID:          taskID.Value,
-		SubmitterID:     submitterID.Value,
-		State:           state.Value,
-		ResponseSource:  source.Value,
-		Attachments:     attachments.values,
-		Validation:      outcome.value,
-		SensitiveFields: sensitiveFields.values,
-		ReviewNote:      note.Value,
+		ID:                   submissionID.Value,
+		TaskID:               taskID.Value,
+		SubmitterID:          submitterID.Value,
+		SubmitterDisplayName: submitterName.Value,
+		State:                state.Value,
+		ResponseSource:       source.Value,
+		Attachments:          attachments.values,
+		Validation:           outcome.value,
+		SensitiveFields:      sensitiveFields.values,
+		ReviewNote:           note.Value,
+		CreatedAt:            createdAt.UTC(),
 	}}
 }
 

@@ -38,6 +38,19 @@ func newUserIDForTest(t *testing.T) core.UserID {
 	return created.Value
 }
 
+// seedUserForTest inserts a minimal users row (the enriched read models join
+// users for display names) and returns its id.
+func seedUserForTest(t *testing.T, handle *sql.DB, name string) core.UserID {
+	t.Helper()
+	id := newUserIDForTest(t)
+	if _, err := handle.ExecContext(context.Background(),
+		"insert into users (id, email, display_name) values (?, ?, ?)",
+		id.String(), name+"-"+id.String()+"@example.test", name); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	return id
+}
+
 // TestNewSchemaDDLOnSQLite proves the 000037-000041 migrations translate to
 // SQLite: the bigserial event cursor auto-assigns monotonically (rowid alias),
 // ledger idempotency keys are unique per account rather than globally, the
@@ -110,9 +123,10 @@ func TestNewSchemaDDLOnSQLite(t *testing.T) {
 // recipient fan-out, and cursor-filtered listing through the SQLite dialect.
 func TestEventStoreOnSQLite(t *testing.T) {
 	ctx := context.Background()
-	store := EventStore{db: NewSQLite(openSQLiteWithSchema(t))}
+	handle := openSQLiteWithSchema(t)
+	store := EventStore{db: NewSQLite(handle)}
 
-	actor := newUserIDForTest(t)
+	actor := seedUserForTest(t, handle, "Feed Actor")
 	owner := newUserIDForTest(t)
 	stranger := newUserIDForTest(t)
 	taskID, _ := core.NewTaskID().(core.TaskIDCreated)
@@ -186,24 +200,26 @@ func TestEventStoreOnSQLite(t *testing.T) {
 // ::casts, returning, $N placeholders) and the timestamptz time round-trip.
 func TestNotificationStoreOnSQLite(t *testing.T) {
 	ctx := context.Background()
-	store := NotificationStore{db: NewSQLite(openSQLiteWithSchema(t))}
+	handle := openSQLiteWithSchema(t)
+	store := NotificationStore{db: NewSQLite(handle)}
 
 	recipient := newUserIDForTest(t)
-	actor := newUserIDForTest(t)
+	actor := seedUserForTest(t, handle, "Inbox Actor")
 	notificationID, matched := core.NewNotificationID().(core.NotificationIDCreated)
 	if !matched {
 		t.Fatalf("notification id rejected")
 	}
 	createdAt := time.Now().UTC().Round(time.Microsecond)
 	value := notification.Notification{
-		ID:          notificationID.Value,
-		RecipientID: recipient,
-		ActorID:     actor,
-		Kind:        notification.KindSubmissionAccepted,
-		Subject:     notification.Subject{Kind: "submission", ID: "sub-1"},
-		State:       notification.StateUnread,
-		Metadata:    notification.EmptyMetadata(),
-		CreatedAt:   createdAt,
+		ID:           notificationID.Value,
+		RecipientID:  recipient,
+		ActorID:      actor,
+		Kind:         notification.KindSubmissionAccepted,
+		Subject:      notification.Subject{Kind: "submission", ID: "sub-1"},
+		SubjectTitle: notification.NoSubjectTitle{},
+		State:        notification.StateUnread,
+		Metadata:     notification.EmptyMetadata(),
+		CreatedAt:    createdAt,
 	}
 
 	if _, ok := store.Create(ctx, value).(notification.CreateStoreAccepted); !ok {
@@ -238,5 +254,15 @@ func TestNotificationStoreOnSQLite(t *testing.T) {
 	}
 	if marked.Value.State != notification.StateRead {
 		t.Fatalf("state after mark read = %v, want read", marked.Value.State)
+	}
+}
+
+// TestSplitPartTranslation proves the Postgres email-local-part expression the
+// display-name reads use becomes a valid SQLite substr/instr expression.
+func TestSplitPartTranslation(t *testing.T) {
+	got := translateSQLiteStatement("select split_part(users.email, '@', 1) from users")
+	want := "select substr(users.email, 1, instr(users.email, '@') - 1) from users"
+	if got != want {
+		t.Fatalf("translated = %q, want %q", got, want)
 	}
 }

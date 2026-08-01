@@ -74,7 +74,7 @@ func TestMCPCreateTaskParityWithREST(t *testing.T) {
 		"title": "Parity task",
 		"description": "Created over MCP with full REST parity.",
 		"response_schema_json": "{\"kind\":\"freeform\"}",
-		"visibility": "public",
+		"visibility_kind": "public",
 		"reward_kind": "none",
 		"participation_policy": "reservation_required",
 		"assignee_scope": "user",

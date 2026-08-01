@@ -47,13 +47,14 @@ type Stores struct {
 	// SavedQueueViews and the fields below are RuntimeState services
 	// (internal/http), bridged so the pooled guest shares one Postgres-backed
 	// store instead of per-instance state.
-	SavedQueueViews    httpserver.SavedQueueViewService
-	PlatformAdmins     httpserver.PlatformAdminService
-	ModerationTriage   httpserver.ModerationTriageService
-	Privacy            httpserver.PrivacyService
-	IPRateLimiter      httpserver.RateLimiter
-	SubjectRateLimiter httpserver.RateLimiter
-	MCPSessions        httpserver.MCPSessionPersistence
+	SavedQueueViews         httpserver.SavedQueueViewService
+	PlatformAdmins          httpserver.PlatformAdminService
+	ModerationTriage        httpserver.ModerationTriageService
+	Privacy                 httpserver.PrivacyService
+	IPRateLimiter           httpserver.RateLimiter
+	SubjectRateLimiter      httpserver.RateLimiter
+	RegistrationRateLimiter httpserver.RateLimiter
+	MCPSessions             httpserver.MCPSessionPersistence
 }
 
 // domainStores maps the flat store set onto appgraph's domain store set.
@@ -93,6 +94,7 @@ func New(secret auth.AccessTokenSecret, stores Stores) http.Handler {
 	runtime.PrivacyService = stores.Privacy
 	runtime.IPRateLimiter = stores.IPRateLimiter
 	runtime.SubjectRateLimiter = stores.SubjectRateLimiter
+	runtime.RegistrationRateLimiter = stores.RegistrationRateLimiter
 	runtime.MCPSessions = httpserver.NewPersistedMCPHTTPSessionStore(stores.MCPSessions)
 
 	return httpserver.NewWithRuntimeState(

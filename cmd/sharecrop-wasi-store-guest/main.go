@@ -74,7 +74,7 @@ func dispatch(ctx context.Context, method string, args []byte) ([]byte, error) {
 	case "privacy":
 		return privacybridge.Dispatch(ctx, privacybridge.NewGuestStore(rpc.Invoke), method, args)
 	case "ratelimit":
-		return ratelimitbridge.Dispatch(ctx, ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "ip"), ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "subject"), method, args)
+		return ratelimitbridge.Dispatch(ctx, ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "ip"), ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "subject"), ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "register"), method, args)
 	case "mcpsession":
 		return mcpsessionbridge.Dispatch(ctx, mcpsessionbridge.NewGuestMCPSessionPersistence(rpc.Invoke), method, args)
 	default:

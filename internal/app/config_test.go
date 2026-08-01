@@ -91,6 +91,38 @@ func TestParseMigrationConfigRequiresOnlyDatabaseAndMigrations(t *testing.T) {
 	}
 }
 
+// TestParseMCPConfigDoesNotRequireHTTPAddress pins the stdio transport's
+// config surface: `sharecrop mcp` serves no HTTP, so it must start without
+// SHARECROP_HTTP_ADDR.
+func TestParseMCPConfigDoesNotRequireHTTPAddress(t *testing.T) {
+	result := ParseMCPConfig(MCPEnvValues{
+		DatabaseURL:       "postgres://example",
+		MigrationsDir:     "migrations",
+		AccessTokenSecret: "01234567890123456789012345678901",
+	})
+	loaded, matched := result.(MCPConfigLoaded)
+	if !matched {
+		t.Fatalf("result = %T, want MCPConfigLoaded", result)
+	}
+	if loaded.Value.DatabaseURL() != "postgres://example" || loaded.Value.MigrationsDir() != "migrations" || loaded.Value.AccessTokenSecret() != "01234567890123456789012345678901" {
+		t.Fatalf("mcp config = %#v", loaded.Value)
+	}
+}
+
+func TestParseMCPConfigRejectsMissingRequiredValues(t *testing.T) {
+	for name, values := range map[string]MCPEnvValues{
+		"database":   {MigrationsDir: "migrations", AccessTokenSecret: "secret"},
+		"migrations": {DatabaseURL: "postgres://example", AccessTokenSecret: "secret"},
+		"secret":     {DatabaseURL: "postgres://example", MigrationsDir: "migrations"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, rejected := ParseMCPConfig(values).(MCPConfigRejected); !rejected {
+				t.Fatalf("expected MCPConfigRejected for missing %s", name)
+			}
+		})
+	}
+}
+
 func TestParseMigrationConfigRejectsMissingDatabaseOrMigrations(t *testing.T) {
 	for name, values := range map[string]MigrationEnvValues{
 		"database":   {MigrationsDir: "migrations"},

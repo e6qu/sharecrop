@@ -202,11 +202,12 @@ func TestReservationRoundTrip(t *testing.T) {
 		t.Fatalf("team id rejected")
 	}
 	original := task.Reservation{
-		ID:          tasktest.NewReservationID(t),
-		TaskID:      tasktest.NewTaskID(t),
-		Assignee:    task.OrganizationTeamAssignee{OrganizationID: orgID.Value, TeamID: teamID.Value},
-		State:       task.ReservationStateActive,
-		RequestedBy: newUserID(t),
+		ID:                tasktest.NewReservationID(t),
+		TaskID:            tasktest.NewTaskID(t),
+		Assignee:          task.OrganizationTeamAssignee{OrganizationID: orgID.Value, TeamID: teamID.Value},
+		State:             task.ReservationStateActive,
+		RequestedBy:       newUserID(t),
+		HolderDisplayName: displayNameForTest(t),
 	}
 	restored, err := decodeReservation(encodeReservation(original))
 	if err != nil {
@@ -283,7 +284,7 @@ func TestResultRoundTrips(t *testing.T) {
 		t.Errorf("created task mismatch: %s", diff)
 	}
 
-	listed, err := decodeListTasksResult(encodeListTasksResult(task.ListTasksStoreAccepted{Values: []task.ListItem{{Task: value, ActiveAssignee: task.NoActiveAssignee{}}}}))
+	listed, err := decodeListTasksResult(encodeListTasksResult(task.ListTasksStoreAccepted{Values: []task.ListItem{{Task: value, ActiveAssignee: task.NoActiveAssignee{}, CreatorDisplayName: displayNameForTest(t)}}}))
 	if err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
@@ -291,7 +292,7 @@ func TestResultRoundTrips(t *testing.T) {
 	if !matched || len(items.Values) != 1 {
 		t.Fatalf("list result = %T, want one item", listed)
 	}
-	if diff := tasktest.ListItemDiff(items.Values[0], task.ListItem{Task: value, ActiveAssignee: task.NoActiveAssignee{}}); diff != "" {
+	if diff := tasktest.ListItemDiff(items.Values[0], task.ListItem{Task: value, ActiveAssignee: task.NoActiveAssignee{}, CreatorDisplayName: displayNameForTest(t)}); diff != "" {
 		t.Errorf("list item mismatch: %s", diff)
 	}
 }
@@ -327,4 +328,13 @@ func rewardKindKey(reward task.RewardSpec) string {
 	default:
 		return "none"
 	}
+}
+
+func displayNameForTest(t *testing.T) auth.DisplayName {
+	t.Helper()
+	accepted, matched := auth.NewDisplayName("Wire Tester").(auth.DisplayNameAccepted)
+	if !matched {
+		t.Fatalf("display name rejected")
+	}
+	return accepted.Value
 }

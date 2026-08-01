@@ -52,7 +52,7 @@ type healthOrganizationService struct{}
 
 type healthSubmissionService struct{}
 
-func (healthAuthService) Register(context.Context, auth.EmailAddress, auth.PasswordSecret) auth.RegisterResult {
+func (healthAuthService) Register(context.Context, auth.EmailAddress, auth.PasswordSecret, auth.DisplayNameChoice) auth.RegisterResult {
 	return auth.RegisterRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -105,6 +105,10 @@ func (healthAuthService) ChangePassword(context.Context, core.UserID, auth.Passw
 }
 
 func (healthAuthService) UpdateProfile(context.Context, core.UserID, auth.EmailAddress) auth.AccountActionResult {
+	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAuthService) UpdateDisplayName(context.Context, core.UserID, auth.DisplayName) auth.AccountActionResult {
 	return auth.AccountActionRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -344,6 +348,10 @@ func (healthLedgerService) ListEntries(context.Context, core.UserID, core.Page) 
 
 func (healthLedgerService) ListOrganizationEntries(context.Context, core.OrganizationID, core.Page) ledger.ListEntriesResult {
 	return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthLedgerService) GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult {
+	return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
 type healthAgentService struct{}

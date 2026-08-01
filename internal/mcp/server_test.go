@@ -25,8 +25,8 @@ import (
 // tests observe genuine create/list/revoke behavior. The store is fresh per
 // call because fakeServices is a value; tests that need continuity go
 // through the HTTP layer instead.
-func (services fakeServices) CreateWebhookSubscription(ctx context.Context, owner webhook.Owner, endpoint webhook.EndpointURL, kinds webhook.KindFilter) webhook.CreateResult {
-	return webhook.NewService(webhook.NewMemoryStore()).Create(ctx, owner, endpoint, kinds)
+func (services fakeServices) CreateWebhookSubscription(ctx context.Context, owner webhook.Owner, endpoint webhook.EndpointURL, kinds webhook.KindFilter, audience webhook.Audience) webhook.CreateResult {
+	return webhook.NewService(webhook.NewMemoryStore()).Create(ctx, owner, endpoint, kinds, audience)
 }
 
 func (services fakeServices) ListWebhookSubscriptions(ctx context.Context, owner webhook.Owner, page core.Page) webhook.ListResult {
@@ -58,9 +58,9 @@ func TestInitializeReportsProtocolVersion(t *testing.T) {
 	}
 }
 
-func TestToolsListReturnsAllTools(t *testing.T) {
+func TestToolsListReturnsAllToolsForAFullScopeCredential(t *testing.T) {
 	server := NewServer(fakeServices{})
-	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "tools/list", `{}`))
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: agent.NewScopeSet(agent.AllScopes())}, request(`1`, "tools/list", `{}`))
 	var result struct {
 		Tools []struct {
 			Name        string          `json:"name"`
@@ -75,6 +75,63 @@ func TestToolsListReturnsAllTools(t *testing.T) {
 	}
 	if len(result.Tools[0].InputSchema) == 0 {
 		t.Fatalf("tool input schema is empty")
+	}
+}
+
+// TestToolsListIsFilteredByCredentialScopes pins the honesty of the tool
+// surface: a credential only sees tools it is scope-eligible to call, so a
+// worker credential is never shown grant_credits or the other
+// platform_admin tools.
+func TestToolsListIsFilteredByCredentialScopes(t *testing.T) {
+	server := NewServer(fakeServices{})
+	worker := CallerCredential{Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead, agent.ScopeSubmissionsWrite, agent.ScopeSubmissionsRead})}
+	response := server.Handle(context.Background(), testSubject(t), worker, request(`1`, "tools/list", `{}`))
+	var result struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(mustResult(t, response), &result); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	listed := make(map[string]bool, len(result.Tools))
+	for _, tool := range result.Tools {
+		listed[tool.Name] = true
+	}
+	for _, expected := range []string{toolListTasks, toolGetTask, toolSubmitResponse, toolGetSubmission, toolListTaskSubmissions} {
+		if !listed[expected] {
+			t.Fatalf("worker credential missing %s in tools/list", expected)
+		}
+	}
+	for _, hidden := range []string{toolGrantCredits, toolGrantPlatformAdmin, toolListPlatformAdmins, toolAwardCollectible, toolCreateTask, toolListLedger, toolCreateWebhookSubscription} {
+		if listed[hidden] {
+			t.Fatalf("worker credential should not see %s in tools/list", hidden)
+		}
+	}
+
+	// Calling an unlisted tool still fails the scope gate, matching the list.
+	call := server.Handle(context.Background(), testSubject(t), worker, request(`2`, "tools/call", `{"name":"sharecrop.grant_credits","arguments":{}}`))
+	if call.Error == nil || call.Error.Code != codeScopeDenied {
+		t.Fatalf("expected scope-denied calling an unlisted tool, got %+v", call.Error)
+	}
+}
+
+// TestInitializeCarriesInstructions pins the orientation text: the MCP spec
+// instructions field must exist and cover the worker loop, the schema
+// dialect, and the marketplace webhook channel.
+func TestInitializeCarriesInstructions(t *testing.T) {
+	server := NewServer(fakeServices{})
+	response := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: allScopes()}, request(`1`, "initialize", `{}`))
+	var result struct {
+		Instructions string `json:"instructions"`
+	}
+	if err := json.Unmarshal(mustResult(t, response), &result); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	for _, expected := range []string{"sharecrop.list_tasks", "sharecrop.reserve_task", "sharecrop.submit_response", "sharecrop.get_submission", "NOT JSON Schema", "marketplace", "next_offset"} {
+		if !strings.Contains(result.Instructions, expected) {
+			t.Fatalf("instructions missing %q:\n%s", expected, result.Instructions)
+		}
 	}
 }
 
@@ -207,12 +264,29 @@ func TestToolsCallSurfacesDomainRejectionAsToolError(t *testing.T) {
 }
 
 type fakeServices struct {
-	rejectGet bool
-	isAdmin   bool
+	rejectGet         bool
+	isAdmin           bool
+	invalidSubmission bool
+	// listTaskCount is how many task rows exist for ListTasks; the fake
+	// honors the requested page limit like a real store, so probe-based
+	// pagination is observable in tests.
+	listTaskCount int
 }
 
-func (services fakeServices) ListTasks(_ context.Context, _ auth.Subject, _ task.ListScope, _ task.ListFilters, _ core.Page) task.ListResult {
-	return task.TasksListed{Values: []task.ListItem{}}
+func (services fakeServices) ListTasks(_ context.Context, _ auth.Subject, _ task.ListScope, _ task.ListFilters, page core.Page) task.ListResult {
+	remaining := services.listTaskCount - page.Offset()
+	if remaining < 0 {
+		remaining = 0
+	}
+	if remaining > page.Limit() {
+		remaining = page.Limit()
+	}
+	values := make([]task.ListItem, 0, remaining)
+	for range remaining {
+		created := core.NewTaskID().(core.TaskIDCreated)
+		values = append(values, task.ListItem{Task: task.Task{ID: created.Value, State: task.StateOpen}})
+	}
+	return task.TasksListed{Values: values}
 }
 
 func (services fakeServices) GetTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.GetResult {
@@ -289,14 +363,21 @@ func fakeUserID(subject auth.Subject) core.UserID {
 func (services fakeServices) SubmitResponse(_ context.Context, command submission.SubmitCommand) submission.SubmitResult {
 	submissionID := core.NewSubmissionID().(core.SubmissionIDCreated)
 	token := submission.NewReceiptTokenPlain().(submission.ReceiptTokenPlainAccepted)
+	state := submission.StateSubmitted
+	validation := submission.ValidationOutcome(submission.ValidationPassed{})
+	if services.invalidSubmission {
+		state = submission.StateInvalid
+		validation = submission.ValidationFailed{Errors: []submission.ValidationError{{Path: "$.answer", Message: "required field is missing"}}}
+	}
 	return submission.SubmissionCreated{
 		Value: submission.Submission{
 			ID:             submissionID.Value,
 			TaskID:         command.TaskID,
 			SubmitterID:    command.SubmitterID,
-			State:          submission.StateSubmitted,
+			State:          state,
 			ResponseSource: command.ResponseSource,
-			Validation:     submission.ValidationPassed{},
+			Attachments:    command.Attachments,
+			Validation:     validation,
 		},
 		ReceiptToken: token.Value,
 	}
@@ -304,6 +385,21 @@ func (services fakeServices) SubmitResponse(_ context.Context, command submissio
 
 func (services fakeServices) GetSubmissionStatus(_ context.Context, _ submission.ReceiptTokenPlain) submission.ReceiptStatusResult {
 	return submission.ReceiptStatusRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (services fakeServices) GetSubmission(_ context.Context, subject auth.Subject, submissionID core.SubmissionID) submission.GetResult {
+	taskID := core.NewTaskID().(core.TaskIDCreated)
+	submitterName := auth.NewDisplayName("ada").(auth.DisplayNameAccepted)
+	return submission.SubmissionGot{Value: submission.Submission{
+		ID:                   submissionID,
+		TaskID:               taskID.Value,
+		SubmitterID:          fakeUserID(subject),
+		SubmitterDisplayName: submitterName.Value,
+		State:                submission.StateSubmitted,
+		ResponseSource:       submission.NewResponseSource(`{"answer":"done"}`).(submission.ResponseSourceAccepted).Value,
+		Validation:           submission.ValidationPassed{},
+		CreatedAt:            time.Date(2026, 6, 29, 0, 0, 0, 0, time.UTC),
+	}}
 }
 
 func (services fakeServices) ListTaskSubmissions(_ context.Context, _ auth.UserSubject, _ core.TaskID, _ core.Page) submission.ListResult {
@@ -326,7 +422,7 @@ func (services fakeServices) RejectSubmission(_ context.Context, _ core.UserID, 
 	return ledger.SubmissionRejected{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
-func (services fakeServices) ListSeries(_ context.Context, _ auth.UserSubject) task.ListSeriesResult {
+func (services fakeServices) ListSeries(_ context.Context, _ auth.UserSubject, _ core.Page) task.ListSeriesResult {
 	return task.SeriesListed{Values: []task.Series{}}
 }
 
@@ -576,6 +672,11 @@ func (services fakeServices) GetCreditBalance(_ context.Context, _ core.UserID) 
 
 func (services fakeServices) ListLedger(_ context.Context, _ core.UserID, _ core.Page) ledger.ListEntriesResult {
 	return ledger.EntriesListed{Values: []ledger.LedgerEntry{}}
+}
+
+func (services fakeServices) GrantCredits(_ context.Context, _ core.UserID, _ ledger.GrantTarget, amount ledger.CreditAmount, _ ledger.GrantNote, _ ledger.IdempotencyKey) ledger.GrantResult {
+	entryID := core.NewLedgerEntryID().(core.LedgerEntryIDCreated)
+	return ledger.CreditsGranted{EntryID: entryID.Value, Amount: amount}
 }
 
 func (services fakeServices) ListNotifications(_ context.Context, _ core.UserID, filter notification.StateFilter, _ core.Page) notification.ListResult {

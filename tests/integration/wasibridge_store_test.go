@@ -174,7 +174,7 @@ func seedCredential(t *testing.T, store db.AuthStore, userID core.UserID, email 
 	if !ok {
 		t.Fatalf("password hash rejected")
 	}
-	if _, ok := store.CreateUserCredential(context.Background(), userID, email, hash.Value).(auth.StoreUserAccepted); !ok {
+	if _, ok := store.CreateUserCredential(context.Background(), userID, email, auth.DeriveDisplayNameFromEmail(email), hash.Value).(auth.StoreUserAccepted); !ok {
 		t.Fatalf("create user credential rejected")
 	}
 }

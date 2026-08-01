@@ -2,6 +2,7 @@ module Sharecrop.Labels exposing (..)
 
 import Http
 import Sharecrop.Generated.Agent as Agent
+import Time
 import Sharecrop.Generated.Collectible as Collectible
 import Sharecrop.Generated.Events as Events
 import Sharecrop.Generated.Ledger as Ledger
@@ -103,7 +104,9 @@ participationPolicyLabel : Task.TaskParticipationPolicy -> String
 participationPolicyLabel policy =
     case policy of
         Task.TaskParticipationPolicyOpen ->
-            "open submissions"
+            -- "open participation", not "open submissions": next to a
+            -- review queue the latter reads as "submissions are waiting".
+            "open participation"
 
         Task.TaskParticipationPolicyReservationRequired ->
             "reservation required"
@@ -221,6 +224,8 @@ allScopes =
     , Agent.AgentScopePrivacyManage
     , Agent.AgentScopePlatformAdmin
     , Agent.AgentScopeCredentialsManage
+    , Agent.AgentScopeWebhooksRead
+    , Agent.AgentScopeWebhooksManage
     ]
 
 
@@ -447,65 +452,246 @@ kindLabel kind =
             "Manual adjustment"
 
 
-{-| The wire tag for a notification kind, unchanged from when the field was a
-raw string, so inbox rows read exactly as before the kind became an enum.
+{-| Human label for a notification kind, used as the compact heading of an
+inbox row (the full sentence comes from notificationSentence).
 -}
 notificationKindLabel : Notification.NotificationKind -> String
 notificationKindLabel kind =
     case kind of
         Notification.NotificationKindSubmissionCreated ->
-            "submission_created"
+            "Submission received"
 
         Notification.NotificationKindSubmissionAccepted ->
-            "submission_accepted"
+            "Submission accepted"
 
         Notification.NotificationKindSubmissionChangesRequested ->
-            "submission_changes_requested"
+            "Changes requested"
 
         Notification.NotificationKindSubmissionRejected ->
-            "submission_rejected"
+            "Submission rejected"
 
         Notification.NotificationKindSubmissionCommented ->
-            "submission_commented"
+            "Submission comment"
 
         Notification.NotificationKindTaskFunded ->
-            "task_funded"
+            "Task funded"
 
         Notification.NotificationKindTaskCancelled ->
-            "task_cancelled"
+            "Task cancelled"
 
         Notification.NotificationKindTaskExpired ->
-            "task_expired"
+            "Task expired"
 
         Notification.NotificationKindTaskCommented ->
-            "task_commented"
+            "Task comment"
 
         Notification.NotificationKindSeriesCommented ->
-            "series_commented"
+            "Series comment"
 
         Notification.NotificationKindReservationRequested ->
-            "reservation_requested"
+            "Reservation requested"
 
         Notification.NotificationKindReservationApproved ->
-            "reservation_approved"
+            "Reservation approved"
 
         Notification.NotificationKindReservationDeclined ->
-            "reservation_declined"
+            "Reservation declined"
 
         Notification.NotificationKindReservationCancelled ->
-            "reservation_cancelled"
+            "Reservation cancelled"
 
         Notification.NotificationKindReservationExpired ->
-            "reservation_expired"
+            "Reservation expired"
 
         Notification.NotificationKindPayoutReceived ->
-            "payout_received"
+            "Payout received"
+
+        Notification.NotificationKindCreditGranted ->
+            "Credits granted"
 
         Notification.NotificationKindTipReceived ->
-            "tip_received"
+            "Tip received"
 
         Notification.NotificationKindCollectibleAwarded ->
-            "collectible_awarded"
+            "Collectible awarded"
+
+
+{-| An inbox row as one readable sentence: who did what to which subject,
+e.g. "Ren Okafor submitted a response to 'Weekly QA sweep'." Falls back to
+neutral nouns when the actor or subject title is blank (system events,
+redacted or deleted subjects).
+-}
+notificationSentence : String -> String -> Notification.NotificationKind -> String
+notificationSentence actorName subjectTitle kind =
+    let
+        actor =
+            personOrSomeone actorName
+
+        task =
+            titledOr "a task" subjectTitle
+
+        series =
+            titledOr "a series" subjectTitle
+    in
+    case kind of
+        Notification.NotificationKindSubmissionCreated ->
+            actor ++ " submitted a response to " ++ task ++ "."
+
+        Notification.NotificationKindSubmissionAccepted ->
+            actor ++ " accepted your submission to " ++ task ++ "."
+
+        Notification.NotificationKindSubmissionChangesRequested ->
+            actor ++ " requested changes on your submission to " ++ task ++ "."
+
+        Notification.NotificationKindSubmissionRejected ->
+            actor ++ " rejected your submission to " ++ task ++ "."
+
+        Notification.NotificationKindSubmissionCommented ->
+            actor ++ " commented on a submission to " ++ task ++ "."
+
+        Notification.NotificationKindTaskFunded ->
+            actor ++ " funded " ++ task ++ "."
+
+        Notification.NotificationKindTaskCancelled ->
+            capitalized task ++ " was cancelled."
+
+        Notification.NotificationKindTaskExpired ->
+            capitalized task ++ " expired."
+
+        Notification.NotificationKindTaskCommented ->
+            actor ++ " commented on " ++ task ++ "."
+
+        Notification.NotificationKindSeriesCommented ->
+            actor ++ " commented on the series " ++ series ++ "."
+
+        Notification.NotificationKindReservationRequested ->
+            actor ++ " requested a reservation on " ++ task ++ "."
+
+        Notification.NotificationKindReservationApproved ->
+            actor ++ " approved a reservation on " ++ task ++ "."
+
+        Notification.NotificationKindReservationDeclined ->
+            actor ++ " declined a reservation on " ++ task ++ "."
+
+        Notification.NotificationKindReservationCancelled ->
+            actor ++ " cancelled a reservation on " ++ task ++ "."
+
+        Notification.NotificationKindReservationExpired ->
+            "A reservation on " ++ task ++ " expired."
+
+        Notification.NotificationKindPayoutReceived ->
+            "You received a payout for " ++ task ++ "."
+
+        Notification.NotificationKindCreditGranted ->
+            actor ++ " granted you credits."
+
+        Notification.NotificationKindTipReceived ->
+            actor ++ " sent you a tip for " ++ task ++ "."
+
+        Notification.NotificationKindCollectibleAwarded ->
+            "You were awarded " ++ titledOr "a collectible" subjectTitle ++ "."
+
+
+{-| An activity-feed row as one readable sentence, built from the event's
+actor display name and task title.
+-}
+eventSentence : String -> String -> Events.DomainEventKind -> String
+eventSentence actorName taskTitle kind =
+    let
+        actor =
+            personOrSomeone actorName
+
+        task =
+            titledOr "a task" taskTitle
+    in
+    case kind of
+        Events.DomainEventKindTaskOpened ->
+            actor ++ " opened " ++ task ++ "."
+
+        Events.DomainEventKindTaskFunded ->
+            actor ++ " funded " ++ task ++ "."
+
+        Events.DomainEventKindTaskCancelled ->
+            actor ++ " cancelled " ++ task ++ "."
+
+        Events.DomainEventKindTaskExpired ->
+            capitalized task ++ " expired."
+
+        Events.DomainEventKindTaskCommented ->
+            actor ++ " commented on " ++ task ++ "."
+
+        Events.DomainEventKindSeriesCommented ->
+            actor ++ " commented on a series."
+
+        Events.DomainEventKindReservationRequested ->
+            actor ++ " requested a reservation on " ++ task ++ "."
+
+        Events.DomainEventKindReservationApproved ->
+            actor ++ " approved a reservation on " ++ task ++ "."
+
+        Events.DomainEventKindReservationDeclined ->
+            actor ++ " declined a reservation on " ++ task ++ "."
+
+        Events.DomainEventKindReservationCancelled ->
+            actor ++ " cancelled a reservation on " ++ task ++ "."
+
+        Events.DomainEventKindReservationExpired ->
+            "A reservation on " ++ task ++ " expired."
+
+        Events.DomainEventKindSubmissionCreated ->
+            actor ++ " submitted a response to " ++ task ++ "."
+
+        Events.DomainEventKindSubmissionAccepted ->
+            actor ++ " accepted a submission to " ++ task ++ "."
+
+        Events.DomainEventKindSubmissionChangesRequested ->
+            actor ++ " requested changes on a submission to " ++ task ++ "."
+
+        Events.DomainEventKindSubmissionRejected ->
+            actor ++ " rejected a submission to " ++ task ++ "."
+
+        Events.DomainEventKindSubmissionCommented ->
+            actor ++ " commented on a submission to " ++ task ++ "."
+
+        Events.DomainEventKindPayoutReceived ->
+            actor ++ " received a payout for " ++ task ++ "."
+
+        Events.DomainEventKindCreditGranted ->
+            actor ++ " received a credit grant."
+
+        Events.DomainEventKindTipReceived ->
+            actor ++ " received a tip for " ++ task ++ "."
+
+        Events.DomainEventKindCollectibleAwarded ->
+            actor ++ " was awarded a collectible."
+
+
+personOrSomeone : String -> String
+personOrSomeone name =
+    if String.trim name == "" then
+        "Someone"
+
+    else
+        String.trim name
+
+
+titledOr : String -> String -> String
+titledOr fallback title =
+    if String.trim title == "" then
+        fallback
+
+    else
+        "'" ++ String.trim title ++ "'"
+
+
+capitalized : String -> String
+capitalized phrase =
+    case String.uncons phrase of
+        Just ( first, rest ) ->
+            String.cons (Char.toUpper first) rest
+
+        Nothing ->
+            phrase
 
 
 {-| Human phrasing for a domain event kind, for the Overview activity feed
@@ -564,6 +750,9 @@ domainEventKindLabel kind =
 
         Events.DomainEventKindPayoutReceived ->
             "Payout received"
+
+        Events.DomainEventKindCreditGranted ->
+            "Credit granted"
 
         Events.DomainEventKindTipReceived ->
             "Tip received"
@@ -629,6 +818,9 @@ domainEventKindTag kind =
         Events.DomainEventKindPayoutReceived ->
             "payout_received"
 
+        Events.DomainEventKindCreditGranted ->
+            "credit_granted"
+
         Events.DomainEventKindTipReceived ->
             "tip_received"
 
@@ -691,3 +883,175 @@ httpErrorLabel error =
             -- the former is already a complete, readable reason, and the
             -- latter is a real bug worth seeing rather than hiding.
             message
+
+
+{-| "2 hours ago"-style phrasing for an RFC3339 timestamp, relative to the
+model's clock. Falls back to the raw timestamp when the clock has not ticked
+yet (now = epoch) or the timestamp does not parse - a wrong relative time
+would be worse than a precise absolute one.
+-}
+relativeTimeLabel : Time.Posix -> String -> String
+relativeTimeLabel now raw =
+    case posixFromRFC3339 raw of
+        Nothing ->
+            raw
+
+        Just instant ->
+            if Time.posixToMillis now == 0 then
+                raw
+
+            else
+                relativePhrase (Time.posixToMillis now - Time.posixToMillis instant) raw
+
+
+relativePhrase : Int -> String -> String
+relativePhrase deltaMillis raw =
+    let
+        seconds =
+            deltaMillis // 1000
+    in
+    if seconds < 0 then
+        -- A timestamp slightly ahead of the local clock (skew) is "just
+        -- now"; anything genuinely in the future keeps its absolute form.
+        if seconds > -120 then
+            "just now"
+
+        else
+            raw
+
+    else if seconds < 60 then
+        "just now"
+
+    else if seconds < 3600 then
+        countPhrase (seconds // 60) "minute"
+
+    else if seconds < 86400 then
+        countPhrase (seconds // 3600) "hour"
+
+    else if seconds < 30 * 86400 then
+        countPhrase (seconds // 86400) "day"
+
+    else
+        -- Beyond a month, the calendar date reads better than "47 days ago".
+        "on " ++ String.left 10 raw
+
+
+countPhrase : Int -> String -> String
+countPhrase count unit =
+    if count == 1 then
+        "1 " ++ unit ++ " ago"
+
+    else
+        String.fromInt count ++ " " ++ unit ++ "s ago"
+
+
+{-| Parses the RFC3339 instants the API emits ("2026-07-31T12:34:56Z",
+optionally with fractional seconds or a +HH:MM offset) into a Posix instant.
+Local code instead of a date library: the input space is one machine-emitted
+format, not arbitrary user text.
+-}
+posixFromRFC3339 : String -> Maybe Time.Posix
+posixFromRFC3339 raw =
+    case String.split "T" raw of
+        [ datePart, timePart ] ->
+            Maybe.map2
+                (\dayMillis timeOfDay -> Time.millisToPosix (dayMillis + timeOfDay))
+                (dateMillis datePart)
+                (timeOfDayMillis timePart)
+
+        _ ->
+            Nothing
+
+
+dateMillis : String -> Maybe Int
+dateMillis datePart =
+    case List.map String.toInt (String.split "-" datePart) of
+        [ Just year, Just month, Just day ] ->
+            Just (daysFromCivil year month day * 86400000)
+
+        _ ->
+            Nothing
+
+
+timeOfDayMillis : String -> Maybe Int
+timeOfDayMillis timePart =
+    let
+        ( clockText, offsetMinutes ) =
+            splitUTCOffset timePart
+    in
+    case List.map String.toInt (String.split ":" clockText) of
+        [ Just hour, Just minute, Just second ] ->
+            Just ((((hour * 60 + minute) - offsetMinutes) * 60 + second) * 1000)
+
+        _ ->
+            Nothing
+
+
+{-| Splits "12:34:56.789+02:00" into the clock digits (fraction dropped) and
+the offset in minutes. "Z" and a missing suffix both mean UTC.
+-}
+splitUTCOffset : String -> ( String, Int )
+splitUTCOffset timePart =
+    let
+        withoutZ =
+            if String.endsWith "Z" timePart then
+                String.dropRight 1 timePart
+
+            else
+                timePart
+
+        ( clock, offset ) =
+            case String.indexes "+" withoutZ of
+                position :: _ ->
+                    ( String.left position withoutZ, offsetToMinutes (String.dropLeft (position + 1) withoutZ) )
+
+                [] ->
+                    case String.indexes "-" withoutZ of
+                        position :: _ ->
+                            ( String.left position withoutZ, -(offsetToMinutes (String.dropLeft (position + 1) withoutZ)) )
+
+                        [] ->
+                            ( withoutZ, 0 )
+    in
+    ( String.left 8 clock, offset )
+
+
+offsetToMinutes : String -> Int
+offsetToMinutes offsetText =
+    case List.map String.toInt (String.split ":" offsetText) of
+        [ Just hours, Just minutes ] ->
+            hours * 60 + minutes
+
+        _ ->
+            0
+
+
+{-| Days since 1970-01-01 for a proleptic-Gregorian civil date (Howard
+Hinnant's algorithm). Valid for every date the API can emit.
+-}
+daysFromCivil : Int -> Int -> Int -> Int
+daysFromCivil year month day =
+    let
+        shiftedYear =
+            if month <= 2 then
+                year - 1
+
+            else
+                year
+
+        era =
+            shiftedYear // 400
+
+        yearOfEra =
+            shiftedYear - era * 400
+
+        monthIndex =
+            modBy 12 (month + 9)
+
+        dayOfYear =
+            (153 * monthIndex + 2) // 5 + day - 1
+
+        dayOfEra =
+            yearOfEra * 365 + yearOfEra // 4 - yearOfEra // 100 + dayOfYear
+    in
+    era * 146097 + dayOfEra - 719468

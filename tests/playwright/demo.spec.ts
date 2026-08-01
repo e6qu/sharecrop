@@ -14,10 +14,14 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
 
   // Boots straight into the seeded account (refresh auto-succeeds in the shim).
   await expect(page.getByText("70 credits")).toBeVisible();
+  // The Account menu names the signed-in person, not a bare "Account".
+  await expect(page.getByTestId("nav-account-menu")).toContainText(
+    "Mara Ellison",
+  );
   // Ledger + My-tasks decode and populate (seed enum values must match the real
   // client's decoders, else Decode.list blanks the whole section).
   await expect(page.getByText("Signup grant")).toBeVisible();
-  await page.getByRole("link", { name: "Tasks", exact: true }).click();
+  await page.getByTestId("nav-tasks").click();
   // This task is mara's own AND public, so it now appears in both the
   // My-tasks and Discover-public-tasks sections on the same hub page —
   // scope to My tasks specifically.
@@ -61,26 +65,16 @@ test("demo boots the real Elm client against the Go/WASM backend with seeded tas
 
   // Reserve-then-submit, with the response validated against the task schema
   // (the demo enforces the schema like the real backend): a malformed response
-  // is recorded "invalid", a schema-correct one "submitted". Any submission
-  // (valid or not) consumes the active reservation, so a resubmission needs a
-  // fresh reservation first, matching the real backend's eligibility check.
+  // is recorded "invalid", a schema-correct one "submitted". An invalid
+  // submission keeps the reservation active so the worker can fix the
+  // response and resubmit without re-reserving; only the valid submission
+  // consumes the reservation.
   await page.getByTestId("reserve-task").click();
   await fillDetailResponse(page, "{}");
   await page.getByTestId("detail-submit").click();
   await expect(page.getByTestId("detail-submit-message")).toContainText(
     "invalid",
   );
-  // The detail view doesn't refetch reservation state after a submit, so
-  // navigate away and back (SPA routing, not a page reload - a reload would
-  // wipe and reseed the whole demo) to see the now-consumed reservation and
-  // the fresh "reserve" control it exposes.
-  await page.goBack();
-  await page
-    .getByTestId("discovery-task-row")
-    .filter({ hasText: "Extract line items from 6 vendor invoices" })
-    .getByTestId("discovery-view")
-    .click();
-  await page.getByTestId("reserve-task").click();
   await fillDetailResponse(
     page,
     '{"invoices":[{"invoice_id":"INV-1041","vendor":"Birch Supply Co","total":"1240.55","due_date":"2026-07-12"}]}',
@@ -176,15 +170,15 @@ test("demo admin resolves privacy requests from the browser", async ({ page }) =
   await page.getByTestId("nav-account-menu").click();
   await page.getByTestId("nav-admin").click();
   await expect(page.getByTestId("admin-audit-page-offset")).toHaveText(
-    "Offset 0",
+    "Page 1",
   );
   await expect(page.getByTestId("admin-platform-admins-page-offset"))
-    .toHaveText("Offset 0");
+    .toHaveText("Page 1");
   await expect(page.getByTestId("admin-privacy-page-offset")).toHaveText(
-    "Offset 0",
+    "Page 1",
   );
   await expect(page.getByTestId("admin-moderation-page-offset")).toHaveText(
-    "Offset 0",
+    "Page 1",
   );
   await expect(page.getByTestId("admin-privacy-request")).toHaveCount(1);
   await page.getByTestId("admin-section-privacy").click();
@@ -250,6 +244,35 @@ test("demo admin runs privacy retention from the browser", async ({ page }) => {
   );
   await expect(page.getByTestId("admin-retention-count")).toContainText(
     "Redacted fields:",
+  );
+});
+
+test("demo admin grants credits with a ledger note from the browser", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("70 credits")).toBeVisible();
+
+  await page.getByTestId("nav-account-menu").click();
+  await page.getByTestId("nav-admin").click();
+  await page.getByTestId("admin-section-grant-credits").click();
+
+  // Target mara herself so the granted credits and the ledger note are
+  // observable in the demo's single-actor session.
+  await page.getByTestId("grant-target-id-query").fill("mara");
+  await page.getByTestId("grant-target-id").selectOption({
+    label: "mara@sharecrop.demo",
+  });
+  await page.getByTestId("grant-amount").fill("25");
+  await page.getByTestId("grant-note").fill("Demo goodwill grant");
+  await page.getByTestId("grant-credits").click();
+  await expect(page.getByTestId("grant-message")).toContainText(
+    "Granted 25 credits.",
+  );
+
+  // The balance reflects the grant and the ledger entry shows the note.
+  await page.getByTestId("nav-overview").click();
+  await expect(page.getByTestId("balance")).toHaveText("95 credits");
+  await expect(page.getByTestId("ledger-entry-note").first()).toContainText(
+    "Demo goodwill grant",
   );
 });
 
@@ -322,7 +345,7 @@ test("demo owner can refund a funded task they own", async ({ page }) => {
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("70 credits")).toBeVisible();
 
-  await page.getByRole("link", { name: "Tasks", exact: true }).click();
+  await page.getByTestId("nav-tasks").click();
   await page
     .getByTestId("task-row")
     .filter({ hasText: "Verify 10 ledger transfers for fraud signals" })
@@ -342,7 +365,7 @@ test("the fund panel does not appear on an already-funded, open demo task", asyn
   await page.goto(`${demoOrigin}/index.html`);
   await expect(page.getByText("70 credits")).toBeVisible();
 
-  await page.getByRole("link", { name: "Tasks", exact: true }).click();
+  await page.getByTestId("nav-tasks").click();
   await page
     .getByTestId("task-row")
     .filter({ hasText: "Verify 10 ledger transfers for fraud signals" })

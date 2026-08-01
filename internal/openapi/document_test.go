@@ -9,7 +9,7 @@ func TestGenerateMarksPublicRoutesWithEmptySecurity(t *testing.T) {
 	document := Generate([]Route{
 		{Method: "POST", Path: "/api/auth/login", OperationID: "login", RequiresAuth: false},
 		{Method: "POST", Path: "/api/tasks", OperationID: "createTask", RequiresAuth: true},
-	}, nil)
+	}, nil, nil)
 
 	login := document.Paths["/api/auth/login"]["post"]
 	if login.Security == nil || len(*login.Security) != 0 {
@@ -29,7 +29,7 @@ func TestGenerateOmitsRequestBodyForGetAndDelete(t *testing.T) {
 	document := Generate([]Route{
 		{Method: "GET", Path: "/api/tasks", OperationID: "listTasks", RequiresAuth: false},
 		{Method: "DELETE", Path: "/api/account", OperationID: "deactivateAccount", RequiresAuth: true},
-	}, nil)
+	}, nil, nil)
 
 	if document.Paths["/api/tasks"]["get"].RequestBody != nil {
 		t.Fatalf("GET should not have a request body")
@@ -40,7 +40,7 @@ func TestGenerateOmitsRequestBodyForGetAndDelete(t *testing.T) {
 }
 
 func TestGenerateUsesExtractedFormMediaType(t *testing.T) {
-	document := Generate([]Route{{Method: "POST", Path: "/logout", OperationID: "logout", RequestMediaType: "application/x-www-form-urlencoded"}}, nil)
+	document := Generate([]Route{{Method: "POST", Path: "/logout", OperationID: "logout", RequestMediaType: "application/x-www-form-urlencoded"}}, nil, nil)
 	content := document.Paths["/logout"]["post"].RequestBody.Content
 	if _, ok := content["application/x-www-form-urlencoded"]; !ok {
 		t.Fatalf("request content = %#v", content)
@@ -51,7 +51,7 @@ func TestGenerateUsesExtractedFormMediaType(t *testing.T) {
 }
 
 func TestGenerateUsesExtractedResponseMediaType(t *testing.T) {
-	document := Generate([]Route{{Method: "GET", Path: "/signed-out", OperationID: "signedOut", ResponseMediaType: "text/html"}}, nil)
+	document := Generate([]Route{{Method: "GET", Path: "/signed-out", OperationID: "signedOut", ResponseMediaType: "text/html"}}, nil, nil)
 	content := document.Paths["/signed-out"]["get"].Responses["default"].Content
 	media, ok := content["text/html"]
 	if !ok || media.Schema.Type != "string" {
@@ -66,7 +66,7 @@ func TestGenerateJSONDistinguishesPublicFromDefaultSecurity(t *testing.T) {
 	document := Generate([]Route{
 		{Method: "POST", Path: "/api/auth/login", OperationID: "login", RequiresAuth: false},
 		{Method: "POST", Path: "/api/tasks", OperationID: "createTask", RequiresAuth: true},
-	}, nil)
+	}, nil, nil)
 
 	encoded, err := json.Marshal(document)
 	if err != nil {
@@ -89,7 +89,7 @@ func TestGenerateJSONDistinguishesPublicFromDefaultSecurity(t *testing.T) {
 }
 
 func TestGenerateDocumentHasGlobalBearerSecurity(t *testing.T) {
-	document := Generate([]Route{{Method: "GET", Path: "/api/tasks", OperationID: "listTasks", RequiresAuth: true}}, nil)
+	document := Generate([]Route{{Method: "GET", Path: "/api/tasks", OperationID: "listTasks", RequiresAuth: true}}, nil, nil)
 
 	if document.OpenAPI == "" {
 		t.Fatalf("openapi version must be set")
@@ -102,10 +102,42 @@ func TestGenerateDocumentHasGlobalBearerSecurity(t *testing.T) {
 	}
 }
 
+func TestGenerateDerivesPathParametersAndEmitsDeclaredQueryParameters(t *testing.T) {
+	queryParameters := map[string][]Parameter{
+		"listTaskSubmissions": {
+			{Name: "limit", In: "query", Schema: Schema{Type: "integer"}},
+			{Name: "state", In: "query", Schema: Schema{Type: "string", Enum: []string{"submitted", "accepted"}, Default: "submitted"}},
+		},
+	}
+	document := Generate([]Route{
+		{Method: "GET", Path: "/api/tasks/{task_id}/submissions", OperationID: "listTaskSubmissions", RequiresAuth: true},
+		{Method: "POST", Path: "/api/tasks/{task_id}/reservations/{reservation_id}/approve", OperationID: "approveTaskReservation", RequiresAuth: true},
+	}, nil, queryParameters)
+
+	listParameters := document.Paths["/api/tasks/{task_id}/submissions"]["get"].Parameters
+	if len(listParameters) != 3 {
+		t.Fatalf("list parameters = %#v, want path task_id plus 2 query parameters", listParameters)
+	}
+	if listParameters[0].Name != "task_id" || listParameters[0].In != "path" || !listParameters[0].Required || listParameters[0].Schema.Type != "string" {
+		t.Fatalf("path parameter = %#v, want required string task_id", listParameters[0])
+	}
+	if listParameters[2].Name != "state" || listParameters[2].In != "query" || listParameters[2].Required {
+		t.Fatalf("query parameter = %#v, want optional query state", listParameters[2])
+	}
+	if len(listParameters[2].Schema.Enum) != 2 || listParameters[2].Schema.Default != "submitted" {
+		t.Fatalf("query parameter schema = %#v, want enum values and default", listParameters[2].Schema)
+	}
+
+	approveParameters := document.Paths["/api/tasks/{task_id}/reservations/{reservation_id}/approve"]["post"].Parameters
+	if len(approveParameters) != 2 || approveParameters[0].Name != "task_id" || approveParameters[1].Name != "reservation_id" {
+		t.Fatalf("approve parameters = %#v, want the two path parameters in path order", approveParameters)
+	}
+}
+
 func TestGenerateUsesGenericObjectWhenTypeUnresolvedOrUnknown(t *testing.T) {
 	document := Generate([]Route{
 		{Method: "POST", Path: "/api/tasks", OperationID: "createTask", RequiresAuth: true, RequestType: "", ResponseType: "notInRegistry"},
-	}, map[string]StructShape{})
+	}, map[string]StructShape{}, nil)
 
 	operation := document.Paths["/api/tasks"]["post"]
 	requestSchema := operation.RequestBody.Content["application/json"].Schema
@@ -134,7 +166,7 @@ func TestGenerateBuildsTypedSchemaWithRequiredFieldsAndNestedStruct(t *testing.T
 
 	document := Generate([]Route{
 		{Method: "GET", Path: "/api/tasks/{task_id}", OperationID: "getTask", RequiresAuth: true, ResponseType: "taskResponse"},
-	}, structs)
+	}, structs, nil)
 
 	schema := document.Paths["/api/tasks/{task_id}"]["get"].Responses["default"].Content["application/json"].Schema
 	if schema.Type != "object" {

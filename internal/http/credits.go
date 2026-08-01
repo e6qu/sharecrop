@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/e6qu/sharecrop/internal/core"
@@ -54,6 +55,99 @@ func (server Server) creditsLedger(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, response)
 }
+
+// grantCredits is the platform-admin manual credit grant: it credits a user
+// or organization account, records the required note, and is idempotent per
+// idempotency key.
+func (server Server) grantCredits(w http.ResponseWriter, r *http.Request) {
+	actor, ok := server.requireAdminSubject(w, r)
+	if !ok {
+		return
+	}
+	if !server.allowBySubject(w, actor.subject.ID.String()) {
+		return
+	}
+
+	var request creditGrantRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
+		return
+	}
+
+	targetResult := parseGrantTarget(request.TargetKind, request.TargetID)
+	target, targetMatched := targetResult.(grantTargetAccepted)
+	if !targetMatched {
+		writeDomainError(w, targetResult.(grantTargetRejected).reason)
+		return
+	}
+
+	amountResult := ledger.NewCreditAmount(request.Amount)
+	amount, amountMatched := amountResult.(ledger.CreditAmountAccepted)
+	if !amountMatched {
+		writeDomainError(w, amountResult.(ledger.CreditAmountRejected).Reason)
+		return
+	}
+
+	noteResult := ledger.NewGrantNote(request.Note)
+	note, noteMatched := noteResult.(ledger.GrantNoteAccepted)
+	if !noteMatched {
+		writeDomainError(w, noteResult.(ledger.GrantNoteRejected).Reason)
+		return
+	}
+
+	keyResult := ledger.NewIdempotencyKey(request.IdempotencyKey)
+	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
+	if !keyMatched {
+		writeDomainError(w, keyResult.(ledger.IdempotencyKeyRejected).Reason)
+		return
+	}
+
+	result := server.ledgerService.GrantCredits(r.Context(), actor.subject.ID, target.value, amount.Value, note.Value, key.Value)
+	granted, matched := result.(ledger.CreditsGranted)
+	if !matched {
+		writeDomainError(w, result.(ledger.GrantRejected).Reason)
+		return
+	}
+	writeJSON(w, http.StatusCreated, creditGrantResponse{EntryID: granted.EntryID.String(), Amount: granted.Amount.Int64()})
+}
+
+type grantTargetResult interface {
+	grantTargetResult()
+}
+
+type grantTargetAccepted struct {
+	value ledger.GrantTarget
+}
+
+type grantTargetRejected struct {
+	reason core.DomainError
+}
+
+func (grantTargetAccepted) grantTargetResult() {}
+
+func (grantTargetRejected) grantTargetResult() {}
+
+func parseGrantTarget(rawKind string, rawID string) grantTargetResult {
+	switch rawKind {
+	case "user":
+		userIDResult := core.ParseUserID(rawID)
+		userID, matched := userIDResult.(core.UserIDCreated)
+		if !matched {
+			return grantTargetRejected{reason: userIDResult.(core.UserIDRejected).Reason}
+		}
+		return grantTargetAccepted{value: ledger.GrantToUser{ID: userID.Value}}
+	case "organization":
+		organizationIDResult := core.ParseOrganizationID(rawID)
+		organizationID, matched := organizationIDResult.(core.OrganizationIDCreated)
+		if !matched {
+			return grantTargetRejected{reason: organizationIDResult.(core.OrganizationIDRejected).Reason}
+		}
+		return grantTargetAccepted{value: ledger.GrantToOrganization{ID: organizationID.Value}}
+	default:
+		return grantTargetRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "credit grant target kind is invalid")}
+	}
+}
+
 func ledgerEntryToResponse(entry ledger.LedgerEntry) ledgerEntryResponse {
 	taskID := ""
 	if referenced, matched := entry.TaskRef.(ledger.TaskReferenced); matched {
@@ -64,6 +158,7 @@ func ledgerEntryToResponse(entry ledger.LedgerEntry) ledgerEntryResponse {
 		Kind:   entry.Kind.String(),
 		Amount: entry.Amount.Int64(),
 		TaskID: taskID,
+		Note:   entry.Note,
 	}
 }
 func fundToResponse(fund ledger.TaskFund) taskFundResponse {

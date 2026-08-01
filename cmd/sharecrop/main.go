@@ -71,6 +71,19 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 		return runMigrate(ctx, args[2:], cfg.Value, stdout, logger)
 	}
 
+	// The stdio MCP transport serves no HTTP, so it loads the narrower MCP
+	// config that does not require SHARECROP_HTTP_ADDR.
+	if len(args) > 1 && args[1] == "mcp" {
+		mcpCfgResult := app.LoadMCPConfig()
+		mcpCfg, mcpLoaded := mcpCfgResult.(app.MCPConfigLoaded)
+		if !mcpLoaded {
+			rejected := mcpCfgResult.(app.MCPConfigRejected)
+			logger.Error("load mcp config", "reason", rejected.Reason)
+			return 2
+		}
+		return runMCPStdio(ctx, mcpCfg.Value, stdout, logger)
+	}
+
 	cfgResult := app.LoadConfig()
 	cfg, loaded := cfgResult.(app.ConfigLoaded)
 	if !loaded {
@@ -83,8 +96,6 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 		switch args[1] {
 		case "serve":
 			return runServe(ctx, cfg.Value, logger)
-		case "mcp":
-			return runMCPStdio(ctx, cfg.Value, stdout, logger)
 		default:
 			_, _ = fmt.Fprintf(stderr, "unknown command: %s\n", args[1])
 			return 2
@@ -200,7 +211,13 @@ func runGenerateOpenAPI(stdout io.Writer, logger *slog.Logger) int {
 		return 1
 	}
 
-	document := openapi.Generate(extracted.Routes, extracted.Structs)
+	queryParameters, parameterErr := declaredQueryParameters(extracted.Routes)
+	if parameterErr != nil {
+		logger.Error("declared query parameters", "error", parameterErr)
+		return 1
+	}
+
+	document := openapi.Generate(extracted.Routes, extracted.Structs, queryParameters)
 	writeResult := openapi.Write(document, "docs/openapi.json")
 	if _, written := writeResult.(openapi.Written); !written {
 		rejected := writeResult.(openapi.WriteRejected)
@@ -210,6 +227,41 @@ func runGenerateOpenAPI(stdout io.Writer, logger *slog.Logger) int {
 
 	_, _ = fmt.Fprintln(stdout, "openapi document generated")
 	return 0
+}
+
+// declaredQueryParameters converts the query-parameter declarations in
+// internal/contracts into the OpenAPI generator's parameter model, keyed by
+// operationId. A declaration naming an operation the mux does not register
+// is a generation error, so the declarations cannot drift from the routes.
+func declaredQueryParameters(routes []openapi.Route) (map[string][]openapi.Parameter, error) {
+	knownOperations := make(map[string]bool, len(routes))
+	for _, route := range routes {
+		knownOperations[route.OperationID] = true
+	}
+	declared := map[string][]openapi.Parameter{}
+	for _, endpoint := range contracts.QueryParameters() {
+		if !knownOperations[endpoint.OperationID] {
+			return nil, fmt.Errorf("query parameters declared for unknown operation %q", endpoint.OperationID)
+		}
+		if _, duplicate := declared[endpoint.OperationID]; duplicate {
+			return nil, fmt.Errorf("query parameters declared twice for operation %q", endpoint.OperationID)
+		}
+		parameters := make([]openapi.Parameter, 0, len(endpoint.Parameters))
+		for _, parameter := range endpoint.Parameters {
+			parameters = append(parameters, openapi.Parameter{
+				Name:        parameter.Name,
+				In:          "query",
+				Description: parameter.Description,
+				Schema: openapi.Schema{
+					Type:    parameter.Type.String(),
+					Enum:    parameter.Enum,
+					Default: parameter.Default,
+				},
+			})
+		}
+		declared[endpoint.OperationID] = parameters
+	}
+	return declared, nil
 }
 
 // readGoPackageSources reads every non-test Go source file in dir, keyed by
@@ -258,7 +310,7 @@ func runMigrate(ctx context.Context, args []string, cfg app.MigrationConfig, std
 	return 0
 }
 
-func runMCPStdio(ctx context.Context, cfg app.Config, stdout io.Writer, logger *slog.Logger) int {
+func runMCPStdio(ctx context.Context, cfg app.MCPConfig, stdout io.Writer, logger *slog.Logger) int {
 	rawToken := os.Getenv("SHARECROP_AGENT_TOKEN")
 
 	pool, err := db.Open(ctx, cfg.DatabaseURL())
@@ -396,18 +448,19 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 	bootstrapAdmins := httpserver.ParseAdminUserIDsForRuntime(os.Getenv("SHARECROP_ADMIN_USER_IDS"))
 
 	nativeHandler := httpserver.NewWithRuntimeState(staticFiles, graph.AuthService, graph.TokenVerifier, graph.OrganizationService, graph.TaskService, graph.SubmissionService, graph.LedgerService, graph.AgentService, graph.OrgCredentialService, graph.AssetService, httpserver.RuntimeState{
-		IPRateLimiter:       db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
-		SubjectRateLimiter:  db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
-		MCPSessions:         httpserver.NewPersistedMCPHTTPSessionStore(db.NewMCPSessionStore(pool)),
-		AuditService:        graph.AuditService,
-		NotificationService: graph.NotificationService,
-		EventStore:          eventStore,
-		WebhookStore:        db.NewWebhookStore(pool),
-		SavedQueueViews:     db.NewSavedQueueViewStore(pool),
-		PrivacyService:      db.NewPrivacyStore(pool),
-		PlatformAdmins:      db.NewPlatformAdminStore(pool, bootstrapAdmins),
-		ModerationTriage:    db.NewModerationTriageStore(pool),
-		OIDCSessions:        db.NewOpenIDConnectSessionStore(db.NewPGX(pool)),
+		IPRateLimiter:           db.NewRateLimiter(pool, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
+		SubjectRateLimiter:      db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
+		RegistrationRateLimiter: db.NewRateLimiter(pool, "register", httpserver.ParseRegistrationRateCapacityForRuntime(os.Getenv("SHARECROP_REGISTRATION_RATE_CAPACITY")), httpserver.ParseRegistrationRateRefillForRuntime(os.Getenv("SHARECROP_REGISTRATION_RATE_REFILL"))),
+		MCPSessions:             httpserver.NewPersistedMCPHTTPSessionStore(db.NewMCPSessionStore(pool)),
+		AuditService:            graph.AuditService,
+		NotificationService:     graph.NotificationService,
+		EventStore:              eventStore,
+		WebhookStore:            db.NewWebhookStore(pool),
+		SavedQueueViews:         db.NewSavedQueueViewStore(pool),
+		PrivacyService:          db.NewPrivacyStore(pool),
+		PlatformAdmins:          db.NewPlatformAdminStore(pool, bootstrapAdmins),
+		ModerationTriage:        db.NewModerationTriageStore(pool),
+		OIDCSessions:            db.NewOpenIDConnectSessionStore(db.NewPGX(pool)),
 	})
 
 	// WASI hosting is the default: production runs the same WASM artifact as the

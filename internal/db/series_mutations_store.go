@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
 )
@@ -137,15 +138,22 @@ func (store TaskStore) CreateSeriesComment(ctx context.Context, comment task.Ser
 		return task.CreateSeriesCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "create series comment failed")}
 	}
 	comment.CreatedAt = createdAt
+	authorName, nameReason := fetchUserDisplayName(ctx, store.db, comment.AuthorID)
+	if nameReason != nil {
+		return task.CreateSeriesCommentStoreRejected{Reason: *nameReason}
+	}
+	comment.AuthorDisplayName = authorName
 	return task.CreateSeriesCommentStoreAccepted{Value: comment}
 }
 
 func (store TaskStore) ListSeriesComments(ctx context.Context, seriesID core.TaskSeriesID, page core.Page) task.ListSeriesCommentsStoreResult {
 	rows, err := store.db.Query(ctx, `
-		select id::text, series_id::text, author_user_id::text, body, created_at
+		select series_comments.id::text, series_comments.series_id::text, series_comments.author_user_id::text,
+			`+displayNameSQL("users")+`, series_comments.body, series_comments.created_at
 		from series_comments
-		where series_id = $1
-		order by created_at desc, id desc
+		join users on users.id = series_comments.author_user_id
+		where series_comments.series_id = $1
+		order by series_comments.created_at desc, series_comments.id desc
 		limit $2 offset $3
 	`, seriesID.String(), page.Limit(), page.Offset())
 	if err != nil {
@@ -155,12 +163,12 @@ func (store TaskStore) ListSeriesComments(ctx context.Context, seriesID core.Tas
 
 	values := make([]task.SeriesComment, 0)
 	for rows.Next() {
-		var rawID, rawSeriesID, rawAuthor, rawBody string
+		var rawID, rawSeriesID, rawAuthor, rawAuthorName, rawBody string
 		var createdAt time.Time
-		if scanErr := rows.Scan(&rawID, &rawSeriesID, &rawAuthor, &rawBody, &createdAt); scanErr != nil {
+		if scanErr := rows.Scan(&rawID, &rawSeriesID, &rawAuthor, &rawAuthorName, &rawBody, &createdAt); scanErr != nil {
 			return task.ListSeriesCommentsStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan series comment failed")}
 		}
-		parsed := parseSeriesComment(rawID, rawSeriesID, rawAuthor, rawBody, createdAt)
+		parsed := parseSeriesComment(rawID, rawSeriesID, rawAuthor, rawAuthorName, rawBody, createdAt)
 		accepted, matched := parsed.(task.CreateSeriesCommentStoreAccepted)
 		if !matched {
 			return task.ListSeriesCommentsStoreRejected{Reason: parsed.(task.CreateSeriesCommentStoreRejected).Reason}
@@ -176,7 +184,7 @@ func (store TaskStore) ListSeriesComments(ctx context.Context, seriesID core.Tas
 	return task.ListSeriesCommentsStoreAccepted{Values: values}
 }
 
-func parseSeriesComment(rawID string, rawSeriesID string, rawAuthor string, rawBody string, createdAt time.Time) task.CreateSeriesCommentStoreResult {
+func parseSeriesComment(rawID string, rawSeriesID string, rawAuthor string, rawAuthorName string, rawBody string, createdAt time.Time) task.CreateSeriesCommentStoreResult {
 	idResult := core.ParseSeriesCommentID(rawID)
 	commentID, idMatched := idResult.(core.SeriesCommentIDCreated)
 	if !idMatched {
@@ -197,11 +205,17 @@ func parseSeriesComment(rawID string, rawSeriesID string, rawAuthor string, rawB
 	if !bodyMatched {
 		return task.CreateSeriesCommentStoreRejected{Reason: bodyResult.(task.CommentBodyRejected).Reason}
 	}
+	authorNameResult := auth.NewDisplayName(rawAuthorName)
+	authorName, authorNameMatched := authorNameResult.(auth.DisplayNameAccepted)
+	if !authorNameMatched {
+		return task.CreateSeriesCommentStoreRejected{Reason: authorNameResult.(auth.DisplayNameRejected).Reason}
+	}
 	return task.CreateSeriesCommentStoreAccepted{Value: task.SeriesComment{
-		ID:        commentID.Value,
-		SeriesID:  seriesID.Value,
-		AuthorID:  author.Value,
-		Body:      body.Value,
-		CreatedAt: createdAt,
+		ID:                commentID.Value,
+		SeriesID:          seriesID.Value,
+		AuthorID:          author.Value,
+		AuthorDisplayName: authorName.Value,
+		Body:              body.Value,
+		CreatedAt:         createdAt,
 	}}
 }

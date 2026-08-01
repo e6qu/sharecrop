@@ -8,6 +8,7 @@ package eventbridge
 import (
 	"fmt"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
@@ -201,10 +202,22 @@ func decodeCursorFilter(wire cursorFilterWire) (event.CursorFilter, error) {
 type storedEventWire struct {
 	Event  eventWire `json:"event"`
 	Cursor string    `json:"cursor"`
+	// ActorName and TaskTitle carry the feed read's enrichment; empty means
+	// the absent variant (append results, pump reads).
+	ActorName string `json:"actor_name,omitempty"`
+	TaskTitle string `json:"task_title,omitempty"`
 }
 
 func encodeStoredEvent(value event.StoredEvent) storedEventWire {
-	return storedEventWire{Event: encodeEvent(value.Event), Cursor: value.Cursor.String()}
+	actorName := ""
+	if named, matched := value.ActorName.(event.ActorNamed); matched {
+		actorName = named.DisplayName.String()
+	}
+	taskTitle := ""
+	if titled, matched := value.TaskTitle.(event.TaskTitled); matched {
+		taskTitle = titled.Title
+	}
+	return storedEventWire{Event: encodeEvent(value.Event), Cursor: value.Cursor.String(), ActorName: actorName, TaskTitle: taskTitle}
 }
 
 func decodeStoredEvent(wire storedEventWire) (event.StoredEvent, error) {
@@ -216,7 +229,18 @@ func decodeStoredEvent(wire storedEventWire) (event.StoredEvent, error) {
 	if !matched {
 		return event.StoredEvent{}, fmt.Errorf("invalid stored event cursor %q", wire.Cursor)
 	}
-	return event.StoredEvent{Event: value, Cursor: parsed.Value}, nil
+	stored := event.WithoutEnrichment(event.StoredEvent{Event: value, Cursor: parsed.Value})
+	if wire.ActorName != "" {
+		nameResult, nameMatched := auth.NewDisplayName(wire.ActorName).(auth.DisplayNameAccepted)
+		if !nameMatched {
+			return event.StoredEvent{}, fmt.Errorf("stored event actor name is invalid")
+		}
+		stored.ActorName = event.ActorNamed{DisplayName: nameResult.Value}
+	}
+	if wire.TaskTitle != "" {
+		stored.TaskTitle = event.TaskTitled{Title: wire.TaskTitle}
+	}
+	return stored, nil
 }
 
 // ---- result unions ----

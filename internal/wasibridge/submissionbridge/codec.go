@@ -7,6 +7,7 @@ package submissionbridge
 import (
 	"fmt"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -190,28 +191,34 @@ func decodeSubmitCommand(wire submitCommandWire) (submission.SubmitCommand, erro
 // ---- submission.Submission ----
 
 type SubmissionWire struct {
-	ID              string                `json:"id"`
-	TaskID          string                `json:"task_id"`
-	SubmitterID     string                `json:"submitter_id"`
-	State           string                `json:"state"`
-	ResponseSource  string                `json:"response_source"`
-	Attachments     []attachmentwire.Wire `json:"attachments,omitempty"`
-	Validation      validationOutcomeWire `json:"validation"`
-	SensitiveFields []sensitiveFieldWire  `json:"sensitive_fields,omitempty"`
-	ReviewNote      string                `json:"review_note"`
+	ID          string `json:"id"`
+	TaskID      string `json:"task_id"`
+	SubmitterID string `json:"submitter_id"`
+	// SubmitterDisplayName is populated on store read models; empty only for
+	// values that never passed through a store read.
+	SubmitterDisplayName string                `json:"submitter_display_name,omitempty"`
+	State                string                `json:"state"`
+	ResponseSource       string                `json:"response_source"`
+	Attachments          []attachmentwire.Wire `json:"attachments,omitempty"`
+	Validation           validationOutcomeWire `json:"validation"`
+	SensitiveFields      []sensitiveFieldWire  `json:"sensitive_fields,omitempty"`
+	ReviewNote           string                `json:"review_note"`
+	CreatedAt            string                `json:"created_at"`
 }
 
 func EncodeSubmission(value submission.Submission) SubmissionWire {
 	return SubmissionWire{
-		ID:              corewire.EncodeSubmissionID(value.ID),
-		TaskID:          corewire.EncodeTaskID(value.TaskID),
-		SubmitterID:     corewire.EncodeUserID(value.SubmitterID),
-		State:           encodeState(value.State),
-		ResponseSource:  encodeResponseSource(value.ResponseSource),
-		Attachments:     attachmentwire.EncodeSlice(value.Attachments),
-		Validation:      encodeValidationOutcome(value.Validation),
-		SensitiveFields: encodeSensitiveFields(value.SensitiveFields),
-		ReviewNote:      encodeReviewNote(value.ReviewNote),
+		ID:                   corewire.EncodeSubmissionID(value.ID),
+		TaskID:               corewire.EncodeTaskID(value.TaskID),
+		SubmitterID:          corewire.EncodeUserID(value.SubmitterID),
+		SubmitterDisplayName: value.SubmitterDisplayName.String(),
+		State:                encodeState(value.State),
+		ResponseSource:       encodeResponseSource(value.ResponseSource),
+		Attachments:          attachmentwire.EncodeSlice(value.Attachments),
+		Validation:           encodeValidationOutcome(value.Validation),
+		SensitiveFields:      encodeSensitiveFields(value.SensitiveFields),
+		ReviewNote:           encodeReviewNote(value.ReviewNote),
+		CreatedAt:            corewire.EncodeTime(value.CreatedAt),
 	}
 }
 
@@ -252,16 +259,26 @@ func DecodeSubmission(wire SubmissionWire) (submission.Submission, error) {
 	if err != nil {
 		return submission.Submission{}, err
 	}
+	submitterName, err := decodeOptionalSubmissionDisplayName(wire.SubmitterDisplayName)
+	if err != nil {
+		return submission.Submission{}, err
+	}
+	createdAt, err := corewire.DecodeTime(wire.CreatedAt)
+	if err != nil {
+		return submission.Submission{}, err
+	}
 	return submission.Submission{
-		ID:              id,
-		TaskID:          taskID,
-		SubmitterID:     submitterID,
-		State:           state,
-		ResponseSource:  responseSource,
-		Attachments:     attachments,
-		Validation:      validation,
-		SensitiveFields: sensitiveFields,
-		ReviewNote:      reviewNote,
+		ID:                   id,
+		TaskID:               taskID,
+		SubmitterID:          submitterID,
+		SubmitterDisplayName: submitterName,
+		State:                state,
+		ResponseSource:       responseSource,
+		Attachments:          attachments,
+		Validation:           validation,
+		SensitiveFields:      sensitiveFields,
+		ReviewNote:           reviewNote,
+		CreatedAt:            createdAt,
 	}, nil
 }
 
@@ -291,17 +308,21 @@ type submissionCommentWire struct {
 	ID           string `json:"id"`
 	SubmissionID string `json:"submission_id"`
 	AuthorID     string `json:"author_id"`
-	Body         string `json:"body"`
-	CreatedAt    string `json:"created_at"`
+	// AuthorDisplayName is empty on the create command (the store resolves
+	// it) and populated on every read model the store returns.
+	AuthorDisplayName string `json:"author_display_name,omitempty"`
+	Body              string `json:"body"`
+	CreatedAt         string `json:"created_at"`
 }
 
 func encodeSubmissionComment(comment submission.SubmissionComment) submissionCommentWire {
 	return submissionCommentWire{
-		ID:           corewire.EncodeSubmissionCommentID(comment.ID),
-		SubmissionID: corewire.EncodeSubmissionID(comment.SubmissionID),
-		AuthorID:     corewire.EncodeUserID(comment.AuthorID),
-		Body:         encodeCommentBody(comment.Body),
-		CreatedAt:    corewire.EncodeTime(comment.CreatedAt),
+		ID:                corewire.EncodeSubmissionCommentID(comment.ID),
+		SubmissionID:      corewire.EncodeSubmissionID(comment.SubmissionID),
+		AuthorID:          corewire.EncodeUserID(comment.AuthorID),
+		AuthorDisplayName: comment.AuthorDisplayName.String(),
+		Body:              encodeCommentBody(comment.Body),
+		CreatedAt:         corewire.EncodeTime(comment.CreatedAt),
 	}
 }
 
@@ -326,13 +347,32 @@ func decodeSubmissionComment(wire submissionCommentWire) (submission.SubmissionC
 	if err != nil {
 		return submission.SubmissionComment{}, err
 	}
+	authorName, err := decodeOptionalSubmissionDisplayName(wire.AuthorDisplayName)
+	if err != nil {
+		return submission.SubmissionComment{}, err
+	}
 	return submission.SubmissionComment{
-		ID:           id,
-		SubmissionID: submissionID,
-		AuthorID:     authorID,
-		Body:         body,
-		CreatedAt:    createdAt,
+		ID:                id,
+		SubmissionID:      submissionID,
+		AuthorID:          authorID,
+		AuthorDisplayName: authorName,
+		Body:              body,
+		CreatedAt:         createdAt,
 	}, nil
+}
+
+// decodeOptionalSubmissionDisplayName decodes a display-name enrichment field
+// that is legitimately empty on commands (the store resolves it on reads).
+func decodeOptionalSubmissionDisplayName(raw string) (auth.DisplayName, error) {
+	if raw == "" {
+		return auth.DisplayName{}, nil
+	}
+	result := auth.NewDisplayName(raw)
+	accepted, matched := result.(auth.DisplayNameAccepted)
+	if !matched {
+		return auth.DisplayName{}, fmt.Errorf("display name is invalid")
+	}
+	return accepted.Value, nil
 }
 
 func encodeSubmissionComments(values []submission.SubmissionComment) []submissionCommentWire {

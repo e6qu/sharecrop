@@ -93,17 +93,44 @@ Review-upgrade notes (event stream, webhooks, runner, retheme):
   oldest-first) when pagination landed; series detail embeds at most 100
   tasks and the newest 20 comments, with the paginated endpoints serving the
   rest.
-- The OpenAPI generator still emits no per-status responses, no error schema
-  (`code` does not appear there), and no parameter objects — a pre-existing
-  generator scope limit; the route/DTO inventory itself is current.
+- The OpenAPI generator now declares path parameters and contract-declared
+  query parameters (enums and defaults included) but still emits no
+  per-status responses and no error schema (`code` does not appear there) —
+  the remaining generator scope limit.
 - The Elm activity feed re-reads from the stream start on each Overview entry
-  (the cursor only advances within the visit) and caps at 50 rows; feed and
-  inbox timestamps render raw RFC3339. The decoded `unauthenticated` error
-  code is not yet wired to a forced logout (no per-request 401 handling
-  existed before either).
+  (the cursor only advances within the visit) and caps at 50 rows. The
+  decoded `unauthenticated` error code is not yet wired to a forced logout
+  (no per-request 401 handling existed before either).
 - `site/demo/sharecrop-wasm-backend.wasm` and `seed-snapshot.b64` are
   gitignored build artifacts; a stale local copy breaks the demo silently
   until `deno task wasm:demo:build` is rerun (CI rebuilds them).
+
+Agent-loop-completion notes:
+
+- Notifications whose subject is a submission resolve no task title
+  (`subject_title` joins tasks only), so inbox sentences fall back to
+  "a task" for submission events; the feed row for the same event has the
+  title. Follow-up: join submissions→tasks in the notification read model.
+- Webhook delivery bodies carry empty `actor_display_name`/`task_title`
+  because the dispatcher reads the unenriched event stream; documented in the
+  API reference.
+- MCP `list_tasks` summaries omit `creator_display_name` and
+  `pending_review_count` (available in the store read model); reviewer
+  agents wanting queue triage must call `get_task` per row.
+- `TaskListItemResponse` has no reservation-holder display name; the UI
+  shows "reserved" with the holder UUID in a tooltip only.
+- `tests/integration/webhookdispatch_test.go` assumes no leftover active
+  webhook subscriptions in the database: on a reused dev DB, accumulated
+  subscriptions fan `task_opened` into more due deliveries than one claim
+  batch and starve the test's own delivery. CI's fresh DB is unaffected;
+  a cleanup helper (revoke leftover subscriptions like `parkPendingDeliveries`
+  parks deliveries) is the fix.
+- The expiry input is `datetime-local` labeled UTC and does no timezone
+  conversion (elm/time cannot read the local zone offset without a new
+  dependency).
+- Registration is throttled per IP (capacity 5, ~12 min refill), which slows
+  but does not prevent signup-grant farming; grants remain the only
+  non-admin credit faucet and the sybil stance is otherwise open.
 
 Known risks:
 

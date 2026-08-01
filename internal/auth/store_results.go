@@ -52,9 +52,10 @@ func (CredentialMissing) credentialLookupResult() {}
 func (CredentialLookupRejected) credentialLookupResult() {}
 
 type UserDirectoryEntry struct {
-	ID     core.UserID
-	Email  EmailAddress
-	Status string
+	ID          core.UserID
+	Email       EmailAddress
+	DisplayName DisplayName
+	Status      string
 }
 
 type UserDirectoryResult interface {

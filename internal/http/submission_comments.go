@@ -14,8 +14,10 @@ type submissionCommentResponse struct {
 	ID           string `json:"id"`
 	SubmissionID string `json:"submission_id"`
 	AuthorUserID string `json:"author_user_id"`
-	Body         string `json:"body"`
-	CreatedAt    string `json:"created_at"`
+	// AuthorDisplayName names the comment's author.
+	AuthorDisplayName string `json:"author_display_name"`
+	Body              string `json:"body"`
+	CreatedAt         string `json:"created_at"`
 }
 
 type submissionCommentsResponse struct {
@@ -108,10 +110,11 @@ func submissionCommentsToResponse(values []submission.SubmissionComment) []submi
 
 func submissionCommentToResponse(value submission.SubmissionComment) submissionCommentResponse {
 	return submissionCommentResponse{
-		ID:           value.ID.String(),
-		SubmissionID: value.SubmissionID.String(),
-		AuthorUserID: value.AuthorID.String(),
-		Body:         value.Body.String(),
-		CreatedAt:    value.CreatedAt.UTC().Format(time.RFC3339),
+		ID:                value.ID.String(),
+		SubmissionID:      value.SubmissionID.String(),
+		AuthorUserID:      value.AuthorID.String(),
+		AuthorDisplayName: value.AuthorDisplayName.String(),
+		Body:              value.Body.String(),
+		CreatedAt:         value.CreatedAt.UTC().Format(time.RFC3339),
 	}
 }

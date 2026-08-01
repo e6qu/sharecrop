@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,23 +16,41 @@ func (server Server) register(w http.ResponseWriter, r *http.Request) {
 	if !server.allowByIP(w, r) {
 		return
 	}
-	requestResult := decodeAuthRequest(r)
-	requestAccepted, requestMatched := requestResult.(authRequestAccepted)
-	if !requestMatched {
-		rejected := requestResult.(authRequestRejected)
+	if !server.allowRegistration(w, r) {
+		return
+	}
+	var request registerRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
+		return
+	}
+	credentialsResult := parseAuthCredentials(request.Email, request.Password)
+	credentials, credentialsMatched := credentialsResult.(authRequestAccepted)
+	if !credentialsMatched {
+		rejected := credentialsResult.(authRequestRejected)
 		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, rejected.reason)
 		return
+	}
+	nameChoice := auth.DisplayNameChoice(auth.DeriveDisplayName{})
+	if request.DisplayName != "" {
+		nameResult := auth.NewDisplayName(request.DisplayName)
+		name, nameMatched := nameResult.(auth.DisplayNameAccepted)
+		if !nameMatched {
+			writeDomainError(w, nameResult.(auth.DisplayNameRejected).Reason)
+			return
+		}
+		nameChoice = auth.ProvidedDisplayName{Value: name.Value}
 	}
 
 	// The system actor row (migration 000039) is a reserved identity for
 	// background sweeps: it never holds credentials and must never become
 	// registerable.
-	if requestAccepted.email.String() == core.SystemUserEmail {
+	if credentials.email.String() == core.SystemUserEmail {
 		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "this email address is reserved")
 		return
 	}
 
-	result := server.authService.Register(r.Context(), requestAccepted.email, requestAccepted.password)
+	result := server.authService.Register(r.Context(), credentials.email, credentials.password, nameChoice)
 	accepted, matched := result.(auth.RegisterAccepted)
 	if !matched {
 		rejected := result.(auth.RegisterRejected)
@@ -44,6 +63,7 @@ func (server Server) register(w http.ResponseWriter, r *http.Request) {
 		SubjectKind: "user",
 		SubjectID:   accepted.Subject.ID.String(),
 		AccessToken: accepted.AccessToken.String(),
+		DisplayName: accepted.DisplayName.String(),
 	})
 }
 
@@ -72,6 +92,7 @@ func (server Server) login(w http.ResponseWriter, r *http.Request) {
 		SubjectKind: "user",
 		SubjectID:   accepted.Subject.ID.String(),
 		AccessToken: accepted.AccessToken.String(),
+		DisplayName: accepted.DisplayName.String(),
 	})
 }
 
@@ -113,6 +134,21 @@ func (server Server) refresh(w http.ResponseWriter, r *http.Request) {
 	// has to follow it or both the end-session coordinates and the signed-in
 	// username become unreachable for the rest of the browser session.
 	response := responseAccepted.response
+	// Name the signed-in user on the refreshed session so a restored browser
+	// session knows who it is without a second request. Guests have no
+	// profile and keep an empty display name.
+	if subject, isUser := accepted.Subject.(auth.UserSubject); isUser {
+		switch entry := server.findOwnDirectoryEntry(r.Context(), subject.ID).(type) {
+		case directoryEntryFound:
+			response.DisplayName = entry.value.DisplayName.String()
+		case directoryEntryMissing:
+			// A deactivated account can still hold a not-yet-revoked session
+			// window; it has no visible directory entry and reports no name.
+		case directoryEntryRejected:
+			writeDomainError(w, entry.reason)
+			return
+		}
+	}
 	switch rotated := server.oidcSessions.RotateOpenIDConnectSession(r.Context(), auth.HashRefreshToken(tokenAccepted.Value), auth.HashRefreshToken(accepted.RefreshToken)).(type) {
 	case auth.OpenIDConnectSessionRotated:
 		response.Username = rotated.Session.Username
@@ -426,6 +462,98 @@ func (server Server) updateAccountProfile(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "profile_updated"})
+}
+
+// directoryEntryResult is the outcome of resolving one user's directory
+// entry: found, missing (no active user with that id), or a store failure.
+type directoryEntryResult interface {
+	directoryEntryResult()
+}
+
+type directoryEntryFound struct {
+	value auth.UserDirectoryEntry
+}
+
+type directoryEntryMissing struct{}
+
+type directoryEntryRejected struct {
+	reason core.DomainError
+}
+
+func (directoryEntryFound) directoryEntryResult() {}
+
+func (directoryEntryMissing) directoryEntryResult() {}
+
+func (directoryEntryRejected) directoryEntryResult() {}
+
+// findOwnDirectoryEntry resolves one user through the existing user-directory
+// lookup, which matches an exact user id, so session and profile responses
+// can name a user without a dedicated store read.
+func (server Server) findOwnDirectoryEntry(ctx context.Context, userID core.UserID) directoryEntryResult {
+	pageResult := core.NewPage(1, 0)
+	page, pageMatched := pageResult.(core.PageAccepted)
+	if !pageMatched {
+		return directoryEntryRejected{reason: pageResult.(core.PageRejected).Reason}
+	}
+	result := server.authService.ListUsers(ctx, userID.String(), page.Value)
+	listed, matched := result.(auth.UsersListed)
+	if !matched {
+		return directoryEntryRejected{reason: result.(auth.UserDirectoryRejected).Reason}
+	}
+	if len(listed.Values) != 1 || listed.Values[0].ID != userID {
+		return directoryEntryMissing{}
+	}
+	return directoryEntryFound{value: listed.Values[0]}
+}
+
+// accountProfile reports the signed-in user's own profile: id, email, and
+// display name.
+func (server Server) accountProfile(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	switch entry := server.findOwnDirectoryEntry(r.Context(), actor.subject.ID).(type) {
+	case directoryEntryFound:
+		writeJSON(w, http.StatusOK, accountProfileResponse{
+			ID:          entry.value.ID.String(),
+			Email:       entry.value.Email.String(),
+			DisplayName: entry.value.DisplayName.String(),
+		})
+	case directoryEntryMissing:
+		writeError(w, http.StatusNotFound, core.ErrorCodeNotFound, "account was not found")
+	case directoryEntryRejected:
+		writeDomainError(w, entry.reason)
+	}
+}
+
+// updateAccountDisplayName replaces the signed-in user's display name.
+func (server Server) updateAccountDisplayName(w http.ResponseWriter, r *http.Request) {
+	actorResult := server.requireUserSubject(r)
+	actor, matched := actorResult.(userSubjectAccepted)
+	if !matched {
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
+		return
+	}
+	var request displayNameRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, "request body is invalid")
+		return
+	}
+	nameResult := auth.NewDisplayName(request.DisplayName)
+	name, nameMatched := nameResult.(auth.DisplayNameAccepted)
+	if !nameMatched {
+		writeDomainError(w, nameResult.(auth.DisplayNameRejected).Reason)
+		return
+	}
+	result := server.authService.UpdateDisplayName(r.Context(), actor.subject.ID, name.Value)
+	if _, ok := result.(auth.AccountActionAccepted); !ok {
+		writeDomainError(w, result.(auth.AccountActionRejected).Reason)
+		return
+	}
+	writeEmptyResponse(w, http.StatusOK, emptyResponse{Status: "display_name_updated"})
 }
 
 func (server Server) deactivateAccount(w http.ResponseWriter, r *http.Request) {

@@ -6783,3 +6783,51 @@ a global focus outline; added the unread badge, 15-second polling with
 visibility refresh, the Overview activity feed, webhook management on the
 Agents page, the task expiration field, and `next_offset`-driven pagers; the
 demo's `arcade.css` shrank to a stub because app and demo share one theme.
+
+# Agent loop completion (marketplace push, reviewer reads, operable economy, human names)
+
+A first-person product review (an agent driving MCP stdio end to end, a
+scripted human walkthrough of the demo UI, and a source-level API/onboarding
+review) found that the worker polling loop worked but the push channel,
+reviewer loop, economy operation, and REST agent coverage did not. One branch
+fixed all of it, in five tested stages.
+
+Backend: extended the credential scope CHECK constraints to the full enum
+(webhook scopes were unmintable), added the `marketplace` webhook audience
+(deliveries expand for every open public `task_opened`, with optional
+task-type and minimum-reward filters in SQL) alongside the unchanged
+`recipient` audience, made platform-admin credit grants real
+(`manual_adjustment` entries with required note, per-account idempotency,
+`credit_granted` event and notification, audit), made invalid submissions
+keep the active reservation and carry validation errors, added the
+`created_after` task filter, gave users a required backfilled `display_name`,
+enriched read models with names/titles/pending-review counts, recorded
+worker-initiated reservation cancellations as `cancelled_by_worker`, and
+throttled registration per IP.
+
+REST: `scope` on `GET /api/tasks` defaults to `public`; personal agent
+credentials may list public tasks; `POST /api/admin/credits/grants`;
+webhook audience and filters in the subscriptions API; name/title/count
+fields across DTOs; account profile and display-name endpoints; ledger notes;
+OpenAPI now declares path parameters and contract-declared query parameters
+with enums and defaults. Docs gained the credential coverage matrix, webhook
+signature verification, the end-to-end first-admin bootstrap, scope recipes,
+and the events/webhooks API section.
+
+MCP: `get_submission` (reviewer content read), `grant_credits`,
+validation errors + attachments + kept-reservation guidance on
+`submit_response`, required `visibility_kind` on `create_task` (clean break),
+marketplace audience and enumerated kinds on webhook tools, `created_after`,
+`next_offset` on every list tool, newest-first ledger (fixing the store
+ordering), scope-filtered `tools/list`, `initialize` orientation
+instructions including the schema dialect, and stdio startup without HTTP
+config.
+
+UI: signed-in identity in the header, optional display name at registration
+and profile editing, a first-run explainer, a Needs-review card and
+"N to review" badges, sentence-style inbox and activity feed with relative
+timestamps and payloads behind disclosures, names instead of UUIDs across
+tasks/submissions/reservations/comments, a native UTC datetime expiry input,
+credential copy buttons and worker/reviewer scope presets, webhook audience
+choice with delivery-signature verification instructions, the admin grant
+form, holder-aware reservation copy, and "Page N" pagers.

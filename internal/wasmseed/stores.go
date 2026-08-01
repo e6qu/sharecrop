@@ -6,6 +6,10 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/appmux"
 )
 
+// demoRegistrationRateCapacity is the browser-demo registration budget (see
+// the RegistrationRateLimiter comment below).
+const demoRegistrationRateCapacity = 10000
+
 // StoresFromHandle builds the full app store set over one database handle. The
 // browser demo uses it to run every store over its SQLite handle, the same set
 // appmux.New serves requests over.
@@ -29,6 +33,11 @@ func StoresFromHandle(handle db.Beginner) appmux.Stores {
 		Privacy:            db.NewPrivacyStoreFromHandle(handle),
 		IPRateLimiter:      db.NewRateLimiterFromHandle(handle, "ip", httpserver.IPRateCapacity, httpserver.IPRateRefillPerSec),
 		SubjectRateLimiter: db.NewRateLimiterFromHandle(handle, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
-		MCPSessions:        db.NewMCPSessionStoreFromHandle(handle),
+		// The browser demo is a single-user local sandbox: every account lives
+		// in this browser's own storage, so production's tight registration
+		// budget would only block the demo's scenario actors. The demo keeps
+		// the limiter mechanism but with a budget the scenario cannot exhaust.
+		RegistrationRateLimiter: db.NewRateLimiterFromHandle(handle, "register", demoRegistrationRateCapacity, httpserver.RegistrationRateRefillPerSec),
+		MCPSessions:             db.NewMCPSessionStoreFromHandle(handle),
 	}
 }

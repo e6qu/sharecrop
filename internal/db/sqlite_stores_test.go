@@ -234,7 +234,9 @@ func TestCreateTaskWithCollectibleEscrowOnSQLite(t *testing.T) {
 	handle := NewSQLite(sqlHandle)
 	store := NewTaskStoreFromHandle(handle)
 
-	creator := newUserIDForTest(t)
+	// FindTask (which the create path reads back through) joins users for the
+	// creator's display name, so the creator must exist as a users row.
+	creator := seedUserForTest(t, sqlHandle, "escrow-creator")
 	stranger := newUserIDForTest(t)
 
 	seedCollectible := func(t *testing.T, owner core.UserID) core.CollectibleID {
@@ -375,7 +377,7 @@ func TestTaskCommentsPaginationOnSQLite(t *testing.T) {
 	if !matched {
 		t.Fatalf("task id rejected")
 	}
-	author := newUserIDForTest(t)
+	author := seedUserForTest(t, sqlHandle, "Comment Author")
 	commentIDs := make([]string, 0, 3)
 	for index := 0; index < 3; index++ {
 		created, idMatched := core.NewTaskCommentID().(core.TaskCommentIDCreated)

@@ -23,6 +23,12 @@ func TaskAmountMetadata(taskID core.TaskID, amount int64) Metadata {
 	return Metadata{JSON: `{"task_id":"` + taskID.String() + `","amount":` + strconv.FormatInt(amount, 10) + `}`}
 }
 
+// AmountMetadata is the metadata for a credit movement not tied to a task
+// (a platform-admin credit grant).
+func AmountMetadata(amount int64) Metadata {
+	return Metadata{JSON: `{"amount":` + strconv.FormatInt(amount, 10) + `}`}
+}
+
 // TaskRefundMetadata marks a task_cancelled event that was caused by a refund
 // rather than a plain cancel.
 func TaskRefundMetadata(taskID core.TaskID) Metadata {

@@ -9,6 +9,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/org"
+	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/webhook"
 )
 
@@ -21,6 +22,12 @@ type webhookSubscriptionSummary struct {
 	Kinds               []string `json:"kinds"`
 	State               string   `json:"state"`
 	CreatedAt           string   `json:"created_at"`
+	// Audience is "recipient" or "marketplace"; the filter fields are the
+	// marketplace narrowing filters (empty / 0 mean no filter, and they are
+	// always empty / 0 on recipient subscriptions), matching REST.
+	Audience              string `json:"audience"`
+	FilterTaskType        string `json:"filter_task_type"`
+	FilterMinCreditReward int64  `json:"filter_min_credit_reward"`
 }
 
 type webhookSubscriptionCreatedPayload struct {
@@ -31,6 +38,7 @@ type webhookSubscriptionCreatedPayload struct {
 
 type webhookSubscriptionsPayload struct {
 	Subscriptions []webhookSubscriptionSummary `json:"subscriptions"`
+	NextOffset    int                          `json:"next_offset"`
 }
 
 type webhookDeliverySummary struct {
@@ -44,6 +52,7 @@ type webhookDeliverySummary struct {
 
 type webhookDeliveriesPayload struct {
 	Deliveries []webhookDeliverySummary `json:"deliveries"`
+	NextOffset int                      `json:"next_offset"`
 }
 
 func (webhookSubscriptionSummary) payloadValue() {}
@@ -66,6 +75,16 @@ func webhookSubscriptionToSummary(value webhook.Subscription) webhookSubscriptio
 		Kinds:     rawKinds,
 		State:     value.State.String(),
 		CreatedAt: value.CreatedAt.UTC().Format(time.RFC3339Nano),
+		Audience:  "recipient",
+	}
+	if marketplace, matched := value.Audience.(webhook.MarketplaceAudience); matched {
+		summary.Audience = "marketplace"
+		if typed, filtered := marketplace.TaskType.(webhook.MarketplaceTaskTypeIs); filtered {
+			summary.FilterTaskType = typed.Value.String()
+		}
+		if reward, filtered := marketplace.MinReward.(webhook.MinimumCreditReward); filtered {
+			summary.FilterMinCreditReward = reward.Amount()
+		}
 	}
 	switch owner := value.Owner.(type) {
 	case webhook.OwnerUser:
@@ -126,11 +145,51 @@ func (server Server) resolveWebhookToolOwner(ctx context.Context, subject auth.S
 	}
 }
 
+// parseMCPWebhookAudience maps the tool call's audience and marketplace
+// filter arguments onto a webhook.Audience, mirroring REST's
+// parseWebhookAudience: an absent audience is the recipient default, and the
+// filter fields are valid only with the marketplace audience. The kinds
+// compatibility rule (marketplace listens only for task_opened) is enforced
+// by webhook.Service.Create.
+func parseMCPWebhookAudience(rawAudience string, rawTaskType string, rawMinReward int64) (webhook.Audience, toolResult) {
+	switch rawAudience {
+	case "", "recipient":
+		if rawTaskType != "" || rawMinReward != 0 {
+			return nil, toolProtocolError{code: codeInvalidParams, message: "filter_task_type and filter_min_credit_reward require the marketplace audience"}
+		}
+		return webhook.RecipientAudience{}, nil
+	case "marketplace":
+		audience := webhook.NewMarketplaceAudience()
+		if rawTaskType != "" {
+			typeResult := task.ParseTaskType(rawTaskType)
+			taskType, matched := typeResult.(task.TaskTypeAccepted)
+			if !matched {
+				return nil, toolProtocolError{code: codeInvalidParams, message: typeResult.(task.TaskTypeRejected).Reason.Description()}
+			}
+			audience.TaskType = webhook.MarketplaceTaskTypeIs{Value: taskType.Value}
+		}
+		if rawMinReward != 0 {
+			rewardResult := webhook.NewMinimumCreditReward(rawMinReward)
+			reward, matched := rewardResult.(webhook.MinimumCreditRewardAccepted)
+			if !matched {
+				return nil, toolProtocolError{code: codeInvalidParams, message: rewardResult.(webhook.MinimumCreditRewardRejected).Reason.Description()}
+			}
+			audience.MinReward = reward.Value
+		}
+		return audience, nil
+	default:
+		return nil, toolProtocolError{code: codeInvalidParams, message: "webhook audience must be recipient or marketplace"}
+	}
+}
+
 func (server Server) callCreateWebhookSubscription(ctx context.Context, subject auth.Subject, credential CallerCredential, arguments json.RawMessage) toolResult {
 	var args struct {
-		URL            string   `json:"url"`
-		Kinds          []string `json:"kinds"`
-		OrganizationID string   `json:"organization_id"`
+		URL                   string   `json:"url"`
+		Kinds                 []string `json:"kinds"`
+		OrganizationID        string   `json:"organization_id"`
+		Audience              string   `json:"audience"`
+		FilterTaskType        string   `json:"filter_task_type"`
+		FilterMinCreditReward int64    `json:"filter_min_credit_reward"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
@@ -164,13 +223,18 @@ func (server Server) callCreateWebhookSubscription(ctx context.Context, subject 
 		return errorResponseToolScopeDenied(missing[0])
 	}
 
+	audience, audienceProblem := parseMCPWebhookAudience(args.Audience, args.FilterTaskType, args.FilterMinCreditReward)
+	if audienceProblem != nil {
+		return audienceProblem
+	}
+
 	ownerResult := server.resolveWebhookToolOwner(ctx, subject, args.OrganizationID)
 	owner, ownerMatched := ownerResult.(webhookToolOwnerAccepted)
 	if !ownerMatched {
 		return ownerResult.(webhookToolOwnerRejected).failure
 	}
 
-	result := server.services.CreateWebhookSubscription(ctx, owner.owner, endpoint.Value, filter.Value)
+	result := server.services.CreateWebhookSubscription(ctx, owner.owner, endpoint.Value, filter.Value, audience)
 	created, createdMatched := result.(webhook.SubscriptionCreated)
 	if !createdMatched {
 		return toolFailed{code: result.(webhook.CreateRejected).Reason.Code(), message: result.(webhook.CreateRejected).Reason.Description()}
@@ -200,16 +264,21 @@ func (server Server) callListWebhookSubscriptions(ctx context.Context, subject a
 		return ownerResult.(webhookToolOwnerRejected).failure
 	}
 
-	result := server.services.ListWebhookSubscriptions(ctx, owner.owner, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListWebhookSubscriptions(ctx, owner.owner, page.Probe())
 	listed, listedMatched := result.(webhook.SubscriptionsListed)
 	if !listedMatched {
 		return toolFailed{code: result.(webhook.ListRejected).Reason.Code(), message: result.(webhook.ListRejected).Reason.Description()}
 	}
-	summaries := make([]webhookSubscriptionSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]webhookSubscriptionSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, webhookSubscriptionToSummary(listed.Values[index]))
 	}
-	return marshalPayload(webhookSubscriptionsPayload{Subscriptions: summaries})
+	return marshalPayload(webhookSubscriptionsPayload{Subscriptions: summaries, NextOffset: nextOffset})
 }
 
 // webhookToolTargetResult resolves the shared (subscription_id,
@@ -275,13 +344,18 @@ func (server Server) callListWebhookDeliveries(ctx context.Context, subject auth
 		return targetResult.(webhookToolTargetRejected).failure
 	}
 
-	result := server.services.ListWebhookDeliveries(ctx, target.owner, target.id, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListWebhookDeliveries(ctx, target.owner, target.id, page.Probe())
 	listed, listedMatched := result.(webhook.DeliveriesListed)
 	if !listedMatched {
 		return toolFailed{code: result.(webhook.ListDeliveriesRejected).Reason.Code(), message: result.(webhook.ListDeliveriesRejected).Reason.Description()}
 	}
-	summaries := make([]webhookDeliverySummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]webhookDeliverySummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, webhookDeliverySummary{
 			ID:            listed.Values[index].ID.String(),
 			EventCursor:   listed.Values[index].EventCursor.String(),
@@ -291,5 +365,5 @@ func (server Server) callListWebhookDeliveries(ctx context.Context, subject auth
 			LastStatus:    listed.Values[index].LastStatus,
 		})
 	}
-	return marshalPayload(webhookDeliveriesPayload{Deliveries: summaries})
+	return marshalPayload(webhookDeliveriesPayload{Deliveries: summaries, NextOffset: nextOffset})
 }

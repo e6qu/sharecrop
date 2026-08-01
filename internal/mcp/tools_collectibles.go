@@ -42,7 +42,7 @@ func collectiblesToolDefinitions() []toolDefinition {
 			Name:        toolListCollectibles,
 			Description: "List the agent's user's own collectibles.",
 			Scope:       agent.ScopeCollectiblesRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}}}`),
 		},
 		{
 			Name:        toolFundCollectibleReward,
@@ -60,13 +60,13 @@ func collectiblesToolDefinitions() []toolDefinition {
 			Name:        toolListOrganizationCollectibles,
 			Description: "List collectibles held by an organization.",
 			Scope:       agent.ScopeCollectiblesRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"organization_id":{"type":"string"}},"required":["organization_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"organization_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["organization_id"]}`),
 		},
 		{
 			Name:        toolListTeamCollectibles,
 			Description: "List collectibles held by a team.",
 			Scope:       agent.ScopeCollectiblesRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"team_id":{"type":"string"}},"required":["team_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"team_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["team_id"]}`),
 		},
 		{
 			Name:        toolAwardCollectible,

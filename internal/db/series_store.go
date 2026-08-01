@@ -57,7 +57,11 @@ func (store TaskStore) FindSeries(ctx context.Context, seriesID core.TaskSeriesI
 		return task.FindSeriesStoreRejected{Reason: taskValuesResult.(taskRowsRejected).reason}
 	}
 
-	return task.FindSeriesStoreAccepted{Value: task.SeriesDetail{Series: values.values[0], Tasks: taskValues.values}}
+	seriesTasks := make([]task.Task, 0, len(taskValues.values))
+	for index := range taskValues.values {
+		seriesTasks = append(seriesTasks, taskValues.values[index].value)
+	}
+	return task.FindSeriesStoreAccepted{Value: task.SeriesDetail{Series: values.values[0], Tasks: seriesTasks}}
 }
 
 func seriesSelectSQL() string {

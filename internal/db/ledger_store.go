@@ -378,6 +378,120 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 	return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: payout.outcome, Tip: tip.outcome}
 }
 
+// GrantCredits writes a platform-admin manual_adjustment ledger entry
+// crediting the target account's spendable balance, and resolves the
+// beneficiary users to notify (the granted user, or the grantee
+// organization's owner/admin/billing members) inside the same transaction. A
+// replayed idempotency key for the same manual_adjustment returns the same
+// CreditsGranted shape without writing a second entry.
+func (store LedgerStore) GrantCredits(ctx context.Context, command ledger.GrantStoreCommand) ledger.GrantResult {
+	tx, err := store.db.Begin(ctx)
+	if err != nil {
+		return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin credit grant transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var accountResult accountLockResult
+	switch typed := command.Target.(type) {
+	case ledger.GrantToUser:
+		accountResult = lockUserAccount(ctx, tx, typed.ID)
+	case ledger.GrantToOrganization:
+		accountResult = lockOrganizationAccount(ctx, tx, typed.ID)
+	default:
+		return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credit grant target is invalid")}
+	}
+	account, matched := accountResult.(accountLocked)
+	if !matched {
+		return ledger.GrantRejected{Reason: accountResult.(accountLockRejected).reason}
+	}
+
+	var existingID string
+	var existingKind string
+	var existingAmount int64
+	scanErr := tx.QueryRow(ctx, "select id::text, kind, amount from ledger_entries where idempotency_key = $1 and account_id = $2",
+		command.IdempotencyKey.String(), account.id).Scan(&existingID, &existingKind, &existingAmount)
+	if scanErr != nil && !errors.Is(scanErr, ErrNoRows) {
+		return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check credit grant idempotency failed")}
+	}
+	entryID := command.EntryID
+	if scanErr == nil {
+		if existingKind != ledger.EntryKindManualAdjustment.String() || existingAmount != command.Amount.Int64() {
+			return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
+		}
+		parsedResult := core.ParseLedgerEntryID(existingID)
+		parsed, parsedMatched := parsedResult.(core.LedgerEntryIDCreated)
+		if !parsedMatched {
+			return ledger.GrantRejected{Reason: parsedResult.(core.LedgerEntryIDRejected).Reason}
+		}
+		entryID = parsed.Value
+	} else {
+		if _, err := tx.Exec(ctx, `
+			insert into ledger_entries (id, account_id, kind, amount, idempotency_key, note)
+			values ($1, $2, 'manual_adjustment', $3, $4, $5)
+		`, command.EntryID.String(), account.id, command.Amount.Int64(), command.IdempotencyKey.String(), command.Note.String()); err != nil {
+			return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert credit grant ledger entry failed")}
+		}
+	}
+
+	recipients, recipientsReason := grantRecipients(ctx, tx, command.Target)
+	if recipientsReason != nil {
+		return ledger.GrantRejected{Reason: *recipientsReason}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit credit grant transaction failed")}
+	}
+	return ledger.CreditsGranted{EntryID: entryID, Amount: command.Amount, RecipientUserIDs: recipients}
+}
+
+// grantRecipients resolves who a credit grant should notify: the granted user
+// directly, or every active member of the grantee organization holding the
+// owner, admin, or billing role.
+func grantRecipients(ctx context.Context, tx Tx, target ledger.GrantTarget) ([]core.UserID, *core.DomainError) {
+	switch typed := target.(type) {
+	case ledger.GrantToUser:
+		return []core.UserID{typed.ID}, nil
+	case ledger.GrantToOrganization:
+		rows, err := tx.Query(ctx, `
+			select distinct organization_memberships.user_id::text
+			from organization_memberships
+			join organization_membership_roles
+				on organization_membership_roles.membership_id = organization_memberships.id
+			where organization_memberships.organization_id = $1
+			and organization_memberships.status = 'active'
+			and organization_membership_roles.role in ('owner', 'admin', 'billing')
+		`, typed.ID.String())
+		if err != nil {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "read credit grant recipients failed")
+			return nil, &reason
+		}
+		defer rows.Close()
+		recipients := make([]core.UserID, 0)
+		for rows.Next() {
+			var rawID string
+			if err := rows.Scan(&rawID); err != nil {
+				reason := core.NewDomainError(core.ErrorCodeInvalidState, "scan credit grant recipient failed")
+				return nil, &reason
+			}
+			parsedResult := core.ParseUserID(rawID)
+			parsed, matched := parsedResult.(core.UserIDCreated)
+			if !matched {
+				reason := parsedResult.(core.UserIDRejected).Reason
+				return nil, &reason
+			}
+			recipients = append(recipients, parsed.Value)
+		}
+		if rows.Err() != nil {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "read credit grant recipients failed")
+			return nil, &reason
+		}
+		return recipients, nil
+	default:
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "credit grant target is invalid")
+		return nil, &reason
+	}
+}
+
 func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundStoreCommand) ledger.RefundResult {
 	tx, err := store.db.Begin(ctx)
 	if err != nil {
@@ -545,11 +659,11 @@ func (store LedgerStore) TaskAllocatedCredits(ctx context.Context, taskID core.T
 
 func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, page core.Page) ledger.ListEntriesResult {
 	rows, err := store.db.Query(ctx, `
-		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, '')
+		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, ''), coalesce(ledger_entries.note, '')
 		from ledger_entries
 		join credit_accounts on credit_accounts.id = ledger_entries.account_id
 		where credit_accounts.user_id = $1
-		order by ledger_entries.created_at, ledger_entries.id
+		order by ledger_entries.created_at desc, ledger_entries.id desc
 		limit $2 offset $3
 	`, owner.String(), page.Limit(), page.Offset())
 	if err != nil {
@@ -563,10 +677,11 @@ func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, pag
 		var rawKind string
 		var amount int64
 		var rawTaskID string
-		if err := rows.Scan(&rawID, &rawKind, &amount, &rawTaskID); err != nil {
+		var note string
+		if err := rows.Scan(&rawID, &rawKind, &amount, &rawTaskID, &note); err != nil {
 			return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan ledger entry failed")}
 		}
-		entryResult := parseLedgerEntry(rawID, rawKind, amount, rawTaskID)
+		entryResult := parseLedgerEntry(rawID, rawKind, amount, rawTaskID, note)
 		entry, matched := entryResult.(ledgerEntryParsed)
 		if !matched {
 			return ledger.ListEntriesRejected{Reason: entryResult.(ledgerEntryParseRejected).reason}
@@ -581,11 +696,11 @@ func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, pag
 
 func (store LedgerStore) ListOrganizationEntries(ctx context.Context, organizationID core.OrganizationID, page core.Page) ledger.ListEntriesResult {
 	rows, err := store.db.Query(ctx, `
-		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, '')
+		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, ''), coalesce(ledger_entries.note, '')
 		from ledger_entries
 		join credit_accounts on credit_accounts.id = ledger_entries.account_id
 		where credit_accounts.organization_id = $1
-		order by ledger_entries.created_at, ledger_entries.id
+		order by ledger_entries.created_at desc, ledger_entries.id desc
 		limit $2 offset $3
 	`, organizationID.String(), page.Limit(), page.Offset())
 	if err != nil {
@@ -599,10 +714,11 @@ func (store LedgerStore) ListOrganizationEntries(ctx context.Context, organizati
 		var rawKind string
 		var amount int64
 		var rawTaskID string
-		if err := rows.Scan(&rawID, &rawKind, &amount, &rawTaskID); err != nil {
+		var note string
+		if err := rows.Scan(&rawID, &rawKind, &amount, &rawTaskID, &note); err != nil {
 			return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan organization ledger entry failed")}
 		}
-		entryResult := parseLedgerEntry(rawID, rawKind, amount, rawTaskID)
+		entryResult := parseLedgerEntry(rawID, rawKind, amount, rawTaskID, note)
 		entry, matched := entryResult.(ledgerEntryParsed)
 		if !matched {
 			return ledger.ListEntriesRejected{Reason: entryResult.(ledgerEntryParseRejected).reason}

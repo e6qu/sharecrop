@@ -21,6 +21,7 @@ const (
 	methodFindCredentialByUserID       = "auth.FindCredentialByUserID"
 	methodListUsers                    = "auth.ListUsers"
 	methodUpdateUserEmail              = "auth.UpdateUserEmail"
+	methodUpdateDisplayName            = "auth.UpdateDisplayName"
 	methodUpdatePassword               = "auth.UpdatePassword"
 	methodDeactivateUser               = "auth.DeactivateUser"
 	methodCreateGuestSubject           = "auth.CreateGuestSubject"
@@ -35,6 +36,7 @@ const (
 type createUserCredentialArgs struct {
 	UserID       string `json:"userid"`
 	Email        string `json:"email"`
+	DisplayName  string `json:"displayname"`
 	PasswordHash string `json:"passwordhash"`
 }
 
@@ -59,6 +61,11 @@ type listUsersArgs struct {
 type updateUserEmailArgs struct {
 	UserID string `json:"userid"`
 	Email  string `json:"email"`
+}
+
+type updateDisplayNameArgs struct {
+	UserID      string `json:"userid"`
+	DisplayName string `json:"displayname"`
 }
 
 type updatePasswordArgs struct {
@@ -122,11 +129,15 @@ func Dispatch(ctx context.Context, store auth.Store, method string, args []byte)
 		if err != nil {
 			return nil, err
 		}
+		argDisplayName, err := decodeDisplayName(decoded.DisplayName)
+		if err != nil {
+			return nil, err
+		}
 		argPasswordHash, err := decodePasswordHash(decoded.PasswordHash)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeStoreUserResult(store.CreateUserCredential(ctx, argUserID, argEmail, argPasswordHash)))
+		return json.Marshal(encodeStoreUserResult(store.CreateUserCredential(ctx, argUserID, argEmail, argDisplayName, argPasswordHash)))
 	case methodFindOrCreateExternalIdentity:
 		var decoded findOrCreateExternalIdentityArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -189,6 +200,20 @@ func Dispatch(ctx context.Context, store auth.Store, method string, args []byte)
 			return nil, err
 		}
 		return json.Marshal(encodeAccountMutationResult(store.UpdateUserEmail(ctx, argUserID, argEmail)))
+	case methodUpdateDisplayName:
+		var decoded updateDisplayNameArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("auth bridge: decode UpdateDisplayName args: %w", err)
+		}
+		argUserID, err := corewire.DecodeUserID(decoded.UserID)
+		if err != nil {
+			return nil, err
+		}
+		argDisplayName, err := decodeDisplayName(decoded.DisplayName)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeAccountMutationResult(store.UpdateDisplayName(ctx, argUserID, argDisplayName)))
 	case methodUpdatePassword:
 		var decoded updatePasswordArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -328,8 +353,8 @@ func NewGuestStore(invoke Invoker) GuestStore {
 	return GuestStore{invoke: invoke}
 }
 
-func (g GuestStore) CreateUserCredential(ctx context.Context, argUserID core.UserID, argEmail auth.EmailAddress, argPasswordHash auth.PasswordHash) auth.StoreUserResult {
-	args, err := json.Marshal(createUserCredentialArgs{UserID: corewire.EncodeUserID(argUserID), Email: encodeEmail(argEmail), PasswordHash: encodePasswordHash(argPasswordHash)})
+func (g GuestStore) CreateUserCredential(ctx context.Context, argUserID core.UserID, argEmail auth.EmailAddress, argDisplayName auth.DisplayName, argPasswordHash auth.PasswordHash) auth.StoreUserResult {
+	args, err := json.Marshal(createUserCredentialArgs{UserID: corewire.EncodeUserID(argUserID), Email: encodeEmail(argEmail), DisplayName: encodeDisplayName(argDisplayName), PasswordHash: encodePasswordHash(argPasswordHash)})
 	if err != nil {
 		return auth.StoreUserRejected{Reason: guestError(err)}
 	}
@@ -434,6 +459,26 @@ func (g GuestStore) UpdateUserEmail(ctx context.Context, argUserID core.UserID, 
 		return auth.AccountMutationRejected{Reason: guestError(err)}
 	}
 	raw, err := g.invoke(methodUpdateUserEmail, args)
+	if err != nil {
+		return auth.AccountMutationRejected{Reason: guestError(err)}
+	}
+	var wire acceptedRejectedWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return auth.AccountMutationRejected{Reason: guestError(err)}
+	}
+	result, err := decodeAccountMutationResult(wire)
+	if err != nil {
+		return auth.AccountMutationRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) UpdateDisplayName(ctx context.Context, argUserID core.UserID, argDisplayName auth.DisplayName) auth.AccountMutationResult {
+	args, err := json.Marshal(updateDisplayNameArgs{UserID: corewire.EncodeUserID(argUserID), DisplayName: encodeDisplayName(argDisplayName)})
+	if err != nil {
+		return auth.AccountMutationRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodUpdateDisplayName, args)
 	if err != nil {
 		return auth.AccountMutationRejected{Reason: guestError(err)}
 	}

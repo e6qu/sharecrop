@@ -44,6 +44,37 @@ type MigrationEnvValues struct {
 	MigrationsDir string
 }
 
+// MCPConfig is what the stdio MCP transport needs: database access and the
+// access-token secret. It deliberately has no HTTP address — `sharecrop mcp`
+// serves stdio, not HTTP, so SHARECROP_HTTP_ADDR must not be required there.
+type MCPConfig struct {
+	databaseURL       string
+	migrationsDir     string
+	accessTokenSecret string
+}
+
+type MCPEnvValues struct {
+	DatabaseURL       string
+	MigrationsDir     string
+	AccessTokenSecret string
+}
+
+type MCPConfigResult interface {
+	mcpConfigResult()
+}
+
+type MCPConfigLoaded struct {
+	Value MCPConfig
+}
+
+type MCPConfigRejected struct {
+	Reason string
+}
+
+func (MCPConfigLoaded) mcpConfigResult() {}
+
+func (MCPConfigRejected) mcpConfigResult() {}
+
 type MigrationConfigResult interface {
 	migrationConfigResult()
 }
@@ -90,6 +121,31 @@ func LoadMigrationConfig() MigrationConfigResult {
 		DatabaseURL:   os.Getenv("DATABASE_URL"),
 		MigrationsDir: os.Getenv("SHARECROP_MIGRATIONS_DIR"),
 	})
+}
+
+func LoadMCPConfig() MCPConfigResult {
+	return ParseMCPConfig(MCPEnvValues{
+		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		MigrationsDir:     os.Getenv("SHARECROP_MIGRATIONS_DIR"),
+		AccessTokenSecret: os.Getenv("SHARECROP_ACCESS_TOKEN_SECRET"),
+	})
+}
+
+func ParseMCPConfig(values MCPEnvValues) MCPConfigResult {
+	if values.DatabaseURL == "" {
+		return MCPConfigRejected{Reason: "DATABASE_URL is required"}
+	}
+	if values.MigrationsDir == "" {
+		return MCPConfigRejected{Reason: "SHARECROP_MIGRATIONS_DIR is required"}
+	}
+	if values.AccessTokenSecret == "" {
+		return MCPConfigRejected{Reason: "SHARECROP_ACCESS_TOKEN_SECRET is required"}
+	}
+	return MCPConfigLoaded{Value: MCPConfig{
+		databaseURL:       values.DatabaseURL,
+		migrationsDir:     values.MigrationsDir,
+		accessTokenSecret: values.AccessTokenSecret,
+	}}
 }
 
 func ParseMigrationConfig(values MigrationEnvValues) MigrationConfigResult {
@@ -191,4 +247,16 @@ func (c MigrationConfig) DatabaseURL() string {
 
 func (c MigrationConfig) MigrationsDir() string {
 	return c.migrationsDir
+}
+
+func (c MCPConfig) DatabaseURL() string {
+	return c.databaseURL
+}
+
+func (c MCPConfig) MigrationsDir() string {
+	return c.migrationsDir
+}
+
+func (c MCPConfig) AccessTokenSecret() string {
+	return c.accessTokenSecret
 }

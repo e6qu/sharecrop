@@ -739,7 +739,7 @@ func (ledgerEntryParsed) ledgerEntryParseResult() {}
 
 func (ledgerEntryParseRejected) ledgerEntryParseResult() {}
 
-func parseLedgerEntry(rawID string, rawKind string, amount int64, rawTaskID string) ledgerEntryParseResult {
+func parseLedgerEntry(rawID string, rawKind string, amount int64, rawTaskID string, note string) ledgerEntryParseResult {
 	idResult := core.ParseLedgerEntryID(rawID)
 	entryID, idMatched := idResult.(core.LedgerEntryIDCreated)
 	if !idMatched {
@@ -765,6 +765,7 @@ func parseLedgerEntry(rawID string, rawKind string, amount int64, rawTaskID stri
 		Kind:    kind.Value,
 		Amount:  signed.Value,
 		TaskRef: taskRef.value,
+		Note:    note,
 	}}
 }
 

@@ -31,7 +31,7 @@ func adminToolDefinitions() []toolDefinition {
 			Name:        toolListPlatformAdmins,
 			Description: "List platform administrators. Requires platform admin access.",
 			Scope:       agent.ScopePlatformAdmin,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}}}`),
 		},
 		{
 			Name:        toolGrantPlatformAdmin,
@@ -55,7 +55,7 @@ func adminToolDefinitions() []toolDefinition {
 			Name:        toolListAdminModerationReports,
 			Description: "List moderation reports, optionally filtered by triage state (open, resolved, dismissed). Requires platform admin access.",
 			Scope:       agent.ScopeModerationRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"state":{"type":"string"}}}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"state":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}}}`),
 		},
 		{
 			Name:        toolTriageModerationReport,
@@ -73,13 +73,13 @@ func adminToolDefinitions() []toolDefinition {
 			Name:        toolListPrivacyRequests,
 			Description: "List the agent's user's own privacy requests.",
 			Scope:       agent.ScopePrivacyRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}}}`),
 		},
 		{
 			Name:        toolListAdminPrivacyRequests,
 			Description: "List every privacy request on the platform. Requires platform admin access.",
 			Scope:       agent.ScopePrivacyRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}}}`),
 		},
 		{
 			Name:        toolResolveAdminPrivacyRequest,
@@ -97,13 +97,13 @@ func adminToolDefinitions() []toolDefinition {
 			Name:        toolListOrganizationAuditEvents,
 			Description: "List an organization's audit events. Requires PermissionManageMembers on the organization.",
 			Scope:       agent.ScopeOrgRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"organization_id":{"type":"string"}},"required":["organization_id"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"organization_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["organization_id"]}`),
 		},
 		{
 			Name:        toolListAdminAuditEvents,
 			Description: "List platform-wide audit events, optionally filtered by action, subject_kind, or subject_id. Requires platform admin access.",
 			Scope:       agent.ScopePlatformAdmin,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string"},"subject_kind":{"type":"string"},"subject_id":{"type":"string"}}}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string"},"subject_kind":{"type":"string"},"subject_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}}}`),
 		},
 	}
 }

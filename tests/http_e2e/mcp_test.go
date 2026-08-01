@@ -98,7 +98,7 @@ func TestMCPAgentCreatesFundsOpensWorkableTask(t *testing.T) {
 
 	// An agent posts a public, credit-reward, open-participation task.
 	created := toolText(t, decodeRPC(t, mcpCall(t, server, ownerAgent, ownerSession, `1`, "sharecrop.create_task",
-		`{"title":"Code review PR 7","description":"Review https://example.test/pr/7 and report findings.","response_schema_json":"{\"kind\":\"freeform\"}","visibility":"public","reward_kind":"credit","reward_credit_amount":20,"participation_policy":"open"}`)))
+		`{"title":"Code review PR 7","description":"Review https://example.test/pr/7 and report findings.","response_schema_json":"{\"kind\":\"freeform\"}","visibility_kind":"public","reward_kind":"credit","reward_credit_amount":20,"participation_policy":"open"}`)))
 	var createdDetail struct {
 		ID    string `json:"id"`
 		State string `json:"state"`
@@ -251,7 +251,7 @@ func TestMCPOrgCredentialActsWithFullParityOnItsOwnOrgOnly(t *testing.T) {
 	toolText(t, cancelOwn)
 
 	// A user-only tool is cleanly rejected for an org token, not a crash.
-	createRejected := decodeRPC(t, mcpCall(t, server, orgACredential.Secret, orgASession, `3`, "sharecrop.create_task", `{"title":"x","description":"x","response_schema_json":"{\"kind\":\"freeform\"}","visibility":"public","reward_kind":"none"}`))
+	createRejected := decodeRPC(t, mcpCall(t, server, orgACredential.Secret, orgASession, `3`, "sharecrop.create_task", `{"title":"x","description":"x","response_schema_json":"{\"kind\":\"freeform\"}","visibility_kind":"public","reward_kind":"none"}`))
 	if createRejected.Error != nil {
 		t.Fatalf("expected a tool-level failure, not a protocol error: %+v", createRejected.Error)
 	}

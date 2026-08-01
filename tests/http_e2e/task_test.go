@@ -582,6 +582,8 @@ type taskHTTPResponse struct {
 	ActiveAssigneeKind     string `json:"active_assignee_kind"`
 	ActiveAssigneeID       string `json:"active_assignee_id"`
 	ViewerAction           string `json:"viewer_action"`
+	CreatorDisplayName     string `json:"creator_display_name"`
+	PendingReviewCount     int64  `json:"pending_review_count"`
 }
 
 type tasksHTTPResponse struct {
@@ -589,10 +591,11 @@ type tasksHTTPResponse struct {
 }
 
 type reservationHTTPResponse struct {
-	ID           string `json:"id"`
-	AssigneeKind string `json:"assignee_kind"`
-	AssigneeID   string `json:"assignee_id"`
-	State        string `json:"state"`
+	ID                string `json:"id"`
+	AssigneeKind      string `json:"assignee_kind"`
+	AssigneeID        string `json:"assignee_id"`
+	State             string `json:"state"`
+	HolderDisplayName string `json:"holder_display_name"`
 }
 
 func userTaskRequestJSON(userID string) string {

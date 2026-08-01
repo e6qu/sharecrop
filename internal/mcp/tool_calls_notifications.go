@@ -24,6 +24,7 @@ type notificationSummary struct {
 
 type notificationsPayload struct {
 	Notifications []notificationSummary `json:"notifications"`
+	NextOffset    int                   `json:"next_offset"`
 }
 
 func (notificationSummary) payloadValue() {}
@@ -63,16 +64,17 @@ func (server Server) callListNotifications(ctx context.Context, subject auth.Use
 	if pageProblem != nil {
 		return pageProblem
 	}
-	result := server.services.ListNotifications(ctx, subject.ID, filter, page)
+	result := server.services.ListNotifications(ctx, subject.ID, filter, page.Probe())
 	listed, matched := result.(notification.NotificationsListed)
 	if !matched {
 		return toolFailed{code: result.(notification.ListRejected).Reason.Code(), message: result.(notification.ListRejected).Reason.Description()}
 	}
-	summaries := make([]notificationSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]notificationSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, notificationToSummary(listed.Values[index]))
 	}
-	return marshalPayload(notificationsPayload{Notifications: summaries})
+	return marshalPayload(notificationsPayload{Notifications: summaries, NextOffset: nextOffset})
 }
 
 type unreadNotificationCountPayload struct {

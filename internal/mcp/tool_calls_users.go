@@ -17,12 +17,14 @@ type userDirectoryEntrySummary struct {
 }
 
 type userDirectoryPayload struct {
-	Users []userDirectoryEntrySummary `json:"users"`
+	Users      []userDirectoryEntrySummary `json:"users"`
+	NextOffset int                         `json:"next_offset"`
 }
 
 type userProfilePayload struct {
-	ID    string        `json:"id"`
-	Tasks []taskSummary `json:"tasks"`
+	ID         string        `json:"id"`
+	Tasks      []taskSummary `json:"tasks"`
+	NextOffset int           `json:"next_offset"`
 }
 
 func (userDirectoryPayload) payloadValue() {}
@@ -51,16 +53,21 @@ func (server Server) callListUsers(ctx context.Context, subject auth.UserSubject
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
 	}
-	result := server.services.ListUsers(ctx, args.Query, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListUsers(ctx, args.Query, page.Probe())
 	listed, matched := result.(auth.UsersListed)
 	if !matched {
 		return toolFailed{code: result.(auth.UserDirectoryRejected).Reason.Code(), message: result.(auth.UserDirectoryRejected).Reason.Description()}
 	}
-	entries := make([]userDirectoryEntrySummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	entries := make([]userDirectoryEntrySummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		entries = append(entries, userDirectoryEntrySummary{ID: listed.Values[index].ID.String(), Email: listed.Values[index].Email.String(), Status: listed.Values[index].Status})
 	}
-	return marshalPayload(userDirectoryPayload{Users: entries})
+	return marshalPayload(userDirectoryPayload{Users: entries, NextOffset: nextOffset})
 }
 
 func (server Server) callGetUserProfile(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -68,16 +75,21 @@ func (server Server) callGetUserProfile(ctx context.Context, subject auth.UserSu
 	if problem != nil {
 		return problem
 	}
-	result := server.services.GetUserProfile(ctx, subject, userID, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.GetUserProfile(ctx, subject, userID, page.Probe())
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
-	tasks := make([]taskSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	tasks := make([]taskSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		tasks = append(tasks, taskToSummary(listed.Values[index].Task))
 	}
-	return marshalPayload(userProfilePayload{ID: userID.String(), Tasks: tasks})
+	return marshalPayload(userProfilePayload{ID: userID.String(), Tasks: tasks, NextOffset: nextOffset})
 }
 
 func (server Server) callGetUserWork(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -85,16 +97,21 @@ func (server Server) callGetUserWork(ctx context.Context, subject auth.UserSubje
 	if problem != nil {
 		return problem
 	}
-	result := server.services.GetUserWork(ctx, subject, userID, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.GetUserWork(ctx, subject, userID, page.Probe())
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
-	summaries := make([]taskSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]taskSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, taskToSummary(listed.Values[index].Task))
 	}
-	return marshalPayload(tasksPayload{Tasks: summaries})
+	return marshalPayload(tasksPayload{Tasks: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callGetUserSubmissions(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -102,14 +119,19 @@ func (server Server) callGetUserSubmissions(ctx context.Context, subject auth.Us
 	if problem != nil {
 		return problem
 	}
-	result := server.services.GetUserSubmissions(ctx, subject, userID, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.GetUserSubmissions(ctx, subject, userID, page.Probe())
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		return toolFailed{code: result.(submission.ListRejected).Reason.Code(), message: result.(submission.ListRejected).Reason.Description()}
 	}
-	summaries := make([]submissionSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]submissionSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, submissionToSummary(listed.Values[index]))
 	}
-	return marshalPayload(submissionsPayload{Submissions: summaries})
+	return marshalPayload(submissionsPayload{Submissions: summaries, NextOffset: nextOffset})
 }

@@ -159,6 +159,7 @@ type ledgerEntryWire struct {
 	Kind    string            `json:"kind"`
 	Amount  int64             `json:"amount"`
 	TaskRef taskReferenceWire `json:"task_ref"`
+	Note    string            `json:"note,omitempty"`
 }
 
 func encodeLedgerEntry(entry ledger.LedgerEntry) ledgerEntryWire {
@@ -167,6 +168,7 @@ func encodeLedgerEntry(entry ledger.LedgerEntry) ledgerEntryWire {
 		Kind:    entry.Kind.String(),
 		Amount:  entry.Amount.Int64(),
 		TaskRef: encodeTaskReference(entry.TaskRef),
+		Note:    entry.Note,
 	}
 }
 
@@ -187,7 +189,7 @@ func decodeLedgerEntry(wire ledgerEntryWire) (ledger.LedgerEntry, error) {
 	if err != nil {
 		return ledger.LedgerEntry{}, err
 	}
-	return ledger.LedgerEntry{ID: id, Kind: kind, Amount: amount, TaskRef: taskRef}, nil
+	return ledger.LedgerEntry{ID: id, Kind: kind, Amount: amount, TaskRef: taskRef, Note: wire.Note}, nil
 }
 
 func encodeLedgerEntries(entries []ledger.LedgerEntry) []ledgerEntryWire {
@@ -1155,4 +1157,147 @@ func decodeReason(wire *domainwire.DomainError) core.DomainError {
 func rejectionError(message string) *domainwire.DomainError {
 	reason := domainwire.EncodeDomainError(core.NewDomainError(core.ErrorCodeInvalidState, message))
 	return &reason
+}
+
+// ---- ledger.GrantTarget / GrantStoreCommand / GrantResult ----
+
+// grantTargetWire flattens the grant target union: kind is "user" or
+// "organization" and id is the matching identifier.
+type grantTargetWire struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
+
+func encodeGrantTarget(target ledger.GrantTarget) grantTargetWire {
+	switch typed := target.(type) {
+	case ledger.GrantToUser:
+		return grantTargetWire{Kind: "user", ID: corewire.EncodeUserID(typed.ID)}
+	case ledger.GrantToOrganization:
+		return grantTargetWire{Kind: "organization", ID: corewire.EncodeOrganizationID(typed.ID)}
+	default:
+		return grantTargetWire{}
+	}
+}
+
+func decodeGrantTarget(wire grantTargetWire) (ledger.GrantTarget, error) {
+	switch wire.Kind {
+	case "user":
+		id, err := corewire.DecodeUserID(wire.ID)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.GrantToUser{ID: id}, nil
+	case "organization":
+		id, err := corewire.DecodeOrganizationID(wire.ID)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.GrantToOrganization{ID: id}, nil
+	default:
+		return nil, fmt.Errorf("unknown grant target kind %q", wire.Kind)
+	}
+}
+
+type grantCommandWire struct {
+	EntryID        string          `json:"entry_id"`
+	Target         grantTargetWire `json:"target"`
+	Amount         int64           `json:"amount"`
+	Note           string          `json:"note"`
+	IdempotencyKey string          `json:"idempotency_key"`
+}
+
+func encodeGrantCommand(command ledger.GrantStoreCommand) grantCommandWire {
+	return grantCommandWire{
+		EntryID:        corewire.EncodeLedgerEntryID(command.EntryID),
+		Target:         encodeGrantTarget(command.Target),
+		Amount:         encodeCreditAmount(command.Amount),
+		Note:           command.Note.String(),
+		IdempotencyKey: encodeIdempotencyKey(command.IdempotencyKey),
+	}
+}
+
+func decodeGrantCommand(wire grantCommandWire) (ledger.GrantStoreCommand, error) {
+	entryID, err := corewire.DecodeLedgerEntryID(wire.EntryID)
+	if err != nil {
+		return ledger.GrantStoreCommand{}, err
+	}
+	target, err := decodeGrantTarget(wire.Target)
+	if err != nil {
+		return ledger.GrantStoreCommand{}, err
+	}
+	amount, err := decodeCreditAmount(wire.Amount)
+	if err != nil {
+		return ledger.GrantStoreCommand{}, err
+	}
+	noteResult, noteMatched := ledger.NewGrantNote(wire.Note).(ledger.GrantNoteAccepted)
+	if !noteMatched {
+		return ledger.GrantStoreCommand{}, fmt.Errorf("grant note is invalid")
+	}
+	key, err := decodeIdempotencyKey(wire.IdempotencyKey)
+	if err != nil {
+		return ledger.GrantStoreCommand{}, err
+	}
+	return ledger.GrantStoreCommand{
+		EntryID:        entryID,
+		Target:         target,
+		Amount:         amount,
+		Note:           noteResult.Value,
+		IdempotencyKey: key,
+	}, nil
+}
+
+type grantResultWire struct {
+	Variant    string                  `json:"variant"`
+	EntryID    string                  `json:"entry_id,omitempty"`
+	Amount     int64                   `json:"amount,omitempty"`
+	Recipients []string                `json:"recipients,omitempty"`
+	Error      *domainwire.DomainError `json:"error,omitempty"`
+}
+
+func encodeGrantResult(result ledger.GrantResult) grantResultWire {
+	switch typed := result.(type) {
+	case ledger.CreditsGranted:
+		recipients := make([]string, 0, len(typed.RecipientUserIDs))
+		for _, recipient := range typed.RecipientUserIDs {
+			recipients = append(recipients, corewire.EncodeUserID(recipient))
+		}
+		return grantResultWire{
+			Variant:    "granted",
+			EntryID:    corewire.EncodeLedgerEntryID(typed.EntryID),
+			Amount:     encodeCreditAmount(typed.Amount),
+			Recipients: recipients,
+		}
+	case ledger.GrantRejected:
+		reason := domainwire.EncodeDomainError(typed.Reason)
+		return grantResultWire{Variant: "rejected", Error: &reason}
+	default:
+		return grantResultWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown ledger result %T", result))}
+	}
+}
+
+func decodeGrantResult(wire grantResultWire) (ledger.GrantResult, error) {
+	switch wire.Variant {
+	case "granted":
+		entryID, err := corewire.DecodeLedgerEntryID(wire.EntryID)
+		if err != nil {
+			return nil, err
+		}
+		amount, err := decodeCreditAmount(wire.Amount)
+		if err != nil {
+			return nil, err
+		}
+		recipients := make([]core.UserID, 0, len(wire.Recipients))
+		for _, raw := range wire.Recipients {
+			recipient, err := corewire.DecodeUserID(raw)
+			if err != nil {
+				return nil, err
+			}
+			recipients = append(recipients, recipient)
+		}
+		return ledger.CreditsGranted{EntryID: entryID, Amount: amount, RecipientUserIDs: recipients}, nil
+	case "rejected":
+		return ledger.GrantRejected{Reason: decodeReason(wire.Error)}, nil
+	default:
+		return nil, fmt.Errorf("unknown grant result variant %q", wire.Variant)
+	}
 }

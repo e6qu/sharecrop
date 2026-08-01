@@ -8,7 +8,7 @@ import (
 
 func TestWriteWritesDocumentJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "openapi.json")
-	document := Generate([]Route{{Method: "GET", Path: "/api/tasks", OperationID: "listTasks", RequiresAuth: true}}, nil)
+	document := Generate([]Route{{Method: "GET", Path: "/api/tasks", OperationID: "listTasks", RequiresAuth: true}}, nil, nil)
 
 	result := Write(document, path)
 	if _, written := result.(Written); !written {
@@ -25,7 +25,7 @@ func TestWriteWritesDocumentJSON(t *testing.T) {
 }
 
 func TestWriteRejectsUnwritablePath(t *testing.T) {
-	document := Generate(nil, nil)
+	document := Generate(nil, nil, nil)
 	result := Write(document, filepath.Join(t.TempDir(), "missing-dir", "openapi.json"))
 	if _, rejected := result.(WriteRejected); !rejected {
 		t.Fatalf("result = %#v, want WriteRejected", result)

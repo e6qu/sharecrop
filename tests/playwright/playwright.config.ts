@@ -22,9 +22,14 @@ export default defineConfig({
     {
       // Account-token delivery defaults to log (fail closed); the browser
       // account/reset flows read the token from the response, so this test
-      // server opts into api delivery like the demo does.
+      // server opts into api delivery like the demo does. The registration
+      // budget is raised far above the production default (5 per IP) because
+      // this suite registers a fresh account per test, all from 127.0.0.1.
+      // Both capacity and refill are raised: buckets persist in the store, so
+      // a bucket drained by an earlier suite against the same database would
+      // otherwise still reject registrations regardless of capacity.
       command:
-        `SHARECROP_HTTP_ADDR=:${apiPort} SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 SHARECROP_ACCOUNT_TOKEN_DELIVERY=api DATABASE_URL='${databaseURL}' SHARECROP_MIGRATIONS_DIR=migrations go run ./cmd/sharecrop serve`,
+        `SHARECROP_HTTP_ADDR=:${apiPort} SHARECROP_ACCESS_TOKEN_SECRET=01234567890123456789012345678901 SHARECROP_ACCOUNT_TOKEN_DELIVERY=api SHARECROP_REGISTRATION_RATE_CAPACITY=100000 SHARECROP_REGISTRATION_RATE_REFILL=100000 DATABASE_URL='${databaseURL}' SHARECROP_MIGRATIONS_DIR=migrations go run ./cmd/sharecrop serve`,
       cwd: "../..",
       url: `${apiOrigin}/healthz`,
       reuseExistingServer: true,

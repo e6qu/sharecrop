@@ -170,6 +170,7 @@ func notificationModule() Module {
 					{Name: NewElmTypeName("NotificationKindReservationCancelled"), Tag: "reservation_cancelled"},
 					{Name: NewElmTypeName("NotificationKindReservationExpired"), Tag: "reservation_expired"},
 					{Name: NewElmTypeName("NotificationKindPayoutReceived"), Tag: "payout_received"},
+					{Name: NewElmTypeName("NotificationKindCreditGranted"), Tag: "credit_granted"},
 					{Name: NewElmTypeName("NotificationKindTipReceived"), Tag: "tip_received"},
 					{Name: NewElmTypeName("NotificationKindCollectibleAwarded"), Tag: "collectible_awarded"},
 				},
@@ -180,9 +181,11 @@ func notificationModule() Module {
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("recipientUserID"), JSONName: NewJSONFieldName("recipient_user_id"), Type: StringRef{}},
 					{Name: NewElmValueName("actorUserID"), JSONName: NewJSONFieldName("actor_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("actorDisplayName"), JSONName: NewJSONFieldName("actor_display_name"), Type: StringRef{}},
 					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: NamedRef{Name: NewElmTypeName("NotificationKind")}},
 					{Name: NewElmValueName("subjectKind"), JSONName: NewJSONFieldName("subject_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("subjectID"), JSONName: NewJSONFieldName("subject_id"), Type: StringRef{}},
+					{Name: NewElmValueName("subjectTitle"), JSONName: NewJSONFieldName("subject_title"), Type: StringRef{}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: StringRef{}},
 					{Name: NewElmValueName("metadataJSON"), JSONName: NewJSONFieldName("metadata_json"), Type: StringRef{}},
 					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
@@ -234,6 +237,7 @@ func eventsModule() Module {
 					{Name: NewElmTypeName("DomainEventKindSubmissionRejected"), Tag: "submission_rejected"},
 					{Name: NewElmTypeName("DomainEventKindSubmissionCommented"), Tag: "submission_commented"},
 					{Name: NewElmTypeName("DomainEventKindPayoutReceived"), Tag: "payout_received"},
+					{Name: NewElmTypeName("DomainEventKindCreditGranted"), Tag: "credit_granted"},
 					{Name: NewElmTypeName("DomainEventKindTipReceived"), Tag: "tip_received"},
 					{Name: NewElmTypeName("DomainEventKindCollectibleAwarded"), Tag: "collectible_awarded"},
 				},
@@ -252,9 +256,11 @@ func eventsModule() Module {
 					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: NamedRef{Name: NewElmTypeName("DomainEventKind")}},
 					{Name: NewElmValueName("actorKind"), JSONName: NewJSONFieldName("actor_kind"), Type: NamedRef{Name: NewElmTypeName("EventActorKind")}},
 					{Name: NewElmValueName("actorUserID"), JSONName: NewJSONFieldName("actor_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("actorDisplayName"), JSONName: NewJSONFieldName("actor_display_name"), Type: StringRef{}},
 					{Name: NewElmValueName("occurredAt"), JSONName: NewJSONFieldName("occurred_at"), Type: StringRef{}},
 					{Name: NewElmValueName("cursor"), JSONName: NewJSONFieldName("cursor"), Type: StringRef{}},
 					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
+					{Name: NewElmValueName("taskTitle"), JSONName: NewJSONFieldName("task_title"), Type: StringRef{}},
 					{Name: NewElmValueName("submissionID"), JSONName: NewJSONFieldName("submission_id"), Type: StringRef{}},
 					{Name: NewElmValueName("reservationID"), JSONName: NewJSONFieldName("reservation_id"), Type: StringRef{}},
 					{Name: NewElmValueName("seriesID"), JSONName: NewJSONFieldName("series_id"), Type: StringRef{}},
@@ -292,6 +298,17 @@ func eventsModule() Module {
 					{Name: NewElmTypeName("WebhookOwnerKindOrganization"), Tag: "organization"},
 				},
 			},
+			// WebhookAudience: recipient subscriptions deliver events addressed
+			// to the owner; marketplace subscriptions deliver every public open
+			// task_opened event, optionally narrowed by task type and minimum
+			// credit reward.
+			Enum{
+				Name: NewElmTypeName("WebhookAudience"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("WebhookAudienceRecipient"), Tag: "recipient"},
+					{Name: NewElmTypeName("WebhookAudienceMarketplace"), Tag: "marketplace"},
+				},
+			},
 			Product{
 				Name: NewElmTypeName("WebhookSubscriptionResponse"),
 				Fields: []Field{
@@ -303,6 +320,12 @@ func eventsModule() Module {
 					{Name: NewElmValueName("kinds"), JSONName: NewJSONFieldName("kinds"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("DomainEventKind")}}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("WebhookSubscriptionState")}},
 					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
+					{Name: NewElmValueName("audience"), JSONName: NewJSONFieldName("audience"), Type: NamedRef{Name: NewElmTypeName("WebhookAudience")}},
+					// The marketplace narrowing filters: empty / 0 mean no
+					// filter, and recipient subscriptions always carry them
+					// empty / 0.
+					{Name: NewElmValueName("filterTaskType"), JSONName: NewJSONFieldName("filter_task_type"), Type: StringRef{}},
+					{Name: NewElmValueName("filterMinCreditReward"), JSONName: NewJSONFieldName("filter_min_credit_reward"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -487,6 +510,7 @@ func taskSeriesModule() Module {
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("seriesID"), JSONName: NewJSONFieldName("series_id"), Type: StringRef{}},
 					{Name: NewElmValueName("authorUserID"), JSONName: NewJSONFieldName("author_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("authorDisplayName"), JSONName: NewJSONFieldName("author_display_name"), Type: StringRef{}},
 					{Name: NewElmValueName("body"), JSONName: NewJSONFieldName("body"), Type: StringRef{}},
 					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
 				},
@@ -576,6 +600,15 @@ func authModule() Module {
 					{Name: NewElmValueName("accessToken"), JSONName: NewJSONFieldName("access_token"), Type: StringRef{}},
 					{Name: NewElmValueName("role"), JSONName: NewJSONFieldName("role"), Type: StringRef{}},
 					{Name: NewElmValueName("username"), JSONName: NewJSONFieldName("username"), Type: StringRef{}},
+					{Name: NewElmValueName("displayName"), JSONName: NewJSONFieldName("display_name"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("AccountProfileResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("email"), JSONName: NewJSONFieldName("email"), Type: StringRef{}},
+					{Name: NewElmValueName("displayName"), JSONName: NewJSONFieldName("display_name"), Type: StringRef{}},
 				},
 			},
 		},
@@ -774,6 +807,10 @@ func taskModule() Module {
 					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
 					{Name: NewElmValueName("activeAssigneeKind"), JSONName: NewJSONFieldName("active_assignee_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("activeAssigneeID"), JSONName: NewJSONFieldName("active_assignee_id"), Type: StringRef{}},
+					{Name: NewElmValueName("creatorDisplayName"), JSONName: NewJSONFieldName("creator_display_name"), Type: StringRef{}},
+					// pendingReviewCount is populated only on tasks the caller
+					// created; every other row reports 0.
+					{Name: NewElmValueName("pendingReviewCount"), JSONName: NewJSONFieldName("pending_review_count"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -818,6 +855,9 @@ func taskModule() Module {
 					{Name: NewElmValueName("attachments"), JSONName: NewJSONFieldName("attachments"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskAttachmentResponse")}}},
 					{Name: NewElmValueName("createdBy"), JSONName: NewJSONFieldName("created_by"), Type: StringRef{}},
 					{Name: NewElmValueName("expiresAt"), JSONName: NewJSONFieldName("expires_at"), Type: StringRef{}},
+					// creatorDisplayName is resolved on the task detail read
+					// path; create and state-change responses leave it empty.
+					{Name: NewElmValueName("creatorDisplayName"), JSONName: NewJSONFieldName("creator_display_name"), Type: StringRef{}},
 				},
 			},
 			Product{
@@ -826,6 +866,7 @@ func taskModule() Module {
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
 					{Name: NewElmValueName("authorUserID"), JSONName: NewJSONFieldName("author_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("authorDisplayName"), JSONName: NewJSONFieldName("author_display_name"), Type: StringRef{}},
 					{Name: NewElmValueName("body"), JSONName: NewJSONFieldName("body"), Type: StringRef{}},
 					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
 				},
@@ -841,6 +882,7 @@ func taskModule() Module {
 				Name: NewElmTypeName("UserProfileResponse"),
 				Fields: []Field{
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
+					{Name: NewElmValueName("displayName"), JSONName: NewJSONFieldName("display_name"), Type: StringRef{}},
 					{Name: NewElmValueName("tasks"), JSONName: NewJSONFieldName("tasks"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskListItemResponse")}}},
 				},
 			},
@@ -854,6 +896,7 @@ func taskModule() Module {
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("TaskReservationState")}},
 					{Name: NewElmValueName("requestedBy"), JSONName: NewJSONFieldName("requested_by"), Type: StringRef{}},
 					{Name: NewElmValueName("issuedWorkerCredential"), JSONName: NewJSONFieldName("issued_worker_credential"), Type: StringRef{}},
+					{Name: NewElmValueName("holderDisplayName"), JSONName: NewJSONFieldName("holder_display_name"), Type: StringRef{}},
 				},
 			},
 			Product{
@@ -914,6 +957,7 @@ func submissionModule() Module {
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
 					{Name: NewElmValueName("submitterID"), JSONName: NewJSONFieldName("submitter_id"), Type: StringRef{}},
+					{Name: NewElmValueName("submitterDisplayName"), JSONName: NewJSONFieldName("submitter_display_name"), Type: StringRef{}},
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("SubmissionState")}},
 					{Name: NewElmValueName("responseJSON"), JSONName: NewJSONFieldName("response_json"), Type: StringRef{}},
 					{Name: NewElmValueName("reviewNote"), JSONName: NewJSONFieldName("review_note"), Type: StringRef{}},
@@ -935,6 +979,7 @@ func submissionModule() Module {
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("submissionID"), JSONName: NewJSONFieldName("submission_id"), Type: StringRef{}},
 					{Name: NewElmValueName("authorUserID"), JSONName: NewJSONFieldName("author_user_id"), Type: StringRef{}},
+					{Name: NewElmValueName("authorDisplayName"), JSONName: NewJSONFieldName("author_display_name"), Type: StringRef{}},
 					{Name: NewElmValueName("body"), JSONName: NewJSONFieldName("body"), Type: StringRef{}},
 					{Name: NewElmValueName("createdAt"), JSONName: NewJSONFieldName("created_at"), Type: StringRef{}},
 				},
@@ -996,6 +1041,17 @@ func ledgerModule() Module {
 					{Name: NewElmValueName("kind"), JSONName: NewJSONFieldName("kind"), Type: NamedRef{Name: NewElmTypeName("LedgerEntryKind")}},
 					{Name: NewElmValueName("amount"), JSONName: NewJSONFieldName("amount"), Type: IntRef{}},
 					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
+					// note is the entry's stored note (for example the required
+					// explanation on a platform-admin credit grant); empty for
+					// entry kinds that record no note.
+					{Name: NewElmValueName("note"), JSONName: NewJSONFieldName("note"), Type: StringRef{}},
+				},
+			},
+			Product{
+				Name: NewElmTypeName("CreditGrantResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("entryID"), JSONName: NewJSONFieldName("entry_id"), Type: StringRef{}},
+					{Name: NewElmValueName("amount"), JSONName: NewJSONFieldName("amount"), Type: IntRef{}},
 				},
 			},
 			Product{

@@ -163,15 +163,16 @@ func decodeAuthenticatedSubmissionRequest(r *http.Request, actor auth.UserSubjec
 func submissionToResponse(value submission.Submission) submissionResponse {
 	errors := submissionValidationErrorsToResponse(value.Validation)
 	return submissionResponse{
-		ID:               value.ID.String(),
-		TaskID:           value.TaskID.String(),
-		SubmitterID:      value.SubmitterID.String(),
-		State:            value.State.String(),
-		ResponseJSON:     value.ResponseSource.String(),
-		ReviewNote:       value.ReviewNote.String(),
-		Attachments:      attachmentsToResponse(value.Attachments),
-		ValidationErrors: errors,
-		SensitiveFields:  submissionSensitiveFieldsToResponse(value.SensitiveFields),
+		ID:                   value.ID.String(),
+		TaskID:               value.TaskID.String(),
+		SubmitterID:          value.SubmitterID.String(),
+		SubmitterDisplayName: value.SubmitterDisplayName.String(),
+		State:                value.State.String(),
+		ResponseJSON:         value.ResponseSource.String(),
+		ReviewNote:           value.ReviewNote.String(),
+		Attachments:          attachmentsToResponse(value.Attachments),
+		ValidationErrors:     errors,
+		SensitiveFields:      submissionSensitiveFieldsToResponse(value.SensitiveFields),
 	}
 }
 func submissionValidationErrorsToResponse(outcome submission.ValidationOutcome) []submissionValidationErrorResponse {

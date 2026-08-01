@@ -80,7 +80,7 @@ func TestServiceRegistersLogsInAndRefreshesUser(t *testing.T) {
 	email := acceptedEmail(t, "person@example.com")
 	password := acceptedPassword(t, "correct horse battery staple")
 
-	registerResult := service.Register(context.Background(), email, password)
+	registerResult := service.Register(context.Background(), email, password, DeriveDisplayName{})
 	registerAccepted, registerMatched := registerResult.(RegisterAccepted)
 	if !registerMatched {
 		t.Fatalf("register result = %T, want RegisterAccepted", registerResult)
@@ -108,7 +108,7 @@ func TestRefreshTokenReuseRevokesFamily(t *testing.T) {
 	email := acceptedEmail(t, "reuse@example.com")
 	password := acceptedPassword(t, "correct horse battery staple")
 
-	registerResult := service.Register(context.Background(), email, password)
+	registerResult := service.Register(context.Background(), email, password, DeriveDisplayName{})
 	registerAccepted, registerMatched := registerResult.(RegisterAccepted)
 	if !registerMatched {
 		t.Fatalf("register result = %T, want RegisterAccepted", registerResult)
@@ -154,7 +154,7 @@ func TestServiceCreatesGuestSession(t *testing.T) {
 func TestSessionValidationTracksRefreshFamilyRevocation(t *testing.T) {
 	service := acceptedService(t, newMemoryStore())
 	email := acceptedEmail(t, "session-validation@example.com")
-	registered := service.Register(context.Background(), email, acceptedPassword(t, "correct horse battery staple")).(RegisterAccepted)
+	registered := service.Register(context.Background(), email, acceptedPassword(t, "correct horse battery staple"), DeriveDisplayName{}).(RegisterAccepted)
 	if _, active := service.ValidateSession(context.Background(), registered.RefreshToken).(RefreshTokenActive); !active {
 		t.Fatal("new refresh session was not active")
 	}
@@ -188,7 +188,7 @@ func TestServiceDoesNotLinkExternalIdentityToPasswordEmail(t *testing.T) {
 	store := newMemoryStore()
 	service := acceptedService(t, store)
 	email := acceptedEmail(t, "local@example.com")
-	if _, ok := service.Register(context.Background(), email, acceptedPassword(t, "correct horse battery staple")).(RegisterAccepted); !ok {
+	if _, ok := service.Register(context.Background(), email, acceptedPassword(t, "correct horse battery staple"), DeriveDisplayName{}).(RegisterAccepted); !ok {
 		t.Fatal("local registration failed")
 	}
 	result := service.LoginExternal(context.Background(), "https://auth.dev.e6qu.dev/realms/dev", "different-subject", email)
@@ -302,7 +302,7 @@ func (store *memoryStore) FindOrCreateExternalIdentity(_ context.Context, identi
 	return ExternalIdentityFound{UserID: id.Value}
 }
 
-func (store *memoryStore) CreateUserCredential(_ context.Context, id core.UserID, email EmailAddress, passwordHash PasswordHash) StoreUserResult {
+func (store *memoryStore) CreateUserCredential(_ context.Context, id core.UserID, email EmailAddress, displayName DisplayName, passwordHash PasswordHash) StoreUserResult {
 	if _, exists := store.credentialsByEmail[email.String()]; exists {
 		return StoreUserRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "email address is already registered")}
 	}
@@ -310,6 +310,7 @@ func (store *memoryStore) CreateUserCredential(_ context.Context, id core.UserID
 	store.credentialsByEmail[email.String()] = CredentialRecord{
 		UserID:       id,
 		Email:        email,
+		DisplayName:  displayName,
 		PasswordHash: passwordHash,
 		Status:       "active",
 	}
@@ -338,7 +339,7 @@ func (store *memoryStore) ListUsers(_ context.Context, _ string, _ core.Page) Us
 	values := make([]UserDirectoryEntry, 0, len(store.credentialsByEmail))
 	for _, record := range store.credentialsByEmail {
 		if record.Status == "active" {
-			values = append(values, UserDirectoryEntry{ID: record.UserID, Email: record.Email, Status: record.Status})
+			values = append(values, UserDirectoryEntry{ID: record.UserID, Email: record.Email, DisplayName: record.DisplayName, Status: record.Status})
 		}
 	}
 	return UsersListed{Values: values}
@@ -353,6 +354,17 @@ func (store *memoryStore) UpdateUserEmail(_ context.Context, id core.UserID, ema
 			delete(store.credentialsByEmail, existingEmail)
 			record.Email = email
 			store.credentialsByEmail[email.String()] = record
+			return AccountMutationAccepted{}
+		}
+	}
+	return AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "account was not found")}
+}
+
+func (store *memoryStore) UpdateDisplayName(_ context.Context, id core.UserID, name DisplayName) AccountMutationResult {
+	for email, record := range store.credentialsByEmail {
+		if record.UserID.String() == id.String() {
+			record.DisplayName = name
+			store.credentialsByEmail[email] = record
 			return AccountMutationAccepted{}
 		}
 	}

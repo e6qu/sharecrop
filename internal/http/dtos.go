@@ -5,6 +5,14 @@ type authRequest struct {
 	Password string `json:"password"`
 }
 
+type registerRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	// DisplayName is optional: absent or empty derives the display name from
+	// the email's local part.
+	DisplayName string `json:"display_name"`
+}
+
 type authResponse struct {
 	SubjectKind string `json:"subject_kind"`
 	SubjectID   string `json:"subject_id"`
@@ -13,6 +21,22 @@ type authResponse struct {
 	// Username is the identity the provider asserted, shown in the application
 	// shell. Empty for a session that did not come from the provider.
 	Username string `json:"username"`
+	// DisplayName is the signed-in user's display name. Empty for guest
+	// sessions, which have no profile.
+	DisplayName string `json:"display_name"`
+}
+
+// accountProfileResponse is the signed-in user's own profile.
+type accountProfileResponse struct {
+	ID          string `json:"id"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+}
+
+func (accountProfileResponse) writableResponse() {}
+
+type displayNameRequest struct {
+	DisplayName string `json:"display_name"`
 }
 
 type logoutResponse struct {
@@ -311,9 +335,10 @@ type teamsResponse struct {
 }
 
 type userDirectoryEntryResponse struct {
-	ID     string `json:"id"`
-	Email  string `json:"email"`
-	Status string `json:"status"`
+	ID          string `json:"id"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+	Status      string `json:"status"`
 }
 
 type usersResponse struct {
@@ -361,6 +386,10 @@ type taskResponse struct {
 	// ExpiresAt is the task's expiration instant in RFC3339, or empty when
 	// the task has no expiration policy.
 	ExpiresAt string `json:"expires_at"`
+	// CreatorDisplayName names the user who created the task. Like the
+	// Allocated* fields it is resolved on the task detail read path; create
+	// and state-change responses leave it empty.
+	CreatorDisplayName string `json:"creator_display_name"`
 }
 
 type attachmentResponse struct {
@@ -388,6 +417,14 @@ type taskListItemResponse struct {
 	CreatedBy              string `json:"created_by"`
 	ActiveAssigneeKind     string `json:"active_assignee_kind"`
 	ActiveAssigneeID       string `json:"active_assignee_id"`
+	// CreatorDisplayName names the user who created the task, on every
+	// listing.
+	CreatorDisplayName string `json:"creator_display_name"`
+	// PendingReviewCount is the number of submissions still awaiting review
+	// (state "submitted"). It is populated only for tasks the caller created
+	// and is 0 on every other row, so a listing never leaks another
+	// requester's review queue.
+	PendingReviewCount int64 `json:"pending_review_count"`
 }
 
 type tasksResponse struct {
@@ -408,6 +445,8 @@ type reservationResponse struct {
 	// re-shown afterward, matching the one-shot-reveal convention used for
 	// every other credential-minting response in this codebase.
 	IssuedWorkerCredential string `json:"issued_worker_credential"`
+	// HolderDisplayName names the user who requested the reservation.
+	HolderDisplayName string `json:"holder_display_name"`
 }
 
 type reservationsResponse struct {
@@ -430,15 +469,17 @@ type submissionSensitiveFieldResponse struct {
 }
 
 type submissionResponse struct {
-	ID               string                              `json:"id"`
-	TaskID           string                              `json:"task_id"`
-	SubmitterID      string                              `json:"submitter_id"`
-	State            string                              `json:"state"`
-	ResponseJSON     string                              `json:"response_json"`
-	ReviewNote       string                              `json:"review_note"`
-	Attachments      []attachmentResponse                `json:"attachments"`
-	ValidationErrors []submissionValidationErrorResponse `json:"validation_errors"`
-	SensitiveFields  []submissionSensitiveFieldResponse  `json:"sensitive_fields"`
+	ID          string `json:"id"`
+	TaskID      string `json:"task_id"`
+	SubmitterID string `json:"submitter_id"`
+	// SubmitterDisplayName names the user who submitted the work.
+	SubmitterDisplayName string                              `json:"submitter_display_name"`
+	State                string                              `json:"state"`
+	ResponseJSON         string                              `json:"response_json"`
+	ReviewNote           string                              `json:"review_note"`
+	Attachments          []attachmentResponse                `json:"attachments"`
+	ValidationErrors     []submissionValidationErrorResponse `json:"validation_errors"`
+	SensitiveFields      []submissionSensitiveFieldResponse  `json:"sensitive_fields"`
 }
 
 type submissionsResponse struct {
@@ -450,12 +491,18 @@ type notificationResponse struct {
 	ID              string `json:"id"`
 	RecipientUserID string `json:"recipient_user_id"`
 	ActorUserID     string `json:"actor_user_id"`
-	Kind            string `json:"kind"`
-	SubjectKind     string `json:"subject_kind"`
-	SubjectID       string `json:"subject_id"`
-	State           string `json:"state"`
-	MetadataJSON    string `json:"metadata_json"`
-	CreatedAt       string `json:"created_at"`
+	// ActorDisplayName names the acting user; empty for system-actor
+	// notifications.
+	ActorDisplayName string `json:"actor_display_name"`
+	Kind             string `json:"kind"`
+	SubjectKind      string `json:"subject_kind"`
+	SubjectID        string `json:"subject_id"`
+	// SubjectTitle is the subject task's title when the subject is a task;
+	// empty for other subject kinds.
+	SubjectTitle string `json:"subject_title"`
+	State        string `json:"state"`
+	MetadataJSON string `json:"metadata_json"`
+	CreatedAt    string `json:"created_at"`
 }
 
 type notificationsResponse struct {
@@ -522,6 +569,10 @@ type ledgerEntryResponse struct {
 	Kind   string `json:"kind"`
 	Amount int64  `json:"amount"`
 	TaskID string `json:"task_id"`
+	// Note is the entry's stored note (for example the required explanation
+	// on a platform-admin credit grant); empty for entry kinds that record
+	// no note.
+	Note string `json:"note"`
 }
 
 type ledgerListResponse struct {
@@ -543,6 +594,25 @@ type acceptSubmissionResponse struct {
 	CollectibleIDs []string `json:"collectible_ids"`
 	TipAmount      int64    `json:"tip_amount"`
 }
+
+// creditGrantRequest is the platform-admin manual credit grant: target_kind
+// is "user" or "organization", target_id the matching account owner id,
+// amount a positive credit amount, note the required explanation, and
+// idempotency_key the caller's replay guard.
+type creditGrantRequest struct {
+	TargetKind     string `json:"target_kind"`
+	TargetID       string `json:"target_id"`
+	Amount         int64  `json:"amount"`
+	Note           string `json:"note"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type creditGrantResponse struct {
+	EntryID string `json:"entry_id"`
+	Amount  int64  `json:"amount"`
+}
+
+func (creditGrantResponse) writableResponse() {}
 
 type reviewSubmissionResponse struct {
 	TaskID       string `json:"task_id"`

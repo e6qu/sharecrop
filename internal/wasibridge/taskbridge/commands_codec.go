@@ -305,6 +305,7 @@ type listFiltersWire struct {
 	Participation participationFilterWire `json:"participation"`
 	Search        searchFilterWire        `json:"search"`
 	Type          typeFilterWire          `json:"type"`
+	Created       createdFilterWire       `json:"created"`
 	Sort          string                  `json:"sort"`
 }
 
@@ -329,12 +330,18 @@ type typeFilterWire struct {
 	Value string `json:"value,omitempty"`
 }
 
+type createdFilterWire struct {
+	Kind    string `json:"kind"`
+	Instant string `json:"instant,omitempty"`
+}
+
 func encodeListFilters(filters task.ListFilters) listFiltersWire {
 	return listFiltersWire{
 		State:         encodeStateFilter(filters.State),
 		Participation: encodeParticipationFilter(filters.Participation),
 		Search:        encodeSearchFilter(filters.Search),
 		Type:          encodeTypeFilter(filters.Type),
+		Created:       encodeCreatedFilter(filters.Created),
 		Sort:          encodeSortOrder(filters.Sort),
 	}
 }
@@ -356,11 +363,15 @@ func decodeListFilters(wire listFiltersWire) (task.ListFilters, error) {
 	if err != nil {
 		return task.ListFilters{}, err
 	}
+	createdFilter, err := decodeCreatedFilter(wire.Created)
+	if err != nil {
+		return task.ListFilters{}, err
+	}
 	sort, err := decodeSortOrder(wire.Sort)
 	if err != nil {
 		return task.ListFilters{}, err
 	}
-	return task.ListFilters{State: stateFilter, Participation: participationFilter, Search: searchFilter, Type: typeFilter, Sort: sort}, nil
+	return task.ListFilters{State: stateFilter, Participation: participationFilter, Search: searchFilter, Type: typeFilter, Created: createdFilter, Sort: sort}, nil
 }
 
 func encodeStateFilter(filter task.StateFilter) stateFilterWire {
@@ -446,6 +457,29 @@ func decodeSearchFilter(wire searchFilterWire) (task.SearchFilter, error) {
 		return task.SearchContains{Value: text}, nil
 	default:
 		return nil, fmt.Errorf("unknown search filter kind %q", wire.Kind)
+	}
+}
+
+func encodeCreatedFilter(filter task.CreatedFilter) createdFilterWire {
+	after, matched := filter.(task.CreatedAfter)
+	if !matched {
+		return createdFilterWire{Kind: "unfiltered"}
+	}
+	return createdFilterWire{Kind: "after", Instant: corewire.EncodeTime(after.Instant)}
+}
+
+func decodeCreatedFilter(wire createdFilterWire) (task.CreatedFilter, error) {
+	switch wire.Kind {
+	case "unfiltered":
+		return task.AnyCreatedFilter{}, nil
+	case "after":
+		instant, err := corewire.DecodeTime(wire.Instant)
+		if err != nil {
+			return nil, err
+		}
+		return task.CreatedAfter{Instant: instant}, nil
+	default:
+		return nil, fmt.Errorf("unknown created filter kind %q", wire.Kind)
 	}
 }
 

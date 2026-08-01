@@ -1,20 +1,28 @@
 package submission
 
 import (
+	"time"
+
 	"github.com/e6qu/sharecrop/internal/attachment"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 )
 
+// Submission also carries the submitter's display name, resolved by the
+// store, so submission rows can name the worker without a per-row user fetch.
+// CreatedAt records the submission instant (the row's created_at fact).
 type Submission struct {
-	ID              core.SubmissionID
-	TaskID          core.TaskID
-	SubmitterID     core.UserID
-	State           State
-	ResponseSource  ResponseSource
-	Attachments     []attachment.Attachment
-	Validation      ValidationOutcome
-	SensitiveFields []SensitiveField
-	ReviewNote      ReviewNote
+	ID                   core.SubmissionID
+	TaskID               core.TaskID
+	SubmitterID          core.UserID
+	SubmitterDisplayName auth.DisplayName
+	State                State
+	ResponseSource       ResponseSource
+	Attachments          []attachment.Attachment
+	Validation           ValidationOutcome
+	SensitiveFields      []SensitiveField
+	ReviewNote           ReviewNote
+	CreatedAt            time.Time
 }
 
 type Receipt struct {

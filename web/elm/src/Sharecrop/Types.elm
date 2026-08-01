@@ -122,6 +122,8 @@ type alias LoggedInModel =
     { accessToken : String
     , subjectId : String
     , username : String
+    , displayName : String
+    , now : Time.Posix
     , isAdmin : Bool
     , page : Page
     , openNavMenu : Maybe String
@@ -136,6 +138,9 @@ type alias LoggedInModel =
     , webhookSubscriptions : List Events.WebhookSubscriptionResponse
     , webhookURL : String
     , webhookKinds : List Events.DomainEventKind
+    , webhookAudience : Events.WebhookAudience
+    , webhookFilterTaskType : String
+    , webhookFilterMinReward : String
     , webhookMessage : Maybe Note
     , newWebhookSecret : Maybe Events.WebhookSubscriptionCreatedResponse
     , activeWebhookDeliveriesID : Maybe String
@@ -306,6 +311,8 @@ type alias LoggedInModel =
     , taskAgentToken : Maybe String
     , taskActionMessage : Maybe Note
     , userAgentToken : Maybe String
+    , accountProfile : Maybe Auth.AccountProfileResponse
+    , displayNameDraft : String
     , accountEmail : String
     , currentPassword : String
     , newPassword : String
@@ -345,6 +352,12 @@ type alias LoggedInModel =
     , adminPrivacyNextOffset : Int
     , adminPrivacyResolutionNote : String
     , adminRetentionRedactedFieldCount : Maybe Int
+    , grantTargetKind : String
+    , grantTargetId : String
+    , grantAmount : String
+    , grantNote : String
+    , grantKey : String
+    , grantMessage : Maybe Note
     , auditActionFilter : String
     , auditSubjectKindFilter : String
     , auditSubjectIDFilter : String
@@ -377,6 +390,7 @@ type alias TaskDetail =
     , payloadJson : String
     , attachments : List Task.TaskAttachmentResponse
     , createdBy : String
+    , creatorDisplayName : String
     , seriesID : String
     , taskType : String
     , referenceURL : String
@@ -396,6 +410,7 @@ type alias Model =
     , route : Page
     , email : String
     , password : String
+    , registerName : String
     , resetEmail : String
     , resetToken : String
     , resetPassword : String
@@ -408,6 +423,8 @@ type alias Model =
 type Msg
     = EmailChanged String
     | PasswordChanged String
+    | RegisterNameChanged String
+    | NowReceived Time.Posix
     | RegisterClicked
     | LoginClicked
     | GuestClicked
@@ -479,6 +496,7 @@ type Msg
     | RefundCollectibleRewardReceived (Result Http.Error Collectible.CollectiblesResponse)
     | AgentLabelChanged String
     | ToggleScope Agent.AgentScope
+    | AgentScopePresetClicked (List Agent.AgentScope)
     | AgentExpiresHoursChanged String
     | CreateAgentClicked
     | AgentExpiresAtResolved Time.Posix
@@ -672,6 +690,10 @@ type Msg
     | UrlChanged Url
     | ResetDemoClicked
     | AccountEmailChanged String
+    | AccountProfileReceived (Result Http.Error Auth.AccountProfileResponse)
+    | DisplayNameDraftChanged String
+    | SaveDisplayNameClicked
+    | DisplayNameSaved (Result Http.Error ())
     | CurrentPasswordChanged String
     | NewPasswordChanged String
     | EmailVerificationInputChanged String
@@ -718,6 +740,12 @@ type Msg
     | PreviousAdminPrivacyPageClicked
     | NextAdminPrivacyPageClicked
     | AdminPrivacyResolutionNoteChanged String
+    | GrantTargetKindChanged String
+    | GrantTargetIdChanged String
+    | GrantAmountChanged String
+    | GrantNoteChanged String
+    | GrantCreditsClicked
+    | CreditsGranted (Result Http.Error Ledger.CreditGrantResponse)
     | RunPrivacyRetentionClicked
     | PrivacyRetentionRunReceived (Result Http.Error Privacy.PrivacyRetentionRunResponse)
     | ResolveAdminPrivacyRequestClicked String
@@ -739,6 +767,9 @@ type Msg
     | WebhooksReceived (Result Http.Error Events.WebhookSubscriptionsResponse)
     | WebhookURLChanged String
     | ToggleWebhookKind Events.DomainEventKind
+    | WebhookAudienceChosen Events.WebhookAudience
+    | WebhookFilterTaskTypeChanged String
+    | WebhookFilterMinRewardChanged String
     | CreateWebhookClicked
     | WebhookCreated (Result Http.Error Events.WebhookSubscriptionCreatedResponse)
     | RevokeWebhookClicked String

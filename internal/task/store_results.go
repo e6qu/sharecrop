@@ -1,6 +1,9 @@
 package task
 
-import "github.com/e6qu/sharecrop/internal/core"
+import (
+	"github.com/e6qu/sharecrop/internal/auth"
+	"github.com/e6qu/sharecrop/internal/core"
+)
 
 type CreateTaskStoreResult interface {
 	createTaskStoreResult()
@@ -38,8 +41,12 @@ type FindTaskStoreResult interface {
 	findTaskStoreResult()
 }
 
+// FindTaskStoreAccepted carries the found task plus the creator's display
+// name, resolved by the store exactly as list items resolve it, so the detail
+// read path can name the requester without a separate user fetch.
 type FindTaskStoreAccepted struct {
-	Value Task
+	Value              Task
+	CreatorDisplayName auth.DisplayName
 }
 
 type FindTaskStoreRejected struct {

@@ -20,6 +20,7 @@ type organizationSummary struct {
 
 type organizationsPayload struct {
 	Organizations []organizationSummary `json:"organizations"`
+	NextOffset    int                   `json:"next_offset"`
 }
 
 type memberSummary struct {
@@ -31,7 +32,8 @@ type memberSummary struct {
 }
 
 type membersPayload struct {
-	Members []memberSummary `json:"members"`
+	Members    []memberSummary `json:"members"`
+	NextOffset int             `json:"next_offset"`
 }
 
 type teamSummary struct {
@@ -43,7 +45,8 @@ type teamSummary struct {
 }
 
 type teamsPayload struct {
-	Teams []teamSummary `json:"teams"`
+	Teams      []teamSummary `json:"teams"`
+	NextOffset int           `json:"next_offset"`
 }
 
 type teamDetailPayload struct {
@@ -67,6 +70,7 @@ type orgCredentialCreatedPayload struct {
 
 type orgCredentialsPayload struct {
 	Credentials []orgCredentialSummary `json:"credentials"`
+	NextOffset  int                    `json:"next_offset"`
 }
 
 func (organizationsPayload) payloadValue() {}
@@ -205,16 +209,21 @@ func (server Server) callListOrganizations(ctx context.Context, subject auth.Use
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
 	}
-	result := server.services.ListOrganizations(ctx, subject, args.Query, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListOrganizations(ctx, subject, args.Query, page.Probe())
 	listed, matched := result.(org.OrganizationsListed)
 	if !matched {
 		return toolFailed{code: result.(org.ListOrganizationsRejected).Reason.Code(), message: result.(org.ListOrganizationsRejected).Reason.Description()}
 	}
-	summaries := make([]organizationSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]organizationSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, organizationToSummary(listed.Values[index]))
 	}
-	return marshalPayload(organizationsPayload{Organizations: summaries})
+	return marshalPayload(organizationsPayload{Organizations: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callListOrgMembers(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -222,16 +231,21 @@ func (server Server) callListOrgMembers(ctx context.Context, subject auth.UserSu
 	if problem != nil {
 		return problem
 	}
-	result := server.services.ListOrganizationMembers(ctx, subject, organizationID, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListOrganizationMembers(ctx, subject, organizationID, page.Probe())
 	listed, matched := result.(org.MembersListed)
 	if !matched {
 		return toolFailed{code: result.(org.ListMembersRejected).Reason.Code(), message: result.(org.ListMembersRejected).Reason.Description()}
 	}
-	summaries := make([]memberSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]memberSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, memberToSummary(listed.Values[index]))
 	}
-	return marshalPayload(membersPayload{Members: summaries})
+	return marshalPayload(membersPayload{Members: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callProvisionOrgMember(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -360,16 +374,21 @@ func (server Server) callListOrganizationTeams(ctx context.Context, subject auth
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
 	}
-	result := server.services.ListOrganizationTeams(ctx, subject, organizationID, args.Query, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListOrganizationTeams(ctx, subject, organizationID, args.Query, page.Probe())
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		return toolFailed{code: result.(org.ListTeamsRejected).Reason.Code(), message: result.(org.ListTeamsRejected).Reason.Description()}
 	}
-	summaries := make([]teamSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]teamSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, teamToSummary(listed.Values[index]))
 	}
-	return marshalPayload(teamsPayload{Teams: summaries})
+	return marshalPayload(teamsPayload{Teams: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callCreateStandaloneTeam(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -399,16 +418,21 @@ func (server Server) callListStandaloneTeams(ctx context.Context, subject auth.U
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
 	}
-	result := server.services.ListStandaloneTeams(ctx, subject, args.Query, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListStandaloneTeams(ctx, subject, args.Query, page.Probe())
 	listed, matched := result.(org.OrganizationTeamsListed)
 	if !matched {
 		return toolFailed{code: result.(org.ListTeamsRejected).Reason.Code(), message: result.(org.ListTeamsRejected).Reason.Description()}
 	}
-	summaries := make([]teamSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]teamSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, teamToSummary(listed.Values[index]))
 	}
-	return marshalPayload(teamsPayload{Teams: summaries})
+	return marshalPayload(teamsPayload{Teams: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callGetTeam(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
@@ -433,16 +457,21 @@ func (server Server) callGetTeamWork(ctx context.Context, subject auth.UserSubje
 	if problem != nil {
 		return problem
 	}
-	result := server.services.GetTeamWork(ctx, subject, teamID, task.NoListFilters(), core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.GetTeamWork(ctx, subject, teamID, task.NoListFilters(), page.Probe())
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
-	summaries := make([]taskSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]taskSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, taskToSummary(listed.Values[index].Task))
 	}
-	return marshalPayload(tasksPayload{Tasks: summaries})
+	return marshalPayload(tasksPayload{Tasks: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callAddTeamMember(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
@@ -539,16 +568,21 @@ func (server Server) callListOrgCredentials(ctx context.Context, subject auth.Us
 	if _, denied := permissionCheck.(org.PermissionDenied); denied {
 		return toolFailed{code: core.ErrorCodePermissionDenied, message: "organization credential management access denied"}
 	}
-	result := server.services.ListOrgCredentials(ctx, organizationID, core.DefaultPage())
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListOrgCredentials(ctx, organizationID, page.Probe())
 	listed, matched := result.(orgcred.CredentialsListed)
 	if !matched {
 		return toolFailed{code: result.(orgcred.ListRejected).Reason.Code(), message: result.(orgcred.ListRejected).Reason.Description()}
 	}
-	summaries := make([]orgCredentialSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]orgCredentialSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, orgCredentialToSummary(listed.Values[index]))
 	}
-	return marshalPayload(orgCredentialsPayload{Credentials: summaries})
+	return marshalPayload(orgCredentialsPayload{Credentials: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callRevokeOrgCredential(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {

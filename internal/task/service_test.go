@@ -209,6 +209,57 @@ func TestServiceReserveRejectsOrganizationTeamNonMember(t *testing.T) {
 	}
 }
 
+// TestServiceCancelReservationRecordsActorVariant proves the two cancellation
+// variants are recorded by actor: the holder releasing their own reservation
+// records cancelled_by_worker, while the task owner force-cancelling records
+// cancelled_by_requester, and a stranger is denied.
+func TestServiceCancelReservationRecordsActorVariant(t *testing.T) {
+	setup := func(t *testing.T) (Service, *taskMemoryStore, auth.UserSubject, auth.UserSubject, core.TaskID, core.TaskReservationID) {
+		t.Helper()
+		store := newTaskMemoryStore()
+		service := NewService(store, newTaskPermissionStore(), nil, eventtest.NewRecorder())
+		requester := testUserSubject(t)
+		worker := testUserSubject(t)
+		command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
+		created := service.Create(context.Background(), command).(TaskCreated)
+		store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+		reserved := service.Reserve(context.Background(), worker, created.Value.ID).(ReservationCreated)
+		return service, store, requester, worker, created.Value.ID, reserved.Value.ID
+	}
+
+	t.Run("holder cancel records cancelled_by_worker", func(t *testing.T) {
+		service, _, _, worker, taskID, reservationID := setup(t)
+		result := service.CancelReservation(context.Background(), worker, taskID, reservationID)
+		changed, matched := result.(ReservationStateChanged)
+		if !matched {
+			t.Fatalf("result = %T, want ReservationStateChanged", result)
+		}
+		if changed.Value.State != ReservationStateCancelledByWorker {
+			t.Fatalf("state = %q, want cancelled_by_worker", changed.Value.State.String())
+		}
+	})
+
+	t.Run("owner cancel records cancelled_by_requester", func(t *testing.T) {
+		service, _, requester, _, taskID, reservationID := setup(t)
+		result := service.CancelReservation(context.Background(), requester, taskID, reservationID)
+		changed, matched := result.(ReservationStateChanged)
+		if !matched {
+			t.Fatalf("result = %T, want ReservationStateChanged", result)
+		}
+		if changed.Value.State != ReservationStateCancelledByRequester {
+			t.Fatalf("state = %q, want cancelled_by_requester", changed.Value.State.String())
+		}
+	})
+
+	t.Run("stranger is denied", func(t *testing.T) {
+		service, _, _, _, taskID, reservationID := setup(t)
+		result := service.CancelReservation(context.Background(), testUserSubject(t), taskID, reservationID)
+		if _, matched := result.(ReservationStateChangeRejected); !matched {
+			t.Fatalf("result = %T, want ReservationStateChangeRejected", result)
+		}
+	})
+}
+
 func TestServiceListRejectsTeamScopeForNonMember(t *testing.T) {
 	store := newTaskMemoryStore()
 	permissions := newTaskPermissionStore()

@@ -120,15 +120,21 @@ func parseNotificationStateFilter(raw string) stateFilterParseResult {
 }
 
 func notificationToResponse(value notification.Notification) notificationResponse {
+	subjectTitle := ""
+	if titled, matched := value.SubjectTitle.(notification.TaskSubjectTitle); matched {
+		subjectTitle = titled.Title
+	}
 	return notificationResponse{
-		ID:              value.ID.String(),
-		RecipientUserID: value.RecipientID.String(),
-		ActorUserID:     value.ActorID.String(),
-		Kind:            value.Kind.String(),
-		SubjectKind:     value.Subject.Kind,
-		SubjectID:       value.Subject.ID,
-		State:           value.State.String(),
-		MetadataJSON:    value.Metadata.JSON,
-		CreatedAt:       value.CreatedAt.UTC().Format(time.RFC3339Nano),
+		ID:               value.ID.String(),
+		RecipientUserID:  value.RecipientID.String(),
+		ActorUserID:      value.ActorID.String(),
+		ActorDisplayName: value.ActorDisplayName.String(),
+		Kind:             value.Kind.String(),
+		SubjectKind:      value.Subject.Kind,
+		SubjectID:        value.Subject.ID,
+		SubjectTitle:     subjectTitle,
+		State:            value.State.String(),
+		MetadataJSON:     value.Metadata.JSON,
+		CreatedAt:        value.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
 }

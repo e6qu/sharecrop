@@ -23,8 +23,10 @@ type seriesCommentResponse struct {
 	ID           string `json:"id"`
 	SeriesID     string `json:"series_id"`
 	AuthorUserID string `json:"author_user_id"`
-	Body         string `json:"body"`
-	CreatedAt    string `json:"created_at"`
+	// AuthorDisplayName names the comment's author.
+	AuthorDisplayName string `json:"author_display_name"`
+	Body              string `json:"body"`
+	CreatedAt         string `json:"created_at"`
 }
 
 type taskSeriesListResponse struct {
@@ -418,10 +420,11 @@ func commentsToResponse(values []task.SeriesComment) []seriesCommentResponse {
 
 func commentToResponse(value task.SeriesComment) seriesCommentResponse {
 	return seriesCommentResponse{
-		ID:           value.ID.String(),
-		SeriesID:     value.SeriesID.String(),
-		AuthorUserID: value.AuthorID.String(),
-		Body:         value.Body.String(),
-		CreatedAt:    value.CreatedAt.UTC().Format(time.RFC3339),
+		ID:                value.ID.String(),
+		SeriesID:          value.SeriesID.String(),
+		AuthorUserID:      value.AuthorID.String(),
+		AuthorDisplayName: value.AuthorDisplayName.String(),
+		Body:              value.Body.String(),
+		CreatedAt:         value.CreatedAt.UTC().Format(time.RFC3339),
 	}
 }

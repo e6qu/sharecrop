@@ -12,6 +12,36 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// userDisplayNameSQL selects a user's display name with the documented
+// default derivation applied at read time: rows created outside the
+// application (fixtures, pre-backfill data) fall back to the email local
+// part, so a display name is always non-empty. The sqlite dialect translates
+// split_part.
+const userDisplayNameSQL = "coalesce(nullif(users.display_name, ''), split_part(users.email, '@', 1))"
+
+// displayNameSQL is userDisplayNameSQL for an aliased join of the users table.
+func displayNameSQL(alias string) string {
+	return "coalesce(nullif(" + alias + ".display_name, ''), split_part(" + alias + ".email, '@', 1))"
+}
+
+// fetchUserDisplayName resolves one user's display name (with the read-time
+// derivation fallback), for create paths that return a read model naming the
+// acting user.
+func fetchUserDisplayName(ctx context.Context, q Querier, userID core.UserID) (auth.DisplayName, *core.DomainError) {
+	var raw string
+	if err := q.QueryRow(ctx, "select "+userDisplayNameSQL+" from users where users.id = $1", userID.String()).Scan(&raw); err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "read user display name failed")
+		return auth.DisplayName{}, &reason
+	}
+	result := auth.NewDisplayName(raw)
+	accepted, matched := result.(auth.DisplayNameAccepted)
+	if !matched {
+		reason := result.(auth.DisplayNameRejected).Reason
+		return auth.DisplayName{}, &reason
+	}
+	return accepted.Value, nil
+}
+
 type AuthStore struct {
 	db Beginner
 }
@@ -24,7 +54,7 @@ func NewAuthStoreFromHandle(handle Beginner) AuthStore {
 	return AuthStore{db: handle}
 }
 
-func (store AuthStore) CreateUserCredential(ctx context.Context, id core.UserID, email auth.EmailAddress, passwordHash auth.PasswordHash) auth.StoreUserResult {
+func (store AuthStore) CreateUserCredential(ctx context.Context, id core.UserID, email auth.EmailAddress, displayName auth.DisplayName, passwordHash auth.PasswordHash) auth.StoreUserResult {
 	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return auth.StoreUserRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "begin create user transaction failed")}
@@ -33,7 +63,7 @@ func (store AuthStore) CreateUserCredential(ctx context.Context, id core.UserID,
 		_ = tx.Rollback(ctx)
 	}()
 
-	_, err = tx.Exec(ctx, "insert into users (id, email) values ($1, $2)", id.String(), email.String())
+	_, err = tx.Exec(ctx, "insert into users (id, email, display_name) values ($1, $2, $3)", id.String(), email.String(), displayName.String())
 	if err != nil {
 		if isUniqueViolation(err) {
 			return auth.StoreUserRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "email address is already registered")}
@@ -72,7 +102,7 @@ func (store AuthStore) FindOrCreateExternalIdentity(ctx context.Context, identit
 		if !ok {
 			return auth.ExternalIdentityRejected{Reason: created.(core.UserIDRejected).Reason}
 		}
-		createdUser, err := tx.Exec(ctx, "insert into users (id, email) values ($1, $2) on conflict (email) do nothing", value.Value.String(), email.String())
+		createdUser, err := tx.Exec(ctx, "insert into users (id, email, display_name) values ($1, $2, $3) on conflict (email) do nothing", value.Value.String(), email.String(), auth.DeriveDisplayNameFromEmail(email).String())
 		if err != nil {
 			return auth.ExternalIdentityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "create external user failed")}
 		}
@@ -107,7 +137,7 @@ func (store AuthStore) FindOrCreateExternalIdentity(ctx context.Context, identit
 
 func (store AuthStore) FindCredentialByEmail(ctx context.Context, email auth.EmailAddress) auth.CredentialLookupResult {
 	row := store.db.QueryRow(ctx, `
-		select users.id::text, users.email, password_credentials.password_hash, users.status
+		select users.id::text, users.email, `+userDisplayNameSQL+`, password_credentials.password_hash, users.status
 		from users
 		join password_credentials on password_credentials.user_id = users.id
 		where users.email = $1
@@ -117,7 +147,7 @@ func (store AuthStore) FindCredentialByEmail(ctx context.Context, email auth.Ema
 
 func (store AuthStore) FindCredentialByUserID(ctx context.Context, userID core.UserID) auth.CredentialLookupResult {
 	row := store.db.QueryRow(ctx, `
-		select users.id::text, users.email, password_credentials.password_hash, users.status
+		select users.id::text, users.email, `+userDisplayNameSQL+`, password_credentials.password_hash, users.status
 		from users
 		join password_credentials on password_credentials.user_id = users.id
 		where users.id = $1
@@ -132,7 +162,7 @@ func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Pa
 	// '%'/'_' is matched literally (as the browser-store substring match
 	// does) rather than expanding into an expensive wildcard scan.
 	rows, err := store.db.Query(ctx, `
-		select id::text, email, status
+		select id::text, email, `+userDisplayNameSQL+`, status
 		from users
 		where status = 'active'
 		and ($1 = '' or email ilike '%' || replace(replace(replace($1, '\', '\\'), '%', '\%'), '_', '\_') || '%' or id::text = $1)
@@ -148,8 +178,9 @@ func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Pa
 	for rows.Next() {
 		var rawID string
 		var rawEmail string
+		var rawDisplayName string
 		var status string
-		if err := rows.Scan(&rawID, &rawEmail, &status); err != nil {
+		if err := rows.Scan(&rawID, &rawEmail, &rawDisplayName, &status); err != nil {
 			return auth.UserDirectoryRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan user directory failed")}
 		}
 		idResult := core.ParseUserID(rawID)
@@ -162,7 +193,12 @@ func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Pa
 		if !emailMatched {
 			return auth.UserDirectoryRejected{Reason: emailResult.(auth.EmailAddressRejected).Reason}
 		}
-		values = append(values, auth.UserDirectoryEntry{ID: id.Value, Email: email.Value, Status: status})
+		nameResult := auth.NewDisplayName(rawDisplayName)
+		name, nameMatched := nameResult.(auth.DisplayNameAccepted)
+		if !nameMatched {
+			return auth.UserDirectoryRejected{Reason: nameResult.(auth.DisplayNameRejected).Reason}
+		}
+		values = append(values, auth.UserDirectoryEntry{ID: id.Value, Email: email.Value, DisplayName: name.Value, Status: status})
 	}
 	if rows.Err() != nil {
 		return auth.UserDirectoryRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read user directory failed")}
@@ -173,9 +209,10 @@ func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Pa
 func scanCredential(row Row) auth.CredentialLookupResult {
 	var rawUserID string
 	var rawEmail string
+	var rawDisplayName string
 	var rawPasswordHash string
 	var rawStatus string
-	if err := row.Scan(&rawUserID, &rawEmail, &rawPasswordHash, &rawStatus); err != nil {
+	if err := row.Scan(&rawUserID, &rawEmail, &rawDisplayName, &rawPasswordHash, &rawStatus); err != nil {
 		if errors.Is(err, ErrNoRows) {
 			return auth.CredentialMissing{}
 		}
@@ -203,10 +240,17 @@ func scanCredential(row Row) auth.CredentialLookupResult {
 		return auth.CredentialLookupRejected{Reason: rejected.Reason}
 	}
 
+	nameResult := auth.NewDisplayName(rawDisplayName)
+	nameAccepted, nameMatched := nameResult.(auth.DisplayNameAccepted)
+	if !nameMatched {
+		return auth.CredentialLookupRejected{Reason: nameResult.(auth.DisplayNameRejected).Reason}
+	}
+
 	return auth.CredentialFound{
 		Record: auth.CredentialRecord{
 			UserID:       userCreated.Value,
 			Email:        emailAccepted.Value,
+			DisplayName:  nameAccepted.Value,
 			PasswordHash: hashCreated.Value,
 			Status:       rawStatus,
 		},
@@ -220,6 +264,17 @@ func (store AuthStore) UpdateUserEmail(ctx context.Context, userID core.UserID, 
 			return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "email address is already registered")}
 		}
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update user email failed")}
+	}
+	if tag == 0 {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}
+	}
+	return auth.AccountMutationAccepted{}
+}
+
+func (store AuthStore) UpdateDisplayName(ctx context.Context, userID core.UserID, name auth.DisplayName) auth.AccountMutationResult {
+	tag, err := store.db.Exec(ctx, "update users set display_name = $2 where id = $1 and status = 'active'", userID.String(), name.String())
+	if err != nil {
+		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "update display name failed")}
 	}
 	if tag == 0 {
 		return auth.AccountMutationRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "account was not found")}

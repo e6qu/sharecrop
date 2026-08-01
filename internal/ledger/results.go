@@ -208,3 +208,28 @@ type ListEntriesRejected struct {
 func (EntriesListed) listEntriesResult() {}
 
 func (ListEntriesRejected) listEntriesResult() {}
+
+// GrantResult is the outcome of a platform-admin manual credit grant. A
+// replayed idempotency key returns the same CreditsGranted shape as the
+// original grant.
+type GrantResult interface {
+	grantResult()
+}
+
+type CreditsGranted struct {
+	EntryID core.LedgerEntryID
+	Amount  CreditAmount
+	// RecipientUserIDs are the beneficiaries to notify: the granted user, or
+	// the grantee organization's owner/admin/billing members. The store
+	// resolves them inside the grant transaction so the service does not need
+	// a separate membership lookup.
+	RecipientUserIDs []core.UserID
+}
+
+type GrantRejected struct {
+	Reason core.DomainError
+}
+
+func (CreditsGranted) grantResult() {}
+
+func (GrantRejected) grantResult() {}

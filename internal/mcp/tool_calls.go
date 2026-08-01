@@ -48,7 +48,8 @@ type taskDetail struct {
 }
 
 type tasksPayload struct {
-	Tasks []taskSummary `json:"tasks"`
+	Tasks      []taskSummary `json:"tasks"`
+	NextOffset int           `json:"next_offset"`
 }
 
 type schemaPayload struct {
@@ -56,10 +57,58 @@ type schemaPayload struct {
 	ResponseSchemaJSON string `json:"response_schema_json"`
 }
 
+type validationErrorPayload struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
+}
+
+// validationErrorsToPayload flattens a validation outcome into the wire
+// error array: empty when validation passed, one row per error otherwise.
+func validationErrorsToPayload(outcome submission.ValidationOutcome) []validationErrorPayload {
+	failed, matched := outcome.(submission.ValidationFailed)
+	if !matched {
+		return []validationErrorPayload{}
+	}
+	errors := make([]validationErrorPayload, 0, len(failed.Errors))
+	for index := range failed.Errors {
+		errors = append(errors, validationErrorPayload{Path: failed.Errors[index].Path, Message: failed.Errors[index].Message})
+	}
+	return errors
+}
+
+type attachmentPayload struct {
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	SizeBytes   int    `json:"size_bytes"`
+	DataURL     string `json:"data_url"`
+}
+
+func attachmentsToPayload(values []attachment.Attachment) []attachmentPayload {
+	payloads := make([]attachmentPayload, 0, len(values))
+	for index := range values {
+		payloads = append(payloads, attachmentPayload{
+			Name:        values[index].Name.String(),
+			ContentType: values[index].ContentType.String(),
+			SizeBytes:   values[index].Content.SizeBytes(),
+			DataURL:     values[index].DataURL(),
+		})
+	}
+	return payloads
+}
+
+// invalidSubmissionGuidance tells the submitting agent why state is
+// "invalid" and that it can retry at once: an invalid submission does not
+// consume an active reservation.
+const invalidSubmissionGuidance = "response_json failed schema validation; see validation_errors. An active reservation is kept for an invalid submission, so fix the errors and call submit_response again immediately."
+
 type submitPayload struct {
-	SubmissionID string `json:"submission_id"`
-	State        string `json:"state"`
-	ReceiptToken string `json:"receipt_token"`
+	SubmissionID     string                   `json:"submission_id"`
+	State            string                   `json:"state"`
+	ReceiptToken     string                   `json:"receipt_token"`
+	ValidationErrors []validationErrorPayload `json:"validation_errors"`
+	// Guidance is non-empty only for an invalid submission, explaining the
+	// state and the immediate-resubmit path.
+	Guidance string `json:"guidance,omitempty"`
 }
 
 type fundPayload struct {
@@ -76,14 +125,32 @@ type statusPayload struct {
 }
 
 type submissionSummary struct {
-	ID          string `json:"id"`
-	TaskID      string `json:"task_id"`
-	SubmitterID string `json:"submitter_id"`
-	State       string `json:"state"`
+	ID                   string `json:"id"`
+	TaskID               string `json:"task_id"`
+	SubmitterID          string `json:"submitter_id"`
+	SubmitterDisplayName string `json:"submitter_display_name"`
+	State                string `json:"state"`
+	CreatedAt            string `json:"created_at"`
 }
 
 type submissionsPayload struct {
 	Submissions []submissionSummary `json:"submissions"`
+	NextOffset  int                 `json:"next_offset"`
+}
+
+// submissionDetail is get_submission's full read: everything a reviewer
+// needs to judge the work, mirroring the REST submission response fields.
+type submissionDetail struct {
+	ID                   string                   `json:"id"`
+	TaskID               string                   `json:"task_id"`
+	SubmitterID          string                   `json:"submitter_id"`
+	SubmitterDisplayName string                   `json:"submitter_display_name"`
+	State                string                   `json:"state"`
+	ResponseJSON         string                   `json:"response_json"`
+	ReviewNote           string                   `json:"review_note"`
+	Attachments          []attachmentPayload      `json:"attachments"`
+	ValidationErrors     []validationErrorPayload `json:"validation_errors"`
+	CreatedAt            string                   `json:"created_at"`
 }
 
 type acceptPayload struct {
@@ -126,6 +193,7 @@ type reservationPayload struct {
 
 type reservationsPayload struct {
 	Reservations []reservationSummary `json:"reservations"`
+	NextOffset   int                  `json:"next_offset"`
 }
 
 func (server Server) callListTasks(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
@@ -138,6 +206,7 @@ func (server Server) callListTasks(ctx context.Context, subject auth.Subject, ar
 		ParticipationPolicy string   `json:"participation_policy"`
 		Query               string   `json:"query"`
 		TaskType            string   `json:"task_type"`
+		CreatedAfter        string   `json:"created_after"`
 		Sort                string   `json:"sort"`
 		Limit               int      `json:"limit"`
 		Offset              int      `json:"offset"`
@@ -215,23 +284,31 @@ func (server Server) callListTasks(ctx context.Context, subject auth.Subject, ar
 		}
 		filters.Sort = sortAccepted.Value
 	}
+	if args.CreatedAfter != "" {
+		instant, err := time.Parse(time.RFC3339, args.CreatedAfter)
+		if err != nil {
+			return toolProtocolError{code: codeInvalidParams, message: "created_after must be an RFC3339 timestamp"}
+		}
+		filters.Created = task.CreatedAfter{Instant: instant.UTC()}
+	}
 
 	page, pageProblem := parseMCPPage(args.Limit, args.Offset)
 	if pageProblem != nil {
 		return pageProblem
 	}
 
-	result := server.services.ListTasks(ctx, subject, scope, filters, page)
+	result := server.services.ListTasks(ctx, subject, scope, filters, page.Probe())
 	listed, matched := result.(task.TasksListed)
 	if !matched {
 		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
 
-	summaries := make([]taskSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]taskSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, taskToSummary(listed.Values[index].Task))
 	}
-	return marshalPayload(tasksPayload{Tasks: summaries})
+	return marshalPayload(tasksPayload{Tasks: summaries, NextOffset: nextOffset})
 }
 
 // parseMCPPage maps optional limit/offset tool arguments onto core.Page.
@@ -317,7 +394,7 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 		Description              string              `json:"description"`
 		ResponseSchemaJSON       string              `json:"response_schema_json"`
 		Owner                    mcpTaskOwnerArgs    `json:"owner"`
-		Visibility               string              `json:"visibility"`
+		VisibilityKind           string              `json:"visibility_kind"`
 		VisibilityUserID         string              `json:"visibility_user_id"`
 		VisibilityTeamID         string              `json:"visibility_team_id"`
 		VisibilityOrganizationID string              `json:"visibility_organization_id"`
@@ -373,7 +450,7 @@ func (server Server) callCreateTask(ctx context.Context, subject auth.UserSubjec
 	if ownerProblem != nil {
 		return ownerProblem
 	}
-	visibility, visibilityProblem := parseMCPTaskVisibility(args.Visibility, args.VisibilityUserID, args.VisibilityTeamID, args.VisibilityOrganizationID, owner, subject)
+	visibility, visibilityProblem := parseMCPTaskVisibility(args.VisibilityKind, args.VisibilityUserID, args.VisibilityTeamID, args.VisibilityOrganizationID, subject)
 	if visibilityProblem != nil {
 		return visibilityProblem
 	}
@@ -505,15 +582,19 @@ func parseMCPTaskOwner(args mcpTaskOwnerArgs, subject auth.UserSubject) (task.Ow
 	}
 }
 
-// parseMCPTaskVisibility mirrors REST's parseTaskVisibilityRequest, including
-// the "default" kind that derives visibility from the owner
-// (defaultVisibilityForOwner). An absent visibility means "default"; a
-// user-kind visibility with no explicit id means the calling agent's user
-// (the historical MCP behavior).
-func parseMCPTaskVisibility(kind string, rawUserID string, rawTeamID string, rawOrganizationID string, owner task.Owner, subject auth.UserSubject) (task.Visibility, toolResult) {
+// mcpVisibilityKindRequiredMessage names every valid visibility_kind so a
+// caller that omitted it can correct the call without guessing. An implicit
+// default is deliberately not offered: it silently produced private
+// ("invisible") tasks that never appeared in the marketplace.
+const mcpVisibilityKindRequiredMessage = "visibility_kind is required: \"public\" (marketplace-visible to everyone), \"user\" (private to you/the named user), \"team\", \"organization\", or \"organization_team\""
+
+// parseMCPTaskVisibility mirrors REST's parseTaskVisibilityRequest, except
+// that the kind is required: there is no implicit owner-derived default. A
+// user-kind visibility with no explicit id means the calling agent's user.
+func parseMCPTaskVisibility(kind string, rawUserID string, rawTeamID string, rawOrganizationID string, subject auth.UserSubject) (task.Visibility, toolResult) {
 	switch kind {
-	case "", "default":
-		return defaultMCPVisibilityForOwner(owner)
+	case "":
+		return nil, toolProtocolError{code: codeInvalidParams, message: mcpVisibilityKindRequiredMessage}
 	case task.VisibilityKindPublic.String():
 		return task.PublicVisibility{}, nil
 	case task.VisibilityKindUser.String():
@@ -553,23 +634,7 @@ func parseMCPTaskVisibility(kind string, rawUserID string, rawTeamID string, raw
 		}
 		return task.OrganizationTeamVisibility{OrganizationID: organizationID.Value, TeamID: teamID.Value}, nil
 	default:
-		return nil, toolProtocolError{code: codeInvalidParams, message: "task visibility kind is invalid"}
-	}
-}
-
-// defaultMCPVisibilityForOwner replicates REST's defaultVisibilityForOwner.
-func defaultMCPVisibilityForOwner(owner task.Owner) (task.Visibility, toolResult) {
-	switch typed := owner.(type) {
-	case task.UserOwner:
-		return task.UserVisibility{UserID: typed.UserID}, nil
-	case task.TeamOwner:
-		return task.TeamVisibility{TeamID: typed.TeamID}, nil
-	case task.OrganizationOwner:
-		return task.OrganizationVisibility{OrganizationID: typed.OrganizationID}, nil
-	case task.OrganizationTeamOwner:
-		return task.OrganizationTeamVisibility{OrganizationID: typed.OrganizationID, TeamID: typed.TeamID}, nil
-	default:
-		return nil, toolProtocolError{code: codeInvalidParams, message: "task owner is invalid"}
+		return nil, toolProtocolError{code: codeInvalidParams, message: mcpVisibilityKindRequiredMessage}
 	}
 }
 
@@ -822,8 +887,9 @@ func parseMCPRewardCollectibleIDs(rawIDs []string) ([]core.CollectibleID, string
 
 func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
 	var args struct {
-		TaskID       string `json:"task_id"`
-		ResponseJSON string `json:"response_json"`
+		TaskID       string              `json:"task_id"`
+		ResponseJSON string              `json:"response_json"`
+		Attachments  []mcpAttachmentArgs `json:"attachments"`
 	}
 	if err := json.Unmarshal(arguments, &args); err != nil {
 		return invalidArguments()
@@ -838,22 +904,76 @@ func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSu
 	if !sourceMatched {
 		return toolProtocolError{code: codeInvalidParams, message: sourceResult.(submission.ResponseSourceRejected).Reason.Description()}
 	}
+	attachments, attachmentsProblem := parseMCPAttachments(args.Attachments)
+	if attachmentsProblem != nil {
+		return attachmentsProblem
+	}
 
 	command := submission.SubmitCommand{
 		TaskID:         taskID.Value,
 		SubmitterID:    subject.ID,
 		ResponseSource: source.Value,
+		Attachments:    attachments,
 	}
 	result := server.services.SubmitResponse(ctx, command)
 	created, matched := result.(submission.SubmissionCreated)
 	if !matched {
 		return toolFailed{code: result.(submission.SubmitRejected).Reason.Code(), message: result.(submission.SubmitRejected).Reason.Description()}
 	}
-	return marshalPayload(submitPayload{
-		SubmissionID: created.Value.ID.String(),
-		State:        created.Value.State.String(),
-		ReceiptToken: created.ReceiptToken.String(),
-	})
+	payload := submitPayload{
+		SubmissionID:     created.Value.ID.String(),
+		State:            created.Value.State.String(),
+		ReceiptToken:     created.ReceiptToken.String(),
+		ValidationErrors: validationErrorsToPayload(created.Value.Validation),
+	}
+	if created.Value.State == submission.StateInvalid {
+		payload.Guidance = invalidSubmissionGuidance
+	}
+	return marshalPayload(payload)
+}
+
+func (server Server) callGetSubmission(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	var args struct {
+		SubmissionID string `json:"submission_id"`
+	}
+	if err := json.Unmarshal(arguments, &args); err != nil {
+		return invalidArguments()
+	}
+	submissionIDResult := core.ParseSubmissionID(args.SubmissionID)
+	submissionID, submissionMatched := submissionIDResult.(core.SubmissionIDCreated)
+	if !submissionMatched {
+		return toolProtocolError{code: codeInvalidParams, message: submissionIDResult.(core.SubmissionIDRejected).Reason.Description()}
+	}
+	result := server.services.GetSubmission(ctx, subject, submissionID.Value)
+	got, matched := result.(submission.SubmissionGot)
+	if !matched {
+		return toolFailed{code: result.(submission.GetRejected).Reason.Code(), message: result.(submission.GetRejected).Reason.Description()}
+	}
+	return marshalPayload(submissionToDetail(got.Value))
+}
+
+func submissionToDetail(value submission.Submission) submissionDetail {
+	return submissionDetail{
+		ID:                   value.ID.String(),
+		TaskID:               value.TaskID.String(),
+		SubmitterID:          value.SubmitterID.String(),
+		SubmitterDisplayName: value.SubmitterDisplayName.String(),
+		State:                value.State.String(),
+		ResponseJSON:         value.ResponseSource.String(),
+		ReviewNote:           value.ReviewNote.String(),
+		Attachments:          attachmentsToPayload(value.Attachments),
+		ValidationErrors:     validationErrorsToPayload(value.Validation),
+		CreatedAt:            submissionCreatedAtString(value),
+	}
+}
+
+// submissionCreatedAtString renders the submission instant, empty for a
+// value that never passed through a store read (fakes, pre-read models).
+func submissionCreatedAtString(value submission.Submission) string {
+	if value.CreatedAt.IsZero() {
+		return ""
+	}
+	return value.CreatedAt.UTC().Format(time.RFC3339)
 }
 
 func (server Server) callGetSubmissionStatus(ctx context.Context, arguments json.RawMessage) toolResult {
@@ -891,16 +1011,17 @@ func (server Server) callListTaskSubmissions(ctx context.Context, subject auth.U
 	if pageProblem != nil {
 		return pageProblem
 	}
-	result := server.services.ListTaskSubmissions(ctx, subject, taskID, page)
+	result := server.services.ListTaskSubmissions(ctx, subject, taskID, page.Probe())
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		return toolFailed{code: result.(submission.ListRejected).Reason.Code(), message: result.(submission.ListRejected).Reason.Description()}
 	}
-	summaries := make([]submissionSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]submissionSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, submissionToSummary(listed.Values[index]))
 	}
-	return marshalPayload(submissionsPayload{Submissions: summaries})
+	return marshalPayload(submissionsPayload{Submissions: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callAcceptSubmission(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -1151,7 +1272,8 @@ type seriesCommentSummary struct {
 }
 
 type seriesCommentsPayload struct {
-	Comments []seriesCommentSummary `json:"comments"`
+	Comments   []seriesCommentSummary `json:"comments"`
+	NextOffset int                    `json:"next_offset"`
 }
 
 type submissionCommentSummary struct {
@@ -1163,11 +1285,13 @@ type submissionCommentSummary struct {
 }
 
 type submissionCommentsPayload struct {
-	Comments []submissionCommentSummary `json:"comments"`
+	Comments   []submissionCommentSummary `json:"comments"`
+	NextOffset int                        `json:"next_offset"`
 }
 
 type seriesListPayload struct {
-	Series []seriesSummary `json:"series"`
+	Series     []seriesSummary `json:"series"`
+	NextOffset int             `json:"next_offset"`
 }
 
 type seriesDetailPayload struct {
@@ -1175,17 +1299,22 @@ type seriesDetailPayload struct {
 	Tasks  []taskSummary `json:"tasks"`
 }
 
-func (server Server) callListTaskSeries(ctx context.Context, subject auth.UserSubject) toolResult {
-	result := server.services.ListSeries(ctx, subject)
+func (server Server) callListTaskSeries(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+	page, pageProblem := parseMCPPageArguments(arguments)
+	if pageProblem != nil {
+		return pageProblem
+	}
+	result := server.services.ListSeries(ctx, subject, page.Probe())
 	listed, matched := result.(task.SeriesListed)
 	if !matched {
 		return toolFailed{code: result.(task.ListSeriesRejected).Reason.Code(), message: result.(task.ListSeriesRejected).Reason.Description()}
 	}
-	summaries := make([]seriesSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	summaries := make([]seriesSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		summaries = append(summaries, seriesToSummary(listed.Values[index]))
 	}
-	return marshalPayload(seriesListPayload{Series: summaries})
+	return marshalPayload(seriesListPayload{Series: summaries, NextOffset: nextOffset})
 }
 
 func (server Server) callGetTaskSeries(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -1284,16 +1413,17 @@ func (server Server) callListReservations(ctx context.Context, subject auth.Subj
 	if pageProblem != nil {
 		return pageProblem
 	}
-	result := server.services.ListReservations(ctx, subject, taskID, page)
+	result := server.services.ListReservations(ctx, subject, taskID, page.Probe())
 	listed, matched := result.(task.ReservationsListed)
 	if !matched {
 		return toolFailed{code: result.(task.ReservationsListRejected).Reason.Code(), message: result.(task.ReservationsListRejected).Reason.Description()}
 	}
-	reservations := make([]reservationSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	reservations := make([]reservationSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		reservations = append(reservations, reservationToSummary(listed.Values[index], ""))
 	}
-	return marshalPayload(reservationsPayload{Reservations: reservations})
+	return marshalPayload(reservationsPayload{Reservations: reservations, NextOffset: nextOffset})
 }
 
 type mcpReservationChanger func(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
@@ -1401,6 +1531,8 @@ func (submitPayload) payloadValue() {}
 func (statusPayload) payloadValue() {}
 
 func (submissionsPayload) payloadValue() {}
+
+func (submissionDetail) payloadValue() {}
 
 func (acceptPayload) payloadValue() {}
 
@@ -1554,16 +1686,17 @@ func (server Server) callListSeriesComments(ctx context.Context, subject auth.Us
 	if pageProblem != nil {
 		return pageProblem
 	}
-	result := server.services.ListSeriesComments(ctx, subject, seriesID, page)
+	result := server.services.ListSeriesComments(ctx, subject, seriesID, page.Probe())
 	listed, matched := result.(task.SeriesCommentsListed)
 	if !matched {
 		return toolFailed{code: result.(task.SeriesCommentsListRejected).Reason.Code(), message: result.(task.SeriesCommentsListRejected).Reason.Description()}
 	}
-	comments := make([]seriesCommentSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	comments := make([]seriesCommentSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		comments = append(comments, commentToSummary(listed.Values[index]))
 	}
-	return marshalPayload(seriesCommentsPayload{Comments: comments})
+	return marshalPayload(seriesCommentsPayload{Comments: comments, NextOffset: nextOffset})
 }
 
 func (server Server) callAddTaskComment(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -1606,13 +1739,14 @@ func (server Server) callListTaskComments(ctx context.Context, subject auth.User
 	if pageProblem != nil {
 		return pageProblem
 	}
-	result := server.services.ListTaskComments(ctx, subject, taskID, page)
+	result := server.services.ListTaskComments(ctx, subject, taskID, page.Probe())
 	listed, matched := result.(task.TaskCommentsListed)
 	if !matched {
 		return toolFailed{code: result.(task.TaskCommentsListRejected).Reason.Code(), message: result.(task.TaskCommentsListRejected).Reason.Description()}
 	}
-	comments := make([]seriesCommentSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	comments := make([]seriesCommentSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		comments = append(comments, seriesCommentSummary{
 			ID:        listed.Values[index].ID.String(),
 			AuthorID:  listed.Values[index].AuthorID.String(),
@@ -1620,7 +1754,7 @@ func (server Server) callListTaskComments(ctx context.Context, subject auth.User
 			CreatedAt: listed.Values[index].CreatedAt.UTC().Format(time.RFC3339),
 		})
 	}
-	return marshalPayload(seriesCommentsPayload{Comments: comments})
+	return marshalPayload(seriesCommentsPayload{Comments: comments, NextOffset: nextOffset})
 }
 
 func (server Server) callAddSubmissionComment(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
@@ -1665,16 +1799,17 @@ func (server Server) callListSubmissionComments(ctx context.Context, subject aut
 	if pageProblem != nil {
 		return pageProblem
 	}
-	result := server.services.ListSubmissionComments(ctx, subject, submissionID.Value, page)
+	result := server.services.ListSubmissionComments(ctx, subject, submissionID.Value, page.Probe())
 	listed, matched := result.(submission.SubmissionCommentsListed)
 	if !matched {
 		return toolFailed{code: result.(submission.SubmissionCommentsListRejected).Reason.Code(), message: result.(submission.SubmissionCommentsListRejected).Reason.Description()}
 	}
-	comments := make([]submissionCommentSummary, 0, len(listed.Values))
-	for index := range listed.Values {
+	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
+	comments := make([]submissionCommentSummary, 0, visible)
+	for index := range listed.Values[:visible] {
 		comments = append(comments, submissionCommentToSummary(listed.Values[index]))
 	}
-	return marshalPayload(submissionCommentsPayload{Comments: comments})
+	return marshalPayload(submissionCommentsPayload{Comments: comments, NextOffset: nextOffset})
 }
 
 func submissionCommentToSummary(value submission.SubmissionComment) submissionCommentSummary {
@@ -1828,10 +1963,12 @@ func rewardParts(reward task.RewardSpec) (string, int64, int) {
 
 func submissionToSummary(value submission.Submission) submissionSummary {
 	return submissionSummary{
-		ID:          value.ID.String(),
-		TaskID:      value.TaskID.String(),
-		SubmitterID: value.SubmitterID.String(),
-		State:       value.State.String(),
+		ID:                   value.ID.String(),
+		TaskID:               value.TaskID.String(),
+		SubmitterID:          value.SubmitterID.String(),
+		SubmitterDisplayName: value.SubmitterDisplayName.String(),
+		State:                value.State.String(),
+		CreatedAt:            submissionCreatedAtString(value),
 	}
 }
 

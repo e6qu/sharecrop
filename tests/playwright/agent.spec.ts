@@ -15,12 +15,30 @@ test("creating an agent credential shows the token and MCP config", async ({ pag
 
   await page.getByTestId("nav-manage-menu").click();
   await page.getByTestId("nav-agents").click();
+
+  // The scope presets tick the recommended sets for common agent roles; the
+  // checkboxes stay editable afterwards.
+  await page.getByTestId("scope-preset-worker").click();
+  await expect(page.getByTestId("scope-tasks_read")).toBeChecked();
+  await expect(page.getByTestId("scope-submissions_write")).toBeChecked();
+  await expect(page.getByTestId("scope-notifications_read")).toBeChecked();
+  await expect(page.getByTestId("scope-webhooks_manage")).toBeChecked();
+  await expect(page.getByTestId("scope-submissions_review")).not.toBeChecked();
+  await page.getByTestId("scope-preset-reviewer").click();
+  await expect(page.getByTestId("scope-tasks_read")).toBeChecked();
+  await expect(page.getByTestId("scope-submissions_read")).toBeChecked();
+  await expect(page.getByTestId("scope-submissions_review")).toBeChecked();
+  await expect(page.getByTestId("scope-notifications_read")).toBeChecked();
+  await expect(page.getByTestId("scope-webhooks_manage")).not.toBeChecked();
+
   await page.getByTestId("agent-label").fill("Local workstation agent");
   await page.getByTestId("create-agent").click();
 
   await expect(page.getByTestId("agent-secret")).toContainText("scrop_agent_");
   await expect(page.getByTestId("mcp-config")).toContainText("mcpServers");
   await expect(page.getByTestId("mcp-config")).toContainText("/mcp");
+  // Both the secret and the MCP config carry copy buttons.
+  await expect(page.getByTestId("copy-command")).toHaveCount(2);
   await expect(page.getByTestId("credential-row")).toContainText(
     "Local workstation agent",
   );

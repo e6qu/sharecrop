@@ -13,13 +13,19 @@ import (
 // cannot drift apart. Absent subject references are empty strings; metadata
 // is the event's bounded JSON document, passed through as a string.
 type EventPayload struct {
-	ID             string `json:"id"`
-	Kind           string `json:"kind"`
-	ActorKind      string `json:"actor_kind"`
-	ActorUserID    string `json:"actor_user_id"`
-	OccurredAt     string `json:"occurred_at"`
-	Cursor         string `json:"cursor"`
-	TaskID         string `json:"task_id"`
+	ID          string `json:"id"`
+	Kind        string `json:"kind"`
+	ActorKind   string `json:"actor_kind"`
+	ActorUserID string `json:"actor_user_id"`
+	// ActorDisplayName names the acting user when the store resolved it;
+	// empty for system actors and unenriched reads.
+	ActorDisplayName string `json:"actor_display_name"`
+	OccurredAt       string `json:"occurred_at"`
+	Cursor           string `json:"cursor"`
+	TaskID           string `json:"task_id"`
+	// TaskTitle is the referenced task's title when the store resolved it;
+	// empty when the event references no task or the read was unenriched.
+	TaskTitle      string `json:"task_title"`
 	SubmissionID   string `json:"submission_id"`
 	ReservationID  string `json:"reservation_id"`
 	SeriesID       string `json:"series_id"`
@@ -41,6 +47,12 @@ func EventPayloadFromStored(stored event.StoredEvent) EventPayload {
 	if actor, matched := stored.Event.Actor.(event.ActorUser); matched {
 		payload.ActorKind = "user"
 		payload.ActorUserID = actor.ID.String()
+	}
+	if named, matched := stored.ActorName.(event.ActorNamed); matched {
+		payload.ActorDisplayName = named.DisplayName.String()
+	}
+	if titled, matched := stored.TaskTitle.(event.TaskTitled); matched {
+		payload.TaskTitle = titled.Title
 	}
 	if ref, matched := stored.Event.Subject.Task.(event.TaskSubject); matched {
 		payload.TaskID = ref.ID.String()

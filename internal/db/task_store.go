@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/attachment"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -112,7 +113,7 @@ func (store TaskStore) FindTask(ctx context.Context, taskID core.TaskID) task.Fi
 	if len(values.values) != 1 {
 		return task.FindTaskStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "task was not found")}
 	}
-	return task.FindTaskStoreAccepted{Value: values.values[0]}
+	return task.FindTaskStoreAccepted{Value: values.values[0].value, CreatorDisplayName: values.values[0].creatorDisplayName}
 }
 
 func (store TaskStore) ChangeTaskState(ctx context.Context, taskID core.TaskID, state task.State) task.ChangeTaskStateStoreResult {
@@ -762,24 +763,38 @@ const taskBaseColumns = `
 		), '[]'::jsonb)::text,
 		coalesce(to_char(tasks.expires_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')`
 
+// taskSelectSQL is the single-task (detail) select: the base task columns
+// plus the creator's display name, resolved with the same join the list
+// select uses so both read paths name the requester identically.
 func taskSelectSQL() string {
-	return "select " + taskBaseColumns + `
+	return "select " + taskBaseColumns + `,
+			` + displayNameSQL("creator") + `
 		from tasks
 		join task_visibility_scopes on task_visibility_scopes.task_id = tasks.id
+		join users as creator on creator.id = tasks.created_by_user_id
 	`
 }
 
 // taskListSelectSQL extends the base task select with the active reservation
-// assignee, exposed on each task list item. The LEFT JOIN keeps tasks without an
-// active reservation in the result with empty active-assignee columns.
+// assignee and the pending-review submission count, exposed on each task list
+// item. The LEFT JOIN keeps tasks without an active reservation in the result
+// with empty active-assignee columns.
 func taskListSelectSQL() string {
 	return "select " + taskBaseColumns + `,
 			coalesce(active_reservation.assignee_kind, ''),
 			coalesce(active_reservation.user_id::text, ''),
 			coalesce(active_reservation.organization_id::text, ''),
-			coalesce(active_reservation.team_id::text, '')
+			coalesce(active_reservation.team_id::text, ''),
+			` + displayNameSQL("creator") + `,
+			coalesce((
+				select count(*)
+				from submissions
+				where submissions.task_id = tasks.id
+				and submissions.state = 'submitted'
+			), 0)
 		from tasks
 		join task_visibility_scopes on task_visibility_scopes.task_id = tasks.id
+		join users as creator on creator.id = tasks.created_by_user_id
 		left join task_reservations as active_reservation
 			on active_reservation.task_id = tasks.id
 			and active_reservation.state = 'active'
@@ -906,6 +921,15 @@ func listQueryForScope(scope task.ListScope, filters task.ListFilters, page core
 		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task type filter is invalid")}
 	}
 
+	switch createdFilter := filters.Created.(type) {
+	case task.CreatedAfter:
+		arguments["filter_created_after"] = createdFilter.Instant
+		where += " and tasks.created_at > @filter_created_after"
+	case task.AnyCreatedFilter:
+	default:
+		return listQueryRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "task created filter is invalid")}
+	}
+
 	orderBy := " order by tasks.created_at desc, tasks.id desc"
 	switch filters.Sort {
 	case task.SortNewest:
@@ -985,7 +1009,9 @@ func scanTaskListItemRow(rows Rows) taskListItemRowResult {
 	var rawActiveAssigneeUserID string
 	var rawActiveAssigneeOrganizationID string
 	var rawActiveAssigneeTeamID string
-	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments, &row.expiresAt, &rawActiveAssigneeKind, &rawActiveAssigneeUserID, &rawActiveAssigneeOrganizationID, &rawActiveAssigneeTeamID); err != nil {
+	var rawCreatorDisplayName string
+	var pendingReviewCount int64
+	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments, &row.expiresAt, &rawActiveAssigneeKind, &rawActiveAssigneeUserID, &rawActiveAssigneeOrganizationID, &rawActiveAssigneeTeamID, &rawCreatorDisplayName, &pendingReviewCount); err != nil {
 		return taskListItemRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
 	}
 	taskResult := row.parse()
@@ -998,7 +1024,12 @@ func scanTaskListItemRow(rows Rows) taskListItemRowResult {
 	if !activeMatched {
 		return taskListItemRowRejected{reason: activeResult.(activeAssigneeRejected).reason}
 	}
-	return taskListItemRowAccepted{value: task.ListItem{Task: taskAccepted.value, ActiveAssignee: activeAccepted.value}}
+	creatorNameResult := auth.NewDisplayName(rawCreatorDisplayName)
+	creatorName, creatorNameMatched := creatorNameResult.(auth.DisplayNameAccepted)
+	if !creatorNameMatched {
+		return taskListItemRowRejected{reason: creatorNameResult.(auth.DisplayNameRejected).Reason}
+	}
+	return taskListItemRowAccepted{value: task.ListItem{Task: taskAccepted.value, ActiveAssignee: activeAccepted.value, CreatorDisplayName: creatorName.Value, PendingReviewCount: pendingReviewCount}}
 }
 
 type activeAssigneeResult interface {
@@ -1056,8 +1087,15 @@ type taskRowsResult interface {
 	taskRowsResult()
 }
 
+// foundTaskRow is one row of the single-task select: the task plus the
+// creator's display name column.
+type foundTaskRow struct {
+	value              task.Task
+	creatorDisplayName auth.DisplayName
+}
+
 type taskRowsAccepted struct {
-	values []task.Task
+	values []foundTaskRow
 }
 
 type taskRowsRejected struct {
@@ -1069,15 +1107,25 @@ func (taskRowsAccepted) taskRowsResult() {}
 func (taskRowsRejected) taskRowsResult() {}
 
 func scanTaskRows(rows Rows) taskRowsResult {
-	values := make([]task.Task, 0)
+	values := make([]foundTaskRow, 0)
 	for rows.Next() {
-		parsed := scanTaskRow(rows)
+		var row taskBaseRow
+		var rawCreatorDisplayName string
+		if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments, &row.expiresAt, &rawCreatorDisplayName); err != nil {
+			return taskRowsRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
+		}
+		parsed := row.parse()
 		accepted, matched := parsed.(taskRowAccepted)
 		if !matched {
 			rejected := parsed.(taskRowRejected)
 			return taskRowsRejected{reason: rejected.reason}
 		}
-		values = append(values, accepted.value)
+		creatorNameResult := auth.NewDisplayName(rawCreatorDisplayName)
+		creatorName, creatorNameMatched := creatorNameResult.(auth.DisplayNameAccepted)
+		if !creatorNameMatched {
+			return taskRowsRejected{reason: creatorNameResult.(auth.DisplayNameRejected).Reason}
+		}
+		values = append(values, foundTaskRow{value: accepted.value, creatorDisplayName: creatorName.Value})
 	}
 	if err := rows.Err(); err != nil {
 		return taskRowsRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "read tasks failed")}
@@ -1137,14 +1185,6 @@ type taskBaseRow struct {
 
 func (row taskBaseRow) parse() taskRowResult {
 	return parseTaskRow(row.taskID, row.ownerKind, row.ownerUserID, row.ownerTeamID, row.ownerOrganizationID, row.title, row.description, row.taskType, row.referenceURL, row.state, row.rewardKind, row.rewardCreditAmount, row.rewardCollectibleCount, row.participationPolicy, row.assigneeScope, row.reservationTTLHours, row.visibilityKind, row.visibilityUserID, row.visibilityTeamID, row.visibilityOrganizationID, row.seriesID, row.seriesPosition, row.responseSchema, row.payloadKind, row.payload, row.createdBy, row.attachments, row.expiresAt)
-}
-
-func scanTaskRow(rows Rows) taskRowResult {
-	var row taskBaseRow
-	if err := rows.Scan(&row.taskID, &row.ownerKind, &row.ownerUserID, &row.ownerTeamID, &row.ownerOrganizationID, &row.title, &row.description, &row.taskType, &row.referenceURL, &row.state, &row.rewardKind, &row.rewardCreditAmount, &row.rewardCollectibleCount, &row.participationPolicy, &row.assigneeScope, &row.reservationTTLHours, &row.visibilityKind, &row.visibilityUserID, &row.visibilityTeamID, &row.visibilityOrganizationID, &row.seriesID, &row.seriesPosition, &row.responseSchema, &row.payloadKind, &row.payload, &row.createdBy, &row.attachments, &row.expiresAt); err != nil {
-		return taskRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan task failed")}
-	}
-	return row.parse()
 }
 
 // parseStoredExpiration decodes the boundary form of tasks.expires_at: the
@@ -1346,9 +1386,13 @@ func collectibleRewardSpec(rawCount int) rewardSpecResult {
 
 func reservationSelectSQL() string {
 	return `
-		select id::text, task_id::text, assignee_kind, coalesce(user_id::text, ''),
-			coalesce(team_id::text, ''), coalesce(organization_id::text, ''), state, requested_by_user_id::text
+		select task_reservations.id::text, task_reservations.task_id::text, task_reservations.assignee_kind,
+			coalesce(task_reservations.user_id::text, ''), coalesce(task_reservations.team_id::text, ''),
+			coalesce(task_reservations.organization_id::text, ''), task_reservations.state,
+			task_reservations.requested_by_user_id::text,
+			` + displayNameSQL("holder") + `
 		from task_reservations
+		join users as holder on holder.id = task_reservations.requested_by_user_id
 	`
 }
 
@@ -1369,7 +1413,7 @@ func (reservationFound) reservationLookupResult() {}
 func (reservationMissing) reservationLookupResult() {}
 
 func (store TaskStore) findReservation(ctx context.Context, reservationID core.TaskReservationID) reservationLookupResult {
-	rows, err := store.db.Query(ctx, reservationSelectSQL()+" where id = $1", reservationID.String())
+	rows, err := store.db.Query(ctx, reservationSelectSQL()+" where task_reservations.id = $1", reservationID.String())
 	if err != nil {
 		return reservationMissing{reason: core.NewDomainError(core.ErrorCodeInvalidState, "find reservation failed")}
 	}
@@ -1443,13 +1487,14 @@ func scanReservationRow(rows Rows) reservationRowResult {
 	var rawOrganizationID string
 	var rawState string
 	var rawRequestedBy string
-	if err := rows.Scan(&rawID, &rawTaskID, &rawAssigneeKind, &rawUserID, &rawTeamID, &rawOrganizationID, &rawState, &rawRequestedBy); err != nil {
+	var rawHolderName string
+	if err := rows.Scan(&rawID, &rawTaskID, &rawAssigneeKind, &rawUserID, &rawTeamID, &rawOrganizationID, &rawState, &rawRequestedBy, &rawHolderName); err != nil {
 		return reservationRowRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan reservation failed")}
 	}
-	return parseReservationRow(rawID, rawTaskID, rawAssigneeKind, rawUserID, rawTeamID, rawOrganizationID, rawState, rawRequestedBy)
+	return parseReservationRow(rawID, rawTaskID, rawAssigneeKind, rawUserID, rawTeamID, rawOrganizationID, rawState, rawRequestedBy, rawHolderName)
 }
 
-func parseReservationRow(rawID string, rawTaskID string, rawAssigneeKind string, rawUserID string, rawTeamID string, rawOrganizationID string, rawState string, rawRequestedBy string) reservationRowResult {
+func parseReservationRow(rawID string, rawTaskID string, rawAssigneeKind string, rawUserID string, rawTeamID string, rawOrganizationID string, rawState string, rawRequestedBy string, rawHolderName string) reservationRowResult {
 	idResult := core.ParseTaskReservationID(rawID)
 	idAccepted, idMatched := idResult.(core.TaskReservationIDCreated)
 	if !idMatched {
@@ -1475,7 +1520,12 @@ func parseReservationRow(rawID string, rawTaskID string, rawAssigneeKind string,
 	if !requestedByMatched {
 		return reservationRowRejected{reason: requestedByResult.(core.UserIDRejected).Reason}
 	}
-	return reservationRowAccepted{value: task.Reservation{ID: idAccepted.Value, TaskID: taskIDAccepted.Value, Assignee: assigneeAccepted.value, State: stateAccepted.Value, RequestedBy: requestedByAccepted.Value}}
+	holderNameResult := auth.NewDisplayName(rawHolderName)
+	holderName, holderNameMatched := holderNameResult.(auth.DisplayNameAccepted)
+	if !holderNameMatched {
+		return reservationRowRejected{reason: holderNameResult.(auth.DisplayNameRejected).Reason}
+	}
+	return reservationRowAccepted{value: task.Reservation{ID: idAccepted.Value, TaskID: taskIDAccepted.Value, Assignee: assigneeAccepted.value, State: stateAccepted.Value, RequestedBy: requestedByAccepted.Value, HolderDisplayName: holderName.Value}}
 }
 
 type reservationAssigneeResult interface {

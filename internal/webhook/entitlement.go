@@ -23,7 +23,7 @@ func RequiredScopeForKind(kind event.Kind) agent.Scope {
 		return agent.ScopeTasksRead
 	case event.KindSubmissionCreated, event.KindSubmissionAccepted, event.KindSubmissionChangesRequested, event.KindSubmissionRejected, event.KindSubmissionCommented:
 		return agent.ScopeSubmissionsRead
-	case event.KindTaskFunded, event.KindPayoutReceived, event.KindTipReceived:
+	case event.KindTaskFunded, event.KindPayoutReceived, event.KindTipReceived, event.KindCreditGranted:
 		return agent.ScopeLedgerRead
 	case event.KindCollectibleAwarded:
 		return agent.ScopeCollectiblesRead

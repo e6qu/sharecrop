@@ -47,7 +47,7 @@ func TestAuthBridgeDualRun(t *testing.T) {
 		hash := mustAuthPasswordHash(t)
 
 		// CreateUserCredential (write through the bridge).
-		if _, matched := bridgeStore.CreateUserCredential(ctx, userID, email, hash).(auth.StoreUserAccepted); !matched {
+		if _, matched := bridgeStore.CreateUserCredential(ctx, userID, email, auth.DeriveDisplayNameFromEmail(email), hash).(auth.StoreUserAccepted); !matched {
 			t.Fatalf("bridge CreateUserCredential did not accept")
 		}
 
@@ -85,7 +85,7 @@ func TestAuthBridgeDualRun(t *testing.T) {
 	t.Run("account mutations", func(t *testing.T) {
 		userID := newUserID(t)
 		email := mustAuthEmail(t, "authbridge-mutate-"+userID.String()+"@example.com")
-		if _, matched := dbStore.CreateUserCredential(ctx, userID, email, mustAuthPasswordHash(t)).(auth.StoreUserAccepted); !matched {
+		if _, matched := dbStore.CreateUserCredential(ctx, userID, email, auth.DeriveDisplayNameFromEmail(email), mustAuthPasswordHash(t)).(auth.StoreUserAccepted); !matched {
 			t.Fatalf("seed credential rejected")
 		}
 

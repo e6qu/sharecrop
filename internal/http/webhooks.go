@@ -12,6 +12,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/orgcred"
+	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/webhook"
 )
 
@@ -19,6 +20,18 @@ type webhookSubscriptionRequest struct {
 	URL            string   `json:"url"`
 	Kinds          []string `json:"kinds"`
 	OrganizationID string   `json:"organization_id"`
+	// Audience is "recipient" (the default when absent) or "marketplace".
+	// A marketplace subscription receives every public open task_opened
+	// event rather than only events addressed to the owner, and requires
+	// kinds to be exactly ["task_opened"].
+	Audience string `json:"audience"`
+	// FilterTaskType optionally narrows a marketplace subscription to one
+	// task type. Valid only with audience "marketplace".
+	FilterTaskType string `json:"filter_task_type"`
+	// FilterMinCreditReward optionally narrows a marketplace subscription
+	// to tasks declaring at least this credit reward (a positive integer).
+	// Valid only with audience "marketplace".
+	FilterMinCreditReward int64 `json:"filter_min_credit_reward"`
 }
 
 type webhookSubscriptionResponse struct {
@@ -30,6 +43,12 @@ type webhookSubscriptionResponse struct {
 	Kinds               []string `json:"kinds"`
 	State               string   `json:"state"`
 	CreatedAt           string   `json:"created_at"`
+	// Audience is "recipient" or "marketplace". The filter fields are the
+	// marketplace narrowing filters: empty / 0 mean no filter, and they are
+	// always empty / 0 on recipient subscriptions.
+	Audience              string `json:"audience"`
+	FilterTaskType        string `json:"filter_task_type"`
+	FilterMinCreditReward int64  `json:"filter_min_credit_reward"`
 }
 
 type webhookSubscriptionCreatedResponse struct {
@@ -246,6 +265,13 @@ func (server Server) createWebhookSubscription(w http.ResponseWriter, r *http.Re
 		}
 	}
 
+	audienceResult := parseWebhookAudience(request)
+	audience, audienceMatched := audienceResult.(webhookAudienceAccepted)
+	if !audienceMatched {
+		writeDomainError(w, audienceResult.(webhookAudienceRejected).reason)
+		return
+	}
+
 	ownerResult := server.resolveWebhookOwner(r, callerResult, request.OrganizationID)
 	owner, ownerMatched := ownerResult.(webhookOwnerAccepted)
 	if !ownerMatched {
@@ -257,7 +283,7 @@ func (server Server) createWebhookSubscription(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	result := server.webhookService.Create(r.Context(), owner.owner, endpoint.Value, filter.Value)
+	result := server.webhookService.Create(r.Context(), owner.owner, endpoint.Value, filter.Value, audience.value)
 	created, createdMatched := result.(webhook.SubscriptionCreated)
 	if !createdMatched {
 		writeDomainError(w, result.(webhook.CreateRejected).Reason)
@@ -357,6 +383,58 @@ func (server Server) listWebhookDeliveries(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, response)
 }
 
+type webhookAudienceResult interface {
+	webhookAudienceResult()
+}
+
+type webhookAudienceAccepted struct {
+	value webhook.Audience
+}
+
+type webhookAudienceRejected struct {
+	reason core.DomainError
+}
+
+func (webhookAudienceAccepted) webhookAudienceResult() {}
+
+func (webhookAudienceRejected) webhookAudienceResult() {}
+
+// parseWebhookAudience maps the request's audience and marketplace filter
+// fields onto a webhook.Audience. An absent audience is the recipient
+// default; the filter fields are valid only with the marketplace audience.
+// The kinds compatibility rule (marketplace listens only for task_opened) is
+// enforced by webhook.Service.Create.
+func parseWebhookAudience(request webhookSubscriptionRequest) webhookAudienceResult {
+	switch request.Audience {
+	case "", "recipient":
+		if request.FilterTaskType != "" || request.FilterMinCreditReward != 0 {
+			return webhookAudienceRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "filter_task_type and filter_min_credit_reward require the marketplace audience")}
+		}
+		return webhookAudienceAccepted{value: webhook.RecipientAudience{}}
+	case "marketplace":
+		audience := webhook.NewMarketplaceAudience()
+		if request.FilterTaskType != "" {
+			typeResult := task.ParseTaskType(request.FilterTaskType)
+			taskType, matched := typeResult.(task.TaskTypeAccepted)
+			if !matched {
+				return webhookAudienceRejected{reason: typeResult.(task.TaskTypeRejected).Reason}
+			}
+			audience.TaskType = webhook.MarketplaceTaskTypeIs{Value: taskType.Value}
+		}
+		if request.FilterMinCreditReward != 0 {
+			rewardResult := webhook.NewMinimumCreditReward(request.FilterMinCreditReward)
+			reward, matched := rewardResult.(webhook.MinimumCreditRewardAccepted)
+			if !matched {
+				return webhookAudienceRejected{reason: rewardResult.(webhook.MinimumCreditRewardRejected).Reason}
+			}
+			audience.MinReward = reward.Value
+		}
+		return webhookAudienceAccepted{value: audience}
+	default:
+		return webhookAudienceRejected{reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "webhook audience must be recipient or marketplace")}
+	}
+}
+
 // writeWebhookRejection writes the most specific failure: caller rejections
 // keep their 401/403 split, and owner-resolution failures carry their own
 // status.
@@ -382,6 +460,16 @@ func webhookSubscriptionToResponse(value webhook.Subscription) webhookSubscripti
 		Kinds:     rawKinds,
 		State:     value.State.String(),
 		CreatedAt: value.CreatedAt.UTC().Format(time.RFC3339Nano),
+		Audience:  "recipient",
+	}
+	if marketplace, matched := value.Audience.(webhook.MarketplaceAudience); matched {
+		response.Audience = "marketplace"
+		if typed, filtered := marketplace.TaskType.(webhook.MarketplaceTaskTypeIs); filtered {
+			response.FilterTaskType = typed.Value.String()
+		}
+		if reward, filtered := marketplace.MinReward.(webhook.MinimumCreditReward); filtered {
+			response.FilterMinCreditReward = reward.Amount()
+		}
 	}
 	switch owner := value.Owner.(type) {
 	case webhook.OwnerUser:

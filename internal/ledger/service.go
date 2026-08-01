@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 
+	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/submission"
@@ -72,6 +73,17 @@ type OrganizationFundStoreCommand struct {
 	IdempotencyKey IdempotencyKey
 }
 
+// GrantStoreCommand carries a validated platform-admin credit grant to the
+// store: a manual_adjustment ledger entry crediting the target account's
+// spendable balance.
+type GrantStoreCommand struct {
+	EntryID        core.LedgerEntryID
+	Target         GrantTarget
+	Amount         CreditAmount
+	Note           GrantNote
+	IdempotencyKey IdempotencyKey
+}
+
 type Store interface {
 	FundTask(context.Context, FundStoreCommand) FundResult
 	FundTaskFromOrganization(context.Context, OrganizationFundStoreCommand) FundResult
@@ -79,6 +91,7 @@ type Store interface {
 	RequestChanges(context.Context, RequestChangesStoreCommand) RequestChangesResult
 	RejectSubmission(context.Context, RejectStoreCommand) RejectResult
 	RefundTask(context.Context, RefundStoreCommand) RefundResult
+	GrantCredits(context.Context, GrantStoreCommand) GrantResult
 	TaskAllocatedCredits(context.Context, core.TaskID) TaskAllocatedResult
 	Balance(context.Context, core.UserID) BalanceResult
 	OrganizationBalance(context.Context, core.OrganizationID) BalanceResult
@@ -86,13 +99,21 @@ type Store interface {
 	ListOrganizationEntries(context.Context, core.OrganizationID, core.Page) ListEntriesResult
 }
 
+// AuditRecorder records an audit event for an admin ledger action. audit.Service
+// satisfies it; the indirection keeps ledger's store surface free of the audit
+// store.
+type AuditRecorder interface {
+	Record(context.Context, core.UserID, audit.Action, audit.Subject, audit.Metadata) audit.RecordResult
+}
+
 type Service struct {
 	store    Store
 	recorder event.Recorder
+	audit    AuditRecorder
 }
 
-func NewService(store Store, recorder event.Recorder) Service {
-	return Service{store: store, recorder: recorder}
+func NewService(store Store, recorder event.Recorder, auditRecorder AuditRecorder) Service {
+	return Service{store: store, recorder: recorder, audit: auditRecorder}
 }
 
 // emitLedgerEvent emits one event after a committed ledger mutation. Emission
@@ -344,6 +365,54 @@ func (service Service) FundTaskFromOrganization(ctx context.Context, organizatio
 			event.TaskAmountMetadata(taskID, amount.Int64()), event.NewRecipients())
 	}
 	return result
+}
+
+// GrantCredits writes a platform-admin manual_adjustment ledger entry that
+// credits the target account's spendable balance. The caller (stage-2 REST /
+// stage-3 MCP handler) is responsible for verifying the actor is a platform
+// admin before calling. On success it emits a credit_granted event to the
+// beneficiaries (the granted user, or the grantee organization's
+// owner/admin/billing members) plus the acting admin's own feed, and records
+// an admin audit entry; both are post-commit best-effort.
+func (service Service) GrantCredits(ctx context.Context, actingAdmin core.UserID, target GrantTarget, amount CreditAmount, note GrantNote, key IdempotencyKey) GrantResult {
+	subject := event.NoSubjectRefs()
+	auditSubject := audit.Subject{}
+	switch typed := target.(type) {
+	case GrantToUser:
+		auditSubject = audit.Subject{Kind: "user", ID: typed.ID.String()}
+	case GrantToOrganization:
+		subject.Organization = event.OrganizationSubject{ID: typed.ID}
+		auditSubject = audit.Subject{Kind: "organization", ID: typed.ID.String()}
+	default:
+		return GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credit grant target is invalid")}
+	}
+
+	entryResult := core.NewLedgerEntryID()
+	entryCreated, matched := entryResult.(core.LedgerEntryIDCreated)
+	if !matched {
+		return GrantRejected{Reason: entryResult.(core.LedgerEntryIDRejected).Reason}
+	}
+
+	result := service.store.GrantCredits(ctx, GrantStoreCommand{
+		EntryID:        entryCreated.Value,
+		Target:         target,
+		Amount:         amount,
+		Note:           note,
+		IdempotencyKey: key,
+	})
+	granted, grantedMatched := result.(CreditsGranted)
+	if !grantedMatched {
+		return result
+	}
+
+	// Fresh grant and idempotent replay share the same result shape, so a
+	// replay re-emits; correct retries reuse the same idempotency key and
+	// simply refresh the same inbox rows (the same trade-off FundTask makes).
+	recipients := append([]core.UserID{actingAdmin}, granted.RecipientUserIDs...)
+	service.emitLedgerEvent(ctx, event.KindCreditGranted, event.ActorUser{ID: actingAdmin}, subject,
+		event.AmountMetadata(amount.Int64()), event.NewRecipients(recipients...))
+	_ = service.audit.Record(ctx, actingAdmin, audit.ActionAdminCreditGranted, auditSubject, audit.Metadata{JSON: event.AmountMetadata(amount.Int64()).JSON})
+	return granted
 }
 
 func (service Service) Balance(ctx context.Context, owner core.UserID) BalanceResult {

@@ -10,13 +10,16 @@ import (
 )
 
 // TaskComment is one message on a task discussion thread, so requester and
-// worker can exchange clarifying questions on a detailed task.
+// worker can exchange clarifying questions on a detailed task. It carries the
+// author's display name, resolved by the store, so threads can name the
+// author without a per-row user fetch.
 type TaskComment struct {
-	ID        core.TaskCommentID
-	TaskID    core.TaskID
-	AuthorID  core.UserID
-	Body      CommentBody
-	CreatedAt time.Time
+	ID                core.TaskCommentID
+	TaskID            core.TaskID
+	AuthorID          core.UserID
+	AuthorDisplayName auth.DisplayName
+	Body              CommentBody
+	CreatedAt         time.Time
 }
 
 type CreateTaskCommentStoreResult interface {
