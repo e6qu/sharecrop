@@ -14,6 +14,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/mcp"
 	"github.com/e6qu/sharecrop/internal/notification"
@@ -39,6 +40,7 @@ type mcpServices struct {
 	privacyService       PrivacyService
 	auditService         AuditService
 	webhookService       webhook.Service
+	eventStore           event.Store
 }
 
 func (services mcpServices) CreateWebhookSubscription(ctx context.Context, owner webhook.Owner, endpoint webhook.EndpointURL, kinds webhook.KindFilter, audience webhook.Audience) webhook.CreateResult {
@@ -307,6 +309,23 @@ func (services mcpServices) CountUnreadNotifications(ctx context.Context, recipi
 
 func (services mcpServices) MarkNotificationRead(ctx context.Context, recipient core.UserID, notificationID core.NotificationID) notification.MarkReadResult {
 	return services.notificationService.MarkRead(ctx, recipient, notificationID)
+}
+
+// ListEvents serves the MCP event-feed tool through the same store reads the
+// REST feed (GET /api/events) uses: a personal agent credential's user
+// subject reads the owner's recipient-scoped feed, and an organization
+// credential's org subject reads the organization's subject events. MCP has
+// no other subject kinds (verifyMCPCaller only produces these two), so the
+// default arm is unreachable in practice but keeps the boundary total.
+func (services mcpServices) ListEvents(ctx context.Context, subject auth.Subject, filter event.CursorFilter, page core.Page) event.ListStoreResult {
+	switch typed := subject.(type) {
+	case auth.UserSubject:
+		return services.eventStore.ListForRecipient(ctx, typed.ID, filter, page)
+	case auth.OrgSubject:
+		return services.eventStore.ListForOrganization(ctx, typed.ID, filter, page)
+	default:
+		return event.ListStoreRejected{Reason: core.NewDomainError(core.ErrorCodeUnauthenticated, "an agent credential or organization credential is required")}
+	}
 }
 
 func (services mcpServices) GetCreditBalance(ctx context.Context, owner core.UserID) ledger.BalanceResult {

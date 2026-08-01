@@ -101,7 +101,7 @@ func (services mcpServices) ListAdminModerationReports(ctx context.Context, stat
 		}
 		reports = append(reports, report)
 	}
-	return mcp.ModerationReportsListed{Values: reports}
+	return mcp.ModerationReportsListed{Values: reports, Total: triageListed.Total}
 }
 
 func (services mcpServices) TriageModerationReport(ctx context.Context, actor core.UserID, reportID core.AuditEventID, state string, note string) mcp.ModerationReportResult {

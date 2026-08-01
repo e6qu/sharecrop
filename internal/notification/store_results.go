@@ -22,6 +22,8 @@ type ListStoreResult interface {
 
 type ListStoreAccepted struct {
 	Values []Notification
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
 }
 
 type ListStoreRejected struct {

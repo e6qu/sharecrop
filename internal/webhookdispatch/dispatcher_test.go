@@ -71,7 +71,7 @@ func fixtureClaimedDelivery(t *testing.T, rawURL string) db.ClaimedWebhookDelive
 	}
 }
 
-func TestRunOnceSurfacesPumpFailure(t *testing.T) {
+func TestRunOnceSurfacesClaimFailure(t *testing.T) {
 	dispatcher := New(unreachableStore(t), StrictDialPolicy(), time.Now, rand.NewPCG(1, 2))
 	result := dispatcher.RunOnce(context.Background())
 	if _, matched := result.(RunRejected); !matched {

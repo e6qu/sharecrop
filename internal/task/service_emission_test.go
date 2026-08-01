@@ -24,6 +24,7 @@ func newEmissionHarness(t *testing.T) emissionHarness {
 	t.Helper()
 	store := newTaskMemoryStore()
 	events := eventtest.NewCapturingStore()
+	store.events = events
 	service := NewService(store, newTaskPermissionStore(), nil, eventtest.RecorderOver(events))
 	actor := testUserSubject(t)
 	created, matched := service.Create(context.Background(), testCreateCommand(t, actor, UserOwner{UserID: actor.ID}, PublicVisibility{})).(TaskCreated)

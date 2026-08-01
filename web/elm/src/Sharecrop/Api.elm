@@ -461,20 +461,22 @@ refreshTasksAndDiscovery : Model -> Cmd Msg
 refreshTasksAndDiscovery model =
     case model.session of
         LoggedIn state ->
-            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort state.taskListOffset, fetchDiscovery state.accessToken state.discoveryIncludeReserved state.discoveryOffset ]
+            Cmd.batch [ fetchTasks state.accessToken state.taskStateFilter state.taskListTypeFilter state.taskListSort state.taskListOffset, fetchDiscovery state.accessToken state.discoveryIncludeReserved state.discoveryFundedOnly state.discoveryOffset ]
 
         LoggedOut ->
             Cmd.none
 
 
-routeLoadCmd : String -> String -> Page -> Cmd Msg
-routeLoadCmd token subjectId page =
+routeLoadCmd : String -> String -> String -> Page -> Cmd Msg
+routeLoadCmd token subjectId activityCursor page =
     case page of
         OverviewPage ->
             -- Tasks are fetched too: the Needs-review card is derived from
             -- the My-tasks data and must reflect reviews done since the list
-            -- was last loaded.
-            Cmd.batch [ fetchBalance token, fetchLedger token 0, fetchEvents token "", fetchTasks token [] "" "newest" 0 ]
+            -- was last loaded. The activity feed resumes from the cursor the
+            -- session already holds, so a revisit continues where it left
+            -- off instead of re-reading the stream from its start.
+            Cmd.batch [ fetchBalance token, fetchLedger token 0, fetchEvents token activityCursor, fetchTasks token [] "" "newest" 0 ]
 
         TasksPage ->
             -- The Tasks hub embeds My tasks, Discover public tasks, My
@@ -482,7 +484,7 @@ routeLoadCmd token subjectId page =
             -- data for all four sections at once.
             Cmd.batch
                 [ fetchTasks token [] "" "newest" 0
-                , fetchDiscovery token False 0
+                , fetchDiscovery token False False 0
                 , fetchUserSubmissionsPage token subjectId 0
                 , fetchSeriesList token
                 ]
@@ -704,7 +706,7 @@ postAuth url model =
     Http.post
         { url = url
         , body = Http.jsonBody (authRequestBody model)
-        , expect = expectJsonWithServerError AuthReceived Auth.authResponseDecoder
+        , expect = expectAuthJson AuthReceived Auth.authResponseDecoder
         }
 
 
@@ -713,7 +715,7 @@ postGuest =
     Http.post
         { url = "/api/auth/guest"
         , body = Http.emptyBody
-        , expect = expectJsonWithServerError AuthReceived Auth.authResponseDecoder
+        , expect = expectAuthJson AuthReceived Auth.authResponseDecoder
         }
 
 
@@ -722,7 +724,7 @@ requestPasswordReset model =
     Http.post
         { url = "/api/auth/password-reset/request"
         , body = Http.jsonBody (Encode.object [ ( "email", Encode.string model.resetEmail ) ])
-        , expect = expectJsonWithServerError PasswordResetRequested tokenDecoder
+        , expect = expectAuthJson PasswordResetRequested tokenDecoder
         }
 
 
@@ -731,7 +733,7 @@ confirmPasswordReset model =
     Http.post
         { url = "/api/auth/password-reset/confirm"
         , body = Http.jsonBody (Encode.object [ ( "token", Encode.string model.resetToken ), ( "password", Encode.string model.resetPassword ) ])
-        , expect = expectWhateverWithServerError PasswordResetConfirmed
+        , expect = expectAuthWhatever PasswordResetConfirmed
         }
 
 
@@ -748,7 +750,7 @@ postRefresh =
     Http.post
         { url = "/api/auth/refresh"
         , body = Http.emptyBody
-        , expect = expectJsonWithServerError RefreshReceived Auth.authResponseDecoder
+        , expect = expectAuthJson RefreshReceived Auth.authResponseDecoder
         }
 
 
@@ -761,7 +763,7 @@ postSessionRefresh =
     Http.post
         { url = "/api/auth/refresh"
         , body = Http.emptyBody
-        , expect = expectJsonWithServerError SessionRefreshed Auth.authResponseDecoder
+        , expect = expectAuthJson SessionRefreshed Auth.authResponseDecoder
         }
 
 
@@ -770,7 +772,7 @@ postLogout =
     Http.post
         { url = "/api/auth/logout"
         , body = Http.emptyBody
-        , expect = expectJsonWithServerError LogoutReceived logoutURLDecoder
+        , expect = expectAuthJson LogoutReceived logoutURLDecoder
         }
 
 
@@ -893,9 +895,17 @@ postCreateTask state =
         (expectJsonWithServerError CreateTaskReceived taskDetailDecoder)
 
 
-fetchDiscovery : String -> Bool -> Int -> Cmd Msg
-fetchDiscovery token includeReserved offset =
-    authorizedRequest "GET" token ("/api/tasks?scope=public&include_reserved=" ++ boolQuery includeReserved ++ "&limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError DiscoveryReceived Task.tasksResponseDecoder)
+fetchDiscovery : String -> Bool -> Bool -> Int -> Cmd Msg
+fetchDiscovery token includeReserved fundedOnly offset =
+    let
+        fundedQuery =
+            if fundedOnly then
+                "&funded=reward_funded"
+
+            else
+                ""
+    in
+    authorizedRequest "GET" token ("/api/tasks?scope=public&include_reserved=" ++ boolQuery includeReserved ++ fundedQuery ++ "&limit=" ++ String.fromInt selectorPageSize ++ "&offset=" ++ String.fromInt offset) Http.emptyBody (expectJsonWithServerError DiscoveryReceived Task.tasksResponseDecoder)
 
 
 fetchPublicTaskDetail : String -> String -> Cmd Msg
@@ -1451,15 +1461,27 @@ fetchMyPrivacyRequests token =
         (expectJsonWithServerError MyPrivacyRequestsReceived Privacy.privacyRequestsResponseDecoder)
 
 
-reportTask : String -> String -> Moderation.ModerationReason -> String -> Cmd Msg
-reportTask token taskId reason details =
+{-| Files a moderation report about the task itself or, for a dispute,
+about one of the viewer's own submissions on it (see ModerationSubject).
+-}
+reportTask : String -> String -> ModerationSubject -> Moderation.ModerationReason -> String -> Cmd Msg
+reportTask token taskId subject reason details =
+    let
+        ( subjectKind, subjectId ) =
+            case subject of
+                ReportAboutTask ->
+                    ( "task", taskId )
+
+                ReportAboutSubmission submissionId ->
+                    ( "submission", submissionId )
+    in
     authorizedRequest "POST"
         token
         "/api/moderation/reports"
         (Http.jsonBody
             (Encode.object
-                [ ( "subject_kind", Encode.string "task" )
-                , ( "subject_id", Encode.string taskId )
+                [ ( "subject_kind", Encode.string subjectKind )
+                , ( "subject_id", Encode.string subjectId )
                 , ( "reason", Moderation.moderationReasonEncoder reason )
                 , ( "details", Encode.string details )
                 ]
@@ -2355,11 +2377,12 @@ serverErrorMessageDecoder =
 
 
 -- Error bodies also carry a machine-readable `code`. The server's message
--- stays the primary user-facing text; the code is used only to special-case
--- rate limiting, whose raw message is not phrased for end users.
--- (`unauthenticated` deliberately keeps today's behavior: the message shows
--- where the action was attempted, and the scheduled session refresh handles
--- real expiry by returning to the auth screen.)
+-- stays the primary user-facing text; the code is used to special-case rate
+-- limiting (whose raw message is not phrased for end users) and to detect a
+-- dead session: any `unauthenticated` failure on a signed-in request routes
+-- to the single SessionEnded message instead of the per-call error path, so
+-- every call site lands on the auth screen the same way without hand-patched
+-- handling (see RequestFailure below).
 
 
 userFacingServerError : String -> String -> String
@@ -2371,48 +2394,122 @@ userFacingServerError code message =
         message
 
 
-responseToServerErrorResult : (String -> Result Http.Error a) -> Http.Response String -> Result Http.Error a
+unauthenticatedCode : String
+unauthenticatedCode =
+    "unauthenticated"
+
+
+{-| The notice shown on the auth screen after a forced sign-out. -}
+sessionEndedNotice : String
+sessionEndedNotice =
+    "Your session ended. Sign in again."
+
+
+{-| How a request failed: the session is gone (the server said
+`unauthenticated`), or an ordinary error the call site handles itself.
+-}
+type RequestFailure
+    = SessionMissing
+    | RequestError Http.Error
+
+
+serverErrorCodeDecoder : Decode.Decoder String
+serverErrorCodeDecoder =
+    Decode.oneOf [ Decode.field "code" Decode.string, Decode.succeed "" ]
+
+
+responseToServerErrorResult : (String -> Result Http.Error a) -> Http.Response String -> Result RequestFailure a
 responseToServerErrorResult onGoodBody response =
     case response of
         Http.BadUrl_ url ->
-            Err (Http.BadUrl url)
+            Err (RequestError (Http.BadUrl url))
 
         Http.Timeout_ ->
-            Err Http.Timeout
+            Err (RequestError Http.Timeout)
 
         Http.NetworkError_ ->
-            Err Http.NetworkError
+            Err (RequestError Http.NetworkError)
 
         Http.BadStatus_ metadata body ->
-            case Decode.decodeString serverErrorMessageDecoder body of
-                Ok message ->
-                    Err (Http.BadBody message)
+            if Decode.decodeString serverErrorCodeDecoder body == Ok unauthenticatedCode then
+                Err SessionMissing
 
-                Err _ ->
-                    Err (Http.BadStatus metadata.statusCode)
+            else
+                case Decode.decodeString serverErrorMessageDecoder body of
+                    Ok message ->
+                        Err (RequestError (Http.BadBody message))
+
+                    Err _ ->
+                        Err (RequestError (Http.BadStatus metadata.statusCode))
 
         Http.GoodStatus_ _ body ->
-            onGoodBody body
+            Result.mapError RequestError (onGoodBody body)
 
 
-expectJsonWithServerError : (Result Http.Error a -> msg) -> Decode.Decoder a -> Http.Expect msg
+{-| Turns a request outcome into the caller's message — except a dead
+session, which every authorized call funnels into SessionEnded.
+-}
+sessionAwareMsg : (Result Http.Error a -> Msg) -> Result RequestFailure a -> Msg
+sessionAwareMsg toMsg result =
+    case result of
+        Ok value ->
+            toMsg (Ok value)
+
+        Err SessionMissing ->
+            SessionEnded
+
+        Err (RequestError error) ->
+            toMsg (Err error)
+
+
+{-| For the auth endpoints themselves (login, register, password reset,
+refresh, logout): a 401 there is feedback about the attempt in progress
+(wrong password, expired reset token, already-signed-out), not a session
+that died mid-use, so it stays on the caller's own error path.
+-}
+plainErrorMsg : (Result Http.Error a -> Msg) -> Result RequestFailure a -> Msg
+plainErrorMsg toMsg result =
+    case result of
+        Ok value ->
+            toMsg (Ok value)
+
+        Err SessionMissing ->
+            toMsg (Err (Http.BadBody sessionEndedNotice))
+
+        Err (RequestError error) ->
+            toMsg (Err error)
+
+
+decodeGoodBody : Decode.Decoder a -> String -> Result Http.Error a
+decodeGoodBody decoder body =
+    case Decode.decodeString decoder body of
+        Ok value ->
+            Ok value
+
+        Err error ->
+            Err (Http.BadBody (Decode.errorToString error))
+
+
+expectJsonWithServerError : (Result Http.Error a -> Msg) -> Decode.Decoder a -> Http.Expect Msg
 expectJsonWithServerError toMsg decoder =
-    Http.expectStringResponse toMsg
-        (responseToServerErrorResult
-            (\body ->
-                case Decode.decodeString decoder body of
-                    Ok value ->
-                        Ok value
-
-                    Err error ->
-                        Err (Http.BadBody (Decode.errorToString error))
-            )
-        )
+    Http.expectStringResponse (sessionAwareMsg toMsg)
+        (responseToServerErrorResult (decodeGoodBody decoder))
 
 
-expectWhateverWithServerError : (Result Http.Error () -> msg) -> Http.Expect msg
+expectWhateverWithServerError : (Result Http.Error () -> Msg) -> Http.Expect Msg
 expectWhateverWithServerError toMsg =
-    Http.expectStringResponse toMsg (responseToServerErrorResult (\_ -> Ok ()))
+    Http.expectStringResponse (sessionAwareMsg toMsg) (responseToServerErrorResult (\_ -> Ok ()))
+
+
+expectAuthJson : (Result Http.Error a -> Msg) -> Decode.Decoder a -> Http.Expect Msg
+expectAuthJson toMsg decoder =
+    Http.expectStringResponse (plainErrorMsg toMsg)
+        (responseToServerErrorResult (decodeGoodBody decoder))
+
+
+expectAuthWhatever : (Result Http.Error () -> Msg) -> Http.Expect Msg
+expectAuthWhatever toMsg =
+    Http.expectStringResponse (plainErrorMsg toMsg) (responseToServerErrorResult (\_ -> Ok ()))
 
 
 authorizedRequest : String -> String -> String -> Http.Body -> Http.Expect Msg -> Cmd Msg

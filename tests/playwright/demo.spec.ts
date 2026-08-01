@@ -177,8 +177,10 @@ test("demo admin resolves privacy requests from the browser", async ({ page }) =
   await expect(page.getByTestId("admin-privacy-page-offset")).toHaveText(
     "Page 1",
   );
+  // The moderation list response carries a total, so its pager reads
+  // "Page N of M"; the other admin lists have no total yet.
   await expect(page.getByTestId("admin-moderation-page-offset")).toHaveText(
-    "Page 1",
+    "Page 1 of 1",
   );
   await expect(page.getByTestId("admin-privacy-request")).toHaveCount(1);
   await page.getByTestId("admin-section-privacy").click();
@@ -339,6 +341,49 @@ test("demo admin triages moderation reports from the browser", async ({ page }) 
   await expect(page.getByTestId("admin-moderation-empty")).toBeVisible();
   await page.getByTestId("admin-moderation-state").selectOption("resolved");
   await expect(page.getByTestId("admin-moderation-report")).toHaveCount(1);
+});
+
+test("demo dispute from a rejected submission reaches the admin queue", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("70 credits")).toBeVisible();
+
+  // The seed rejected mara's submission on ren's alt-text task, so the
+  // single-actor demo has a real rejected row to dispute from.
+  await page.getByTestId("nav-tasks").click();
+  await page
+    .getByTestId("discovery-task-row")
+    .filter({ hasText: "Tag 12 product photos with alt text" })
+    .getByTestId("discovery-view")
+    .click();
+  const rejectedRow = page.getByTestId("my-submission-row").filter({
+    hasText: "rejected",
+  });
+  await expect(rejectedRow).toHaveCount(1);
+  await rejectedRow.getByTestId("file-dispute").click();
+
+  // The report form opens preset to a dispute about that submission.
+  await expect(page.getByTestId("moderation-subject")).toContainText(
+    "disputes the review of submission",
+  );
+  await page.getByTestId("moderation-details").fill(
+    "The alt texts follow the brief; the rejection reason does not match the submitted work.",
+  );
+  await page.getByTestId("report-task").click();
+  await expect(page.getByTestId("moderation-message")).toContainText(
+    "Report submitted: dispute",
+  );
+
+  // The dispute lands in the admin moderation queue labeled dispute with a
+  // submission subject.
+  await page.getByTestId("nav-account-menu").click();
+  await page.getByTestId("nav-admin").click();
+  await expect(page.getByTestId("admin-moderation-report")).toHaveCount(1);
+  await expect(page.getByTestId("admin-moderation-report")).toContainText(
+    "dispute",
+  );
+  await expect(page.getByTestId("admin-moderation-report")).toContainText(
+    "submission",
+  );
 });
 
 test("demo owner can refund a funded task they own", async ({ page }) => {

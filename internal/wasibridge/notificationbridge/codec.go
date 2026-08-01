@@ -224,6 +224,7 @@ func decodeCreateResult(wire createResultWire) (notification.CreateStoreResult, 
 type listResultWire struct {
 	Variant       string                  `json:"variant"`
 	Notifications []notificationWire      `json:"notifications,omitempty"`
+	Total         int64                   `json:"total,omitempty"`
 	Error         *domainwire.DomainError `json:"error,omitempty"`
 }
 
@@ -234,7 +235,7 @@ func encodeListResult(result notification.ListStoreResult) listResultWire {
 		for index := range typed.Values {
 			values = append(values, encodeNotification(typed.Values[index]))
 		}
-		return listResultWire{Variant: "listed", Notifications: values}
+		return listResultWire{Variant: "listed", Notifications: values, Total: typed.Total}
 	case notification.ListStoreRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return listResultWire{Variant: "rejected", Error: &reason}
@@ -254,7 +255,7 @@ func decodeListResult(wire listResultWire) (notification.ListStoreResult, error)
 			}
 			values = append(values, value)
 		}
-		return notification.ListStoreAccepted{Values: values}, nil
+		return notification.ListStoreAccepted{Values: values, Total: wire.Total}, nil
 	case "rejected":
 		if wire.Error == nil {
 			return nil, fmt.Errorf("rejected list result is missing its error")

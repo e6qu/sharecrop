@@ -171,13 +171,14 @@ func decodeMutationResult(wire recordResultWire) (httpserver.ModerationTriageMut
 type recordsResultWire struct {
 	Variant string                  `json:"variant"`
 	Records []recordWire            `json:"records,omitempty"`
+	Total   int64                   `json:"total,omitempty"`
 	Error   *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeListResult(result httpserver.ModerationTriageListResult) recordsResultWire {
 	switch typed := result.(type) {
 	case httpserver.ModerationTriageListed:
-		return recordsResultWire{Variant: "listed", Records: encodeRecords(typed.Values)}
+		return recordsResultWire{Variant: "listed", Records: encodeRecords(typed.Values), Total: typed.Total}
 	case httpserver.ModerationTriageListRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return recordsResultWire{Variant: "rejected", Error: &reason}
@@ -193,7 +194,7 @@ func decodeListResult(wire recordsResultWire) (httpserver.ModerationTriageListRe
 		if err != nil {
 			return nil, err
 		}
-		return httpserver.ModerationTriageListed{Values: values}, nil
+		return httpserver.ModerationTriageListed{Values: values, Total: wire.Total}, nil
 	case "rejected":
 		return httpserver.ModerationTriageListRejected{Reason: decodeReason(wire.Error)}, nil
 	default:

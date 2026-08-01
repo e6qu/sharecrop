@@ -47,6 +47,7 @@ func moderationModule() Module {
 					{Name: NewElmTypeName("ModerationReasonAbuse"), Tag: "abuse"},
 					{Name: NewElmTypeName("ModerationReasonPII"), Tag: "pii"},
 					{Name: NewElmTypeName("ModerationReasonPolicy"), Tag: "policy"},
+					{Name: NewElmTypeName("ModerationReasonDispute"), Tag: "dispute"},
 					{Name: NewElmTypeName("ModerationReasonOther"), Tag: "other"},
 				},
 			},
@@ -72,6 +73,9 @@ func moderationModule() Module {
 				Fields: []Field{
 					{Name: NewElmValueName("reports"), JSONName: NewJSONFieldName("reports"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("ModerationReportResponse")}}},
 					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
+					// total counts every row matching the filter, ignoring
+					// limit/offset.
+					{Name: NewElmValueName("total"), JSONName: NewJSONFieldName("total"), Type: IntRef{}},
 				},
 			},
 		},
@@ -158,6 +162,7 @@ func notificationModule() Module {
 					{Name: NewElmTypeName("NotificationKindSubmissionAccepted"), Tag: "submission_accepted"},
 					{Name: NewElmTypeName("NotificationKindSubmissionChangesRequested"), Tag: "submission_changes_requested"},
 					{Name: NewElmTypeName("NotificationKindSubmissionRejected"), Tag: "submission_rejected"},
+					{Name: NewElmTypeName("NotificationKindSubmissionSuperseded"), Tag: "submission_superseded"},
 					{Name: NewElmTypeName("NotificationKindSubmissionCommented"), Tag: "submission_commented"},
 					{Name: NewElmTypeName("NotificationKindTaskFunded"), Tag: "task_funded"},
 					{Name: NewElmTypeName("NotificationKindTaskCancelled"), Tag: "task_cancelled"},
@@ -196,6 +201,9 @@ func notificationModule() Module {
 				Fields: []Field{
 					{Name: NewElmValueName("notifications"), JSONName: NewJSONFieldName("notifications"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("NotificationResponse")}}},
 					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
+					// total counts every row matching the filter, ignoring
+					// limit/offset.
+					{Name: NewElmValueName("total"), JSONName: NewJSONFieldName("total"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -235,6 +243,7 @@ func eventsModule() Module {
 					{Name: NewElmTypeName("DomainEventKindSubmissionAccepted"), Tag: "submission_accepted"},
 					{Name: NewElmTypeName("DomainEventKindSubmissionChangesRequested"), Tag: "submission_changes_requested"},
 					{Name: NewElmTypeName("DomainEventKindSubmissionRejected"), Tag: "submission_rejected"},
+					{Name: NewElmTypeName("DomainEventKindSubmissionSuperseded"), Tag: "submission_superseded"},
 					{Name: NewElmTypeName("DomainEventKindSubmissionCommented"), Tag: "submission_commented"},
 					{Name: NewElmTypeName("DomainEventKindPayoutReceived"), Tag: "payout_received"},
 					{Name: NewElmTypeName("DomainEventKindCreditGranted"), Tag: "credit_granted"},
@@ -358,6 +367,9 @@ func eventsModule() Module {
 				Fields: []Field{
 					{Name: NewElmValueName("deliveries"), JSONName: NewJSONFieldName("deliveries"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("WebhookDeliveryResponse")}}},
 					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
+					// total counts every row matching the filter, ignoring
+					// limit/offset.
+					{Name: NewElmValueName("total"), JSONName: NewJSONFieldName("total"), Type: IntRef{}},
 				},
 			},
 		},
@@ -787,6 +799,14 @@ func taskModule() Module {
 					{Name: NewElmTypeName("TaskReservationStateSubmitted"), Tag: "submitted"},
 				},
 			},
+			Enum{
+				Name: NewElmTypeName("TaskFundedState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("TaskFundedStateRewardFunded"), Tag: "reward_funded"},
+					{Name: NewElmTypeName("TaskFundedStateRewardUnfunded"), Tag: "reward_unfunded"},
+					{Name: NewElmTypeName("TaskFundedStateNoCreditReward"), Tag: "no_credit_reward"},
+				},
+			},
 			Product{
 				Name: NewElmTypeName("TaskListItemResponse"),
 				Fields: []Field{
@@ -808,6 +828,11 @@ func taskModule() Module {
 					{Name: NewElmValueName("activeAssigneeKind"), JSONName: NewJSONFieldName("active_assignee_kind"), Type: StringRef{}},
 					{Name: NewElmValueName("activeAssigneeID"), JSONName: NewJSONFieldName("active_assignee_id"), Type: StringRef{}},
 					{Name: NewElmValueName("creatorDisplayName"), JSONName: NewJSONFieldName("creator_display_name"), Type: StringRef{}},
+					// holderDisplayName names the user holding the active
+					// reservation when the reservation is user-assigned;
+					// empty otherwise.
+					{Name: NewElmValueName("holderDisplayName"), JSONName: NewJSONFieldName("holder_display_name"), Type: StringRef{}},
+					{Name: NewElmValueName("funded"), JSONName: NewJSONFieldName("funded"), Type: NamedRef{Name: NewElmTypeName("TaskFundedState")}},
 					// pendingReviewCount is populated only on tasks the caller
 					// created; every other row reports 0.
 					{Name: NewElmValueName("pendingReviewCount"), JSONName: NewJSONFieldName("pending_review_count"), Type: IntRef{}},
@@ -876,6 +901,9 @@ func taskModule() Module {
 				Fields: []Field{
 					{Name: NewElmValueName("tasks"), JSONName: NewJSONFieldName("tasks"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("TaskListItemResponse")}}},
 					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
+					// total counts every row matching the filter, ignoring
+					// limit/offset.
+					{Name: NewElmValueName("total"), JSONName: NewJSONFieldName("total"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -922,6 +950,7 @@ func submissionModule() Module {
 					{Name: NewElmTypeName("SubmissionStateAccepted"), Tag: "accepted"},
 					{Name: NewElmTypeName("SubmissionStateRejected"), Tag: "rejected"},
 					{Name: NewElmTypeName("SubmissionStateChangesRequested"), Tag: "changes_requested"},
+					{Name: NewElmTypeName("SubmissionStateSuperseded"), Tag: "superseded"},
 				},
 			},
 			Product{
@@ -971,6 +1000,9 @@ func submissionModule() Module {
 				Fields: []Field{
 					{Name: NewElmValueName("submissions"), JSONName: NewJSONFieldName("submissions"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("SubmissionResponse")}}},
 					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
+					// total counts every row matching the filter, ignoring
+					// limit/offset.
+					{Name: NewElmValueName("total"), JSONName: NewJSONFieldName("total"), Type: IntRef{}},
 				},
 			},
 			Product{
@@ -1059,6 +1091,9 @@ func ledgerModule() Module {
 				Fields: []Field{
 					{Name: NewElmValueName("entries"), JSONName: NewJSONFieldName("entries"), Type: ListRef{Element: NamedRef{Name: NewElmTypeName("LedgerEntryResponse")}}},
 					{Name: NewElmValueName("nextOffset"), JSONName: NewJSONFieldName("next_offset"), Type: IntRef{}},
+					// total counts every row matching the filter, ignoring
+					// limit/offset.
+					{Name: NewElmValueName("total"), JSONName: NewJSONFieldName("total"), Type: IntRef{}},
 				},
 			},
 			Product{

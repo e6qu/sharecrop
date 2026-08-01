@@ -36,16 +36,19 @@ func NewGuestRateLimiter(invoke Invoker, prefix string) GuestRateLimiter {
 	return GuestRateLimiter{invoke: invoke, prefix: prefix}
 }
 
-// Allow reports whether the key is under its rate budget. On a transport failure
-// it fails open (allows): a broken bridge must not lock every client out.
+// Allow reports whether the key is under its rate budget. On a transport or
+// decode failure it fails closed (denies), matching the host store, which
+// denies on a storage error: a rate limiter that silently stops limiting when
+// its backing state is unreachable turns an outage into an unthrottled
+// window. Denied requests surface as 429s and retry once the bridge heals.
 func (g GuestRateLimiter) Allow(key string) bool {
 	raw, err := g.call("Allow", key)
 	if err != nil {
-		return true
+		return false
 	}
 	var allowed bool
 	if err := json.Unmarshal(raw, &allowed); err != nil {
-		return true
+		return false
 	}
 	return allowed
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/event/eventtest"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -81,6 +82,7 @@ func TestInvalidSubmissionKeepsReservationActive(t *testing.T) {
 		TaskID:      taskID,
 		Assignee:    task.UserAssignee{UserID: worker},
 		RequestedBy: worker,
+		Draft:       testEventDraft(t, event.KindReservationRequested, worker),
 	}).(task.CreateReservationStoreAccepted)
 	if !reservedMatched {
 		t.Fatalf("create reservation rejected")

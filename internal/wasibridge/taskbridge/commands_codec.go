@@ -9,6 +9,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/wasibridge/attachmentwire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/eventbridge"
 )
 
 // ---- task.CreateCommand ----
@@ -193,9 +194,10 @@ func decodeCreateCommand(wire createCommandWire) (task.CreateCommand, error) {
 // ---- task.ReservationCommand ----
 
 type reservationCommandWire struct {
-	TaskID      string       `json:"task_id"`
-	Assignee    assigneeWire `json:"assignee"`
-	RequestedBy string       `json:"requested_by"`
+	TaskID      string                `json:"task_id"`
+	Assignee    assigneeWire          `json:"assignee"`
+	RequestedBy string                `json:"requested_by"`
+	Draft       eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeReservationCommand(command task.ReservationCommand) reservationCommandWire {
@@ -203,6 +205,7 @@ func encodeReservationCommand(command task.ReservationCommand) reservationComman
 		TaskID:      corewire.EncodeTaskID(command.TaskID),
 		Assignee:    encodeAssignee(command.Assignee),
 		RequestedBy: corewire.EncodeUserID(command.RequestedBy),
+		Draft:       eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -219,7 +222,11 @@ func decodeReservationCommand(wire reservationCommandWire) (task.ReservationComm
 	if err != nil {
 		return task.ReservationCommand{}, err
 	}
-	return task.ReservationCommand{TaskID: taskID, Assignee: assignee, RequestedBy: requestedBy}, nil
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return task.ReservationCommand{}, err
+	}
+	return task.ReservationCommand{TaskID: taskID, Assignee: assignee, RequestedBy: requestedBy, Draft: draft}, nil
 }
 
 // ---- task.ListScope union ----
@@ -306,6 +313,7 @@ type listFiltersWire struct {
 	Search        searchFilterWire        `json:"search"`
 	Type          typeFilterWire          `json:"type"`
 	Created       createdFilterWire       `json:"created"`
+	Funded        fundedFilterWire        `json:"funded"`
 	Sort          string                  `json:"sort"`
 }
 
@@ -335,6 +343,33 @@ type createdFilterWire struct {
 	Instant string `json:"instant,omitempty"`
 }
 
+type fundedFilterWire struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value,omitempty"`
+}
+
+func encodeFundedFilter(filter task.FundedFilter) fundedFilterWire {
+	if typed, matched := filter.(task.FundedEquals); matched {
+		return fundedFilterWire{Kind: "equals", Value: typed.Value.String()}
+	}
+	return fundedFilterWire{Kind: "unfiltered"}
+}
+
+func decodeFundedFilter(wire fundedFilterWire) (task.FundedFilter, error) {
+	switch wire.Kind {
+	case "unfiltered", "":
+		return task.AnyFundedFilter{}, nil
+	case "equals":
+		parsed, matched := task.ParseFundedState(wire.Value).(task.FundedStateParsed)
+		if !matched {
+			return nil, fmt.Errorf("invalid funded state %q", wire.Value)
+		}
+		return task.FundedEquals{Value: parsed.Value}, nil
+	default:
+		return nil, fmt.Errorf("unknown funded filter kind %q", wire.Kind)
+	}
+}
+
 func encodeListFilters(filters task.ListFilters) listFiltersWire {
 	return listFiltersWire{
 		State:         encodeStateFilter(filters.State),
@@ -342,6 +377,7 @@ func encodeListFilters(filters task.ListFilters) listFiltersWire {
 		Search:        encodeSearchFilter(filters.Search),
 		Type:          encodeTypeFilter(filters.Type),
 		Created:       encodeCreatedFilter(filters.Created),
+		Funded:        encodeFundedFilter(filters.Funded),
 		Sort:          encodeSortOrder(filters.Sort),
 	}
 }
@@ -367,11 +403,15 @@ func decodeListFilters(wire listFiltersWire) (task.ListFilters, error) {
 	if err != nil {
 		return task.ListFilters{}, err
 	}
+	fundedFilter, err := decodeFundedFilter(wire.Funded)
+	if err != nil {
+		return task.ListFilters{}, err
+	}
 	sort, err := decodeSortOrder(wire.Sort)
 	if err != nil {
 		return task.ListFilters{}, err
 	}
-	return task.ListFilters{State: stateFilter, Participation: participationFilter, Search: searchFilter, Type: typeFilter, Created: createdFilter, Sort: sort}, nil
+	return task.ListFilters{State: stateFilter, Participation: participationFilter, Search: searchFilter, Type: typeFilter, Created: createdFilter, Funded: fundedFilter, Sort: sort}, nil
 }
 
 func encodeStateFilter(filter task.StateFilter) stateFilterWire {

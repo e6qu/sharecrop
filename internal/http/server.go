@@ -138,7 +138,7 @@ type SubmissionService interface {
 
 type LedgerService interface {
 	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
-	FundTaskFromOrganization(context.Context, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
+	FundTaskFromOrganization(context.Context, core.UserID, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
 	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
 	ReviewAcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult
 	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult
@@ -295,7 +295,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		agentService:         agentService,
 		orgCredentialService: orgCredentialService,
 		assetService:         assetService,
-		mcpServer:            mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: runtime.NotificationService, authService: authService, platformAdmins: runtime.PlatformAdmins, moderationTriage: runtime.ModerationTriage, privacyService: runtime.PrivacyService, auditService: runtime.AuditService, webhookService: webhook.NewService(runtime.WebhookStore)}),
+		mcpServer:            mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: runtime.NotificationService, authService: authService, platformAdmins: runtime.PlatformAdmins, moderationTriage: runtime.ModerationTriage, privacyService: runtime.PrivacyService, auditService: runtime.AuditService, webhookService: webhook.NewService(runtime.WebhookStore), eventStore: runtime.EventStore}),
 		mcpSessions:          runtime.MCPSessions,
 		// The refresh-token cookie is Secure by default; local plain-HTTP dev can
 		// opt out explicitly with SHARECROP_INSECURE_COOKIES=true.
@@ -463,8 +463,8 @@ func withRequestBodyLimit(next http.Handler) http.Handler {
 
 // NewMCPServer builds an MCP server backed by the given domain services so the
 // stdio transport can reuse the same tool surface as the HTTP endpoint.
-func NewMCPServer(taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, organizationService OrganizationService, orgCredentialService OrgCredentialService, assetService AssetService, notificationService NotificationService, authService AuthService, platformAdmins PlatformAdminService, moderationTriage ModerationTriageService, privacyService PrivacyService, auditService AuditService, webhookService webhook.Service) mcp.Server {
-	return mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: notificationService, authService: authService, platformAdmins: platformAdmins, moderationTriage: moderationTriage, privacyService: privacyService, auditService: auditService, webhookService: webhookService})
+func NewMCPServer(taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, organizationService OrganizationService, orgCredentialService OrgCredentialService, assetService AssetService, notificationService NotificationService, authService AuthService, platformAdmins PlatformAdminService, moderationTriage ModerationTriageService, privacyService PrivacyService, auditService AuditService, webhookService webhook.Service, eventStore event.Store) mcp.Server {
+	return mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: notificationService, authService: authService, platformAdmins: platformAdmins, moderationTriage: moderationTriage, privacyService: privacyService, auditService: auditService, webhookService: webhookService, eventStore: eventStore})
 }
 
 func health(w http.ResponseWriter, r *http.Request) {

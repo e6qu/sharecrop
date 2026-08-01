@@ -9,6 +9,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/submission/submissiontest"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -53,6 +54,7 @@ func TestSubmissionBridgeDualRun(t *testing.T) {
 		SubmitterID:    submitter,
 		ResponseSource: newResponseSource(t, `{"answer":"42"}`),
 		Attachments:    []attachment.Attachment{newAttachment(t)},
+		Draft:          testEventDraft(t, event.KindSubmissionCreated, submitter),
 	}
 	sensitiveFields := []submission.SensitiveField{{
 		Path:      "/answer",
@@ -116,7 +118,7 @@ func TestSubmissionBridgeDualRun(t *testing.T) {
 			AuthorID:     submitter,
 			Body:         newCommentBody(t, "please clarify step 2"),
 		}
-		if _, matched := bridgeStore.CreateSubmissionComment(ctx, comment).(submission.CreateSubmissionCommentStoreAccepted); !matched {
+		if _, matched := bridgeStore.CreateSubmissionComment(ctx, comment, testEventDraft(t, event.KindSubmissionCommented, submitter)).(submission.CreateSubmissionCommentStoreAccepted); !matched {
 			t.Fatalf("bridge CreateSubmissionComment did not accept")
 		}
 		viaBridge := requireCommentsListed(t, bridgeStore.ListSubmissionComments(ctx, submissionID, core.DefaultPage()))

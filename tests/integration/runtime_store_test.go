@@ -24,7 +24,7 @@ func TestNotificationStorePersistsInboxLifecycle(t *testing.T) {
 	taskID := newTaskID(t)
 
 	service := notification.NewService(db.NewNotificationStore(pool))
-	result := service.Notify(context.Background(), recipient, actor, notification.KindSubmissionCreated, notification.Subject{Kind: "submission", ID: submissionID.String()}, notification.Metadata{JSON: `{"task_id":"` + taskID.String() + `"}`})
+	result := service.Notify(context.Background(), recipient, actor, notification.KindSubmissionCreated, notification.Subject{Kind: "submission", ID: submissionID.String()}, notification.Metadata{JSON: `{"task_id":"` + taskID.String() + `"}`}, notification.NoSourceEvent{})
 	created, matched := result.(notification.NotificationCreated)
 	if !matched {
 		t.Fatalf("notify rejected: %T", result)
@@ -51,7 +51,7 @@ func TestNotificationStorePersistsInboxLifecycle(t *testing.T) {
 		t.Fatalf("expected read state, got %s", read.Value.State.String())
 	}
 
-	selfResult := service.Notify(context.Background(), recipient, recipient, notification.KindSubmissionAccepted, notification.Subject{Kind: "submission", ID: submissionID.String()}, notification.EmptyMetadata())
+	selfResult := service.Notify(context.Background(), recipient, recipient, notification.KindSubmissionAccepted, notification.Subject{Kind: "submission", ID: submissionID.String()}, notification.EmptyMetadata(), notification.NoSourceEvent{})
 	if _, skipped := selfResult.(notification.NotificationSkipped); !skipped {
 		t.Fatalf("self notification should be skipped, got %T", selfResult)
 	}

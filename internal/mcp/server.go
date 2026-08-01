@@ -10,6 +10,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/org"
@@ -101,6 +102,12 @@ type Services interface {
 	CountUnreadNotifications(context.Context, core.UserID) notification.CountResult
 	MarkNotificationRead(context.Context, core.UserID, core.NotificationID) notification.MarkReadResult
 
+	// ListEvents serves the caller's cursor event feed through the same
+	// store path the REST feed uses: a user subject reads its own
+	// recipient-scoped feed, an org subject reads the organization's
+	// subject events.
+	ListEvents(context.Context, auth.Subject, event.CursorFilter, core.Page) event.ListStoreResult
+
 	GetCreditBalance(context.Context, core.UserID) ledger.BalanceResult
 	ListLedger(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
 	GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult
@@ -174,7 +181,9 @@ Requester loop: sharecrop.create_task (visibility_kind is required; "public" tas
 A task's response_schema_json uses the Sharecrop schema dialect, NOT JSON Schema. Shapes: {"kind":"freeform"} or {"kind":"object","fields":[{"name":"...","presence":"required","schema":{"kind":"string"}}]}.
 A schema-invalid submission is stored with state "invalid" and its validation_errors; the reservation stays active, so fix the errors and resubmit immediately.
 Instead of polling list_tasks, sharecrop.create_webhook_subscription with audience "marketplace" pushes task_opened events for public open tasks (optionally filtered by task type or minimum credit reward).
-List tools return next_offset: 0 means the last page; otherwise pass it back as offset to continue.
+Without webhook infrastructure, poll sharecrop.list_events: it returns the credential's event feed (review outcomes, reservations, payouts) as cursor rows - pass next_cursor back as after to read only what is new.
+If a review rejected your submission wrongly, file a structured dispute: sharecrop.create_moderation_report with subject_kind "submission", the submission id, and reason "dispute".
+List tools return next_offset (0 means the last page; otherwise pass it back as offset to continue) and total (rows matching the filter, ignoring paging).
 Failed tool calls return isError with one text item of compact JSON {"code":"...","message":"..."}.`
 
 func (server Server) handleInitialize(request Request) Response {
@@ -657,6 +666,8 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 			return failure
 		}
 		return server.callGrantCredits(ctx, userActor, arguments)
+	case toolListEvents:
+		return server.callListEvents(ctx, subject, arguments)
 	case toolListNotifications:
 		userActor, failure, ok := requireUserSubjectForTool(subject)
 		if !ok {

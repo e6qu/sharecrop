@@ -74,6 +74,8 @@ type webhookDeliveryResponse struct {
 type webhookDeliveriesResponse struct {
 	Deliveries []webhookDeliveryResponse `json:"deliveries"`
 	NextOffset int                       `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 func (webhookSubscriptionResponse) writableResponse() {}
@@ -376,7 +378,7 @@ func (server Server) listWebhookDeliveries(w http.ResponseWriter, r *http.Reques
 	}
 
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
-	response := webhookDeliveriesResponse{Deliveries: make([]webhookDeliveryResponse, 0, visible), NextOffset: nextOffset}
+	response := webhookDeliveriesResponse{Deliveries: make([]webhookDeliveryResponse, 0, visible), NextOffset: nextOffset, Total: listed.Total}
 	for index := range listed.Values[:visible] {
 		response.Deliveries = append(response.Deliveries, webhookDeliveryToResponse(listed.Values[index]))
 	}

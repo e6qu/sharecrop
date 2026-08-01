@@ -19,7 +19,7 @@ type Store interface {
 	FindSubmission(context.Context, core.SubmissionID) FindSubmissionStoreResult
 	ListForTask(context.Context, core.TaskID, core.Page) ListSubmissionsStoreResult
 	ListForSubmitter(context.Context, core.UserID, core.Page) ListSubmissionsStoreResult
-	CreateSubmissionComment(context.Context, SubmissionComment) CreateSubmissionCommentStoreResult
+	CreateSubmissionComment(context.Context, SubmissionComment, event.Draft) CreateSubmissionCommentStoreResult
 	ListSubmissionComments(context.Context, core.SubmissionID, core.Page) ListSubmissionCommentsStoreResult
 }
 
@@ -43,20 +43,20 @@ func NewService(store Store, taskStore TaskFinder, organizationPermissions Organ
 	return Service{store: store, taskStore: taskStore, organizationPermissions: organizationPermissions, recorder: recorder}
 }
 
-// emitSubmissionEvent emits one task+submission-subject event after a
-// committed mutation. Emission is post-commit best-effort: a rejected
-// emission never fails the operation that already committed.
-func (service Service) emitSubmissionEvent(ctx context.Context, kind event.Kind, actor core.UserID, taskID core.TaskID, submissionID core.SubmissionID, recipients event.Recipients) {
+// submissionEventDraft builds the draft of one task+submission-subject event
+// a store mutation records inside its transaction; the service dispatches it
+// after commit.
+func submissionEventDraft(kind event.Kind, actor core.UserID, taskID core.TaskID, submissionID core.SubmissionID, recipients event.Recipients) (event.Draft, *core.DomainError) {
 	subject := event.NoSubjectRefs()
 	subject.Task = event.TaskSubject{ID: taskID}
 	subject.Submission = event.SubmissionSubject{ID: submissionID}
-	_ = service.recorder.Emit(ctx, event.EmitCommand{
-		Kind:       kind,
-		Actor:      event.ActorUser{ID: actor},
-		Subject:    subject,
-		Metadata:   event.TaskMetadata(taskID),
-		Recipients: recipients,
-	})
+	draftResult := event.NewDraft(kind, event.ActorUser{ID: actor}, subject, event.TaskMetadata(taskID), recipients)
+	created, matched := draftResult.(event.DraftCreated)
+	if !matched {
+		reason := draftResult.(event.DraftRejected).Reason
+		return event.Draft{}, &reason
+	}
+	return created.Value, nil
 }
 
 type SubmitCommand struct {
@@ -64,6 +64,9 @@ type SubmitCommand struct {
 	SubmitterID    core.UserID
 	ResponseSource ResponseSource
 	Attachments    []attachment.Attachment
+	// Draft is the submission_created event recorded inside the create
+	// transaction. The service fills it after generating the submission id.
+	Draft event.Draft
 }
 
 type SubmitResult interface {
@@ -140,6 +143,13 @@ func (service Service) Submit(ctx context.Context, command SubmitCommand) Submit
 		return SubmitRejected{Reason: rejected.Reason}
 	}
 
+	draft, draftProblem := submissionEventDraft(event.KindSubmissionCreated, command.SubmitterID, command.TaskID, submissionIDCreated.Value,
+		event.NewRecipients(taskFound.Value.CreatedBy, command.SubmitterID))
+	if draftProblem != nil {
+		return SubmitRejected{Reason: *draftProblem}
+	}
+	command.Draft = draft
+
 	storeResult := service.store.CreateSubmission(ctx, submissionIDCreated.Value, receiptIDCreated.Value, receiptTokenCreated.Value.Hash(), command, state, outcome, sensitiveFields)
 	created, createdMatched := storeResult.(CreateSubmissionStoreAccepted)
 	if !createdMatched {
@@ -147,8 +157,7 @@ func (service Service) Submit(ctx context.Context, command SubmitCommand) Submit
 		return SubmitRejected{Reason: rejected.Reason}
 	}
 
-	service.emitSubmissionEvent(ctx, event.KindSubmissionCreated, command.SubmitterID, command.TaskID, created.Value.ID,
-		event.NewRecipients(taskFound.Value.CreatedBy, command.SubmitterID))
+	service.recorder.Dispatch(ctx, draft)
 	return SubmissionCreated{Value: created.Value, ReceiptToken: receiptTokenCreated.Value}
 }
 
@@ -192,6 +201,8 @@ type ListResult interface {
 
 type SubmissionsListed struct {
 	Values []Submission
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
 }
 
 type ListRejected struct {
@@ -243,7 +254,7 @@ func (service Service) ListForTask(ctx context.Context, actor auth.Subject, task
 		rejected := result.(ListSubmissionsStoreRejected)
 		return ListRejected{Reason: rejected.Reason}
 	}
-	return SubmissionsListed{Values: listed.Values}
+	return SubmissionsListed{Values: listed.Values, Total: listed.Total}
 }
 
 // ListForSubmitter returns a submitter's own submissions. Only the submitter may
@@ -259,7 +270,7 @@ func (service Service) ListForSubmitter(ctx context.Context, actor auth.UserSubj
 		rejected := result.(ListSubmissionsStoreRejected)
 		return ListRejected{Reason: rejected.Reason}
 	}
-	return SubmissionsListed{Values: listed.Values}
+	return SubmissionsListed{Values: listed.Values, Total: listed.Total}
 }
 
 type viewPermissionResult interface {

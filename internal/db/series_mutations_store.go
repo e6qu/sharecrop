@@ -7,6 +7,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
@@ -127,15 +128,27 @@ func (store TaskStore) seriesMutationDetail(ctx context.Context, seriesID core.T
 	return task.SeriesMutationStoreAccepted{Value: accepted.Value}
 }
 
-func (store TaskStore) CreateSeriesComment(ctx context.Context, comment task.SeriesComment) task.CreateSeriesCommentStoreResult {
+func (store TaskStore) CreateSeriesComment(ctx context.Context, comment task.SeriesComment, draft event.Draft) task.CreateSeriesCommentStoreResult {
+	tx, txErr := store.db.Begin(ctx)
+	if txErr != nil {
+		return task.CreateSeriesCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create series comment transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	var createdAt time.Time
-	err := store.db.QueryRow(ctx, `
+	err := tx.QueryRow(ctx, `
 		insert into series_comments (id, series_id, author_user_id, body)
 		values ($1, $2, $3, $4)
 		returning created_at
 	`, comment.ID.String(), comment.SeriesID.String(), comment.AuthorID.String(), comment.Body.String()).Scan(&createdAt)
 	if err != nil {
 		return task.CreateSeriesCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "create series comment failed")}
+	}
+	if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+		return task.CreateSeriesCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record series comment event failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return task.CreateSeriesCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit create series comment transaction failed")}
 	}
 	comment.CreatedAt = createdAt
 	authorName, nameReason := fetchUserDisplayName(ctx, store.db, comment.AuthorID)

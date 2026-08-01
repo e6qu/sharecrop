@@ -159,19 +159,22 @@ creditGrantResponseEncoder creditGrantResponse =
 type alias LedgerResponse =
     { entries : List LedgerEntryResponse
     , nextOffset : Int
+    , total : Int
     }
 
 ledgerResponseDecoder : Decoder LedgerResponse
 ledgerResponseDecoder =
-    Decode.map2 LedgerResponse
+    Decode.map3 LedgerResponse
         (Decode.field "entries" (Decode.list ledgerEntryResponseDecoder))
         (Decode.field "next_offset" Decode.int)
+        (Decode.field "total" Decode.int)
 
 ledgerResponseEncoder : LedgerResponse -> Encode.Value
 ledgerResponseEncoder ledgerResponse =
     Encode.object
         [ ( "entries", Encode.list ledgerEntryResponseEncoder ledgerResponse.entries )
         , ( "next_offset", Encode.int ledgerResponse.nextOffset )
+        , ( "total", Encode.int ledgerResponse.total )
         ]
 
 type alias TaskFundResponse =

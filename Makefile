@@ -46,7 +46,7 @@ check-wasi-bridge:
 	git diff --exit-code -- 'internal/wasibridge/*bridge/bridge_gen.go'
 
 check-format:
-	test -z "$$(gofmt -l cmd internal tests web | grep -E '\\.go$$')"
+	test -z "$$(gofmt -l cmd internal tests web | grep -E '\.go$$')"
 	deno fmt --check --ignore=tests/terraform/shared-vpc-link-wrapper/.terraform deno.json tools tests
 
 check-policy:

@@ -284,7 +284,7 @@ func TestResultRoundTrips(t *testing.T) {
 		t.Errorf("created task mismatch: %s", diff)
 	}
 
-	listed, err := decodeListTasksResult(encodeListTasksResult(task.ListTasksStoreAccepted{Values: []task.ListItem{{Task: value, ActiveAssignee: task.NoActiveAssignee{}, CreatorDisplayName: displayNameForTest(t)}}}))
+	listed, err := decodeListTasksResult(encodeListTasksResult(task.ListTasksStoreAccepted{Values: []task.ListItem{{Task: value, ActiveAssignee: task.NoActiveAssignee{}, CreatorDisplayName: displayNameForTest(t), HolderDisplayName: task.NoHolderName{}, Funded: task.FundedStateNoCreditReward}}}))
 	if err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestResultRoundTrips(t *testing.T) {
 	if !matched || len(items.Values) != 1 {
 		t.Fatalf("list result = %T, want one item", listed)
 	}
-	if diff := tasktest.ListItemDiff(items.Values[0], task.ListItem{Task: value, ActiveAssignee: task.NoActiveAssignee{}, CreatorDisplayName: displayNameForTest(t)}); diff != "" {
+	if diff := tasktest.ListItemDiff(items.Values[0], task.ListItem{Task: value, ActiveAssignee: task.NoActiveAssignee{}, CreatorDisplayName: displayNameForTest(t), HolderDisplayName: task.NoHolderName{}, Funded: task.FundedStateNoCreditReward}); diff != "" {
 		t.Errorf("list item mismatch: %s", diff)
 	}
 }

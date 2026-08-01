@@ -14,8 +14,10 @@ import (
 
 // Method names namespace each event.Store method on the wire.
 const (
-	methodAppend           = "event.Append"
-	methodListForRecipient = "event.ListForRecipient"
+	methodAppend              = "event.Append"
+	methodDispatch            = "event.Dispatch"
+	methodListForRecipient    = "event.ListForRecipient"
+	methodListForOrganization = "event.ListForOrganization"
 )
 
 type appendArgs struct {
@@ -23,10 +25,20 @@ type appendArgs struct {
 	Recipients []string  `json:"recipients"`
 }
 
+type dispatchArgs struct {
+	EventID string `json:"eventid"`
+}
+
 type listForRecipientArgs struct {
 	UserID string            `json:"userid"`
 	Filter cursorFilterWire  `json:"filter"`
 	Page   corewire.PageWire `json:"page"`
+}
+
+type listForOrganizationArgs struct {
+	OrganizationID string            `json:"organizationid"`
+	Filter         cursorFilterWire  `json:"filter"`
+	Page           corewire.PageWire `json:"page"`
 }
 
 // Dispatch services one store call against store: decode the arguments, call the
@@ -48,6 +60,16 @@ func Dispatch(ctx context.Context, store event.Store, method string, args []byte
 			return nil, err
 		}
 		return json.Marshal(encodeAppendResult(store.Append(ctx, argEvent, argRecipients)))
+	case methodDispatch:
+		var decoded dispatchArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("event bridge: decode Dispatch args: %w", err)
+		}
+		argEventID, err := corewire.DecodeDomainEventID(decoded.EventID)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeDispatchResult(store.Dispatch(ctx, argEventID)))
 	case methodListForRecipient:
 		var decoded listForRecipientArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -66,6 +88,24 @@ func Dispatch(ctx context.Context, store event.Store, method string, args []byte
 			return nil, err
 		}
 		return json.Marshal(encodeListResult(store.ListForRecipient(ctx, argUserID, argFilter, argPage)))
+	case methodListForOrganization:
+		var decoded listForOrganizationArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("event bridge: decode ListForOrganization args: %w", err)
+		}
+		argOrganizationID, err := corewire.DecodeOrganizationID(decoded.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+		argFilter, err := decodeCursorFilter(decoded.Filter)
+		if err != nil {
+			return nil, err
+		}
+		argPage, err := corewire.DecodePage(decoded.Page)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeListResult(store.ListForOrganization(ctx, argOrganizationID, argFilter, argPage)))
 	default:
 		return nil, fmt.Errorf("event bridge: unknown method %q", method)
 	}
@@ -107,12 +147,52 @@ func (g GuestStore) Append(ctx context.Context, argEvent event.Event, argRecipie
 	return result
 }
 
+func (g GuestStore) Dispatch(ctx context.Context, argEventID core.DomainEventID) event.DispatchStoreResult {
+	args, err := json.Marshal(dispatchArgs{EventID: corewire.EncodeDomainEventID(argEventID)})
+	if err != nil {
+		return event.DispatchStoreRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodDispatch, args)
+	if err != nil {
+		return event.DispatchStoreRejected{Reason: guestError(err)}
+	}
+	var wire dispatchResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return event.DispatchStoreRejected{Reason: guestError(err)}
+	}
+	result, err := decodeDispatchResult(wire)
+	if err != nil {
+		return event.DispatchStoreRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
 func (g GuestStore) ListForRecipient(ctx context.Context, argUserID core.UserID, argFilter event.CursorFilter, argPage core.Page) event.ListStoreResult {
 	args, err := json.Marshal(listForRecipientArgs{UserID: corewire.EncodeUserID(argUserID), Filter: encodeCursorFilter(argFilter), Page: corewire.EncodePage(argPage)})
 	if err != nil {
 		return event.ListStoreRejected{Reason: guestError(err)}
 	}
 	raw, err := g.invoke(methodListForRecipient, args)
+	if err != nil {
+		return event.ListStoreRejected{Reason: guestError(err)}
+	}
+	var wire listResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return event.ListStoreRejected{Reason: guestError(err)}
+	}
+	result, err := decodeListResult(wire)
+	if err != nil {
+		return event.ListStoreRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) ListForOrganization(ctx context.Context, argOrganizationID core.OrganizationID, argFilter event.CursorFilter, argPage core.Page) event.ListStoreResult {
+	args, err := json.Marshal(listForOrganizationArgs{OrganizationID: corewire.EncodeOrganizationID(argOrganizationID), Filter: encodeCursorFilter(argFilter), Page: corewire.EncodePage(argPage)})
+	if err != nil {
+		return event.ListStoreRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodListForOrganization, args)
 	if err != nil {
 		return event.ListStoreRejected{Reason: guestError(err)}
 	}

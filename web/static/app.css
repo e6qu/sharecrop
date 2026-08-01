@@ -30,9 +30,9 @@
     --color-farm-surface-raised: #fbf6e3;
     --color-farm-field: #fffdf2;
     --color-farm-ink: #2a2118;
-    --color-farm-muted: #6b5d44;
+    --color-farm-muted: #565e46;
     --color-farm-line: #2a2118;
-    --color-farm-line-soft: #d8cba6;
+    --color-farm-line-soft: #cbcfa6;
     --color-farm-cream: #fff7e0;
     --color-farm-accent: #3a7d1e;
     --color-farm-accent-strong: #245a10;
@@ -874,7 +874,7 @@
 }
 @layer base {
   ::placeholder {
-    color: #6b5d44;
+    color: #565e46;
     opacity: 1;
   }
   :focus-visible {

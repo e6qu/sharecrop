@@ -11,6 +11,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/eventbridge"
 )
 
 // ---- collectible value types (string wrappers) ----
@@ -140,9 +141,10 @@ func decodeCollectibles(wires []collectibleWire) ([]assets.Collectible, error) {
 // ---- command structs ----
 
 type awardCommandWire struct {
-	OrganizationID  string `json:"organization_id"`
-	CollectibleID   string `json:"collectible_id"`
-	RecipientUserID string `json:"recipient_user_id"`
+	OrganizationID  string                `json:"organization_id"`
+	CollectibleID   string                `json:"collectible_id"`
+	RecipientUserID string                `json:"recipient_user_id"`
+	Draft           eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeAwardCommand(command assets.AwardOrganizationCollectibleStoreCommand) awardCommandWire {
@@ -150,6 +152,7 @@ func encodeAwardCommand(command assets.AwardOrganizationCollectibleStoreCommand)
 		OrganizationID:  corewire.EncodeOrganizationID(command.OrganizationID),
 		CollectibleID:   corewire.EncodeCollectibleID(command.CollectibleID),
 		RecipientUserID: corewire.EncodeUserID(command.RecipientUserID),
+		Draft:           eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -166,17 +169,23 @@ func decodeAwardCommand(wire awardCommandWire) (assets.AwardOrganizationCollecti
 	if err != nil {
 		return assets.AwardOrganizationCollectibleStoreCommand{}, err
 	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return assets.AwardOrganizationCollectibleStoreCommand{}, err
+	}
 	return assets.AwardOrganizationCollectibleStoreCommand{
 		OrganizationID:  organizationID,
 		CollectibleID:   collectibleID,
 		RecipientUserID: recipientUserID,
+		Draft:           draft,
 	}, nil
 }
 
 type giftCommandWire struct {
-	FromUserID    string `json:"from_user_id"`
-	ToUserID      string `json:"to_user_id"`
-	CollectibleID string `json:"collectible_id"`
+	FromUserID    string                `json:"from_user_id"`
+	ToUserID      string                `json:"to_user_id"`
+	CollectibleID string                `json:"collectible_id"`
+	Draft         eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeGiftCommand(command assets.GiftStoreCommand) giftCommandWire {
@@ -184,6 +193,7 @@ func encodeGiftCommand(command assets.GiftStoreCommand) giftCommandWire {
 		FromUserID:    corewire.EncodeUserID(command.FromUserID),
 		ToUserID:      corewire.EncodeUserID(command.ToUserID),
 		CollectibleID: corewire.EncodeCollectibleID(command.CollectibleID),
+		Draft:         eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -200,7 +210,11 @@ func decodeGiftCommand(wire giftCommandWire) (assets.GiftStoreCommand, error) {
 	if err != nil {
 		return assets.GiftStoreCommand{}, err
 	}
-	return assets.GiftStoreCommand{FromUserID: fromUserID, ToUserID: toUserID, CollectibleID: collectibleID}, nil
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return assets.GiftStoreCommand{}, err
+	}
+	return assets.GiftStoreCommand{FromUserID: fromUserID, ToUserID: toUserID, CollectibleID: collectibleID, Draft: draft}, nil
 }
 
 type fundCommandWire struct {
@@ -352,9 +366,12 @@ func decodeRefundRewardResult(wire collectiblesResultWire) (assets.RefundRewardR
 // collectibleResultWire backs the fund and gift results, which each carry a
 // single collectible on success.
 type collectibleResultWire struct {
-	Variant     string                  `json:"variant"`
-	Collectible *collectibleWire        `json:"collectible,omitempty"`
-	Error       *domainwire.DomainError `json:"error,omitempty"`
+	Variant     string           `json:"variant"`
+	Collectible *collectibleWire `json:"collectible,omitempty"`
+	// RecordedEvents carries the drafts a gift/award recorded in its
+	// transaction; the fund result leaves it empty.
+	RecordedEvents []eventbridge.DraftWire `json:"recorded_events,omitempty"`
+	Error          *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeFundRewardResult(result assets.FundRewardResult) collectibleResultWire {
@@ -389,7 +406,7 @@ func encodeGiftResult(result assets.GiftResult) collectibleResultWire {
 	switch typed := result.(type) {
 	case assets.CollectibleGifted:
 		collectible := encodeCollectible(typed.Value)
-		return collectibleResultWire{Variant: "gifted", Collectible: &collectible}
+		return collectibleResultWire{Variant: "gifted", Collectible: &collectible, RecordedEvents: eventbridge.EncodeDrafts(typed.RecordedEvents)}
 	case assets.GiftRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return collectibleResultWire{Variant: "rejected", Error: &reason}
@@ -405,7 +422,11 @@ func decodeGiftResult(wire collectibleResultWire) (assets.GiftResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		return assets.CollectibleGifted{Value: collectible}, nil
+		recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+		if err != nil {
+			return nil, err
+		}
+		return assets.CollectibleGifted{Value: collectible, RecordedEvents: recorded}, nil
 	case "rejected":
 		return assets.GiftRejected{Reason: decodeReason(wire.Error)}, nil
 	default:

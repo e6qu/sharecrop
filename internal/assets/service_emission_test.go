@@ -29,7 +29,8 @@ func newCollectibleID(t *testing.T) core.CollectibleID {
 
 func TestGiftCollectibleEmitsCollectibleAwarded(t *testing.T) {
 	events := eventtest.NewCapturingStore()
-	service := NewService(&memoryStore{}, eventtest.RecorderOver(events))
+	store := &memoryStore{events: events}
+	service := NewService(store, eventtest.RecorderOver(events))
 	from := newUserID(t)
 	to := newUserID(t)
 	collectible := newCollectibleID(t)
@@ -53,7 +54,8 @@ func TestGiftCollectibleEmitsCollectibleAwarded(t *testing.T) {
 
 func TestAwardOrganizationCollectibleEmitsCollectibleAwarded(t *testing.T) {
 	events := eventtest.NewCapturingStore()
-	service := NewService(&memoryStore{}, eventtest.RecorderOver(events))
+	store := &memoryStore{events: events}
+	service := NewService(store, eventtest.RecorderOver(events))
 	organizationID := newOrganizationID(t)
 	recipient := newUserID(t)
 	collectible := newCollectibleID(t)

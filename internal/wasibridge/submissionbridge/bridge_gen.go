@@ -8,8 +8,10 @@ import (
 	"fmt"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/eventbridge"
 )
 
 // Method names namespace each submission.Store method on the wire.
@@ -53,6 +55,7 @@ type listForSubmitterArgs struct {
 
 type createSubmissionCommentArgs struct {
 	Comment submissionCommentWire `json:"comment"`
+	Draft   eventbridge.DraftWire `json:"draft"`
 }
 
 type listSubmissionCommentsArgs struct {
@@ -156,7 +159,11 @@ func Dispatch(ctx context.Context, store submission.Store, method string, args [
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(encodeCreateCommentResult(store.CreateSubmissionComment(ctx, argComment)))
+		argDraft, err := eventbridge.DecodeDraft(decoded.Draft)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeCreateCommentResult(store.CreateSubmissionComment(ctx, argComment, argDraft)))
 	case methodListSubmissionComments:
 		var decoded listSubmissionCommentsArgs
 		if err := json.Unmarshal(args, &decoded); err != nil {
@@ -292,8 +299,8 @@ func (g GuestStore) ListForSubmitter(ctx context.Context, argUserID core.UserID,
 	return result
 }
 
-func (g GuestStore) CreateSubmissionComment(ctx context.Context, argComment submission.SubmissionComment) submission.CreateSubmissionCommentStoreResult {
-	args, err := json.Marshal(createSubmissionCommentArgs{Comment: encodeSubmissionComment(argComment)})
+func (g GuestStore) CreateSubmissionComment(ctx context.Context, argComment submission.SubmissionComment, argDraft event.Draft) submission.CreateSubmissionCommentStoreResult {
+	args, err := json.Marshal(createSubmissionCommentArgs{Comment: encodeSubmissionComment(argComment), Draft: eventbridge.EncodeDraft(argDraft)})
 	if err != nil {
 		return submission.CreateSubmissionCommentStoreRejected{Reason: guestError(err)}
 	}

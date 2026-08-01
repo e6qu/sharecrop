@@ -6,6 +6,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/event/eventtest"
 	"github.com/e6qu/sharecrop/internal/org"
 )
@@ -62,7 +63,7 @@ func TestServiceReserveCreatesUserReservation(t *testing.T) {
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 	created := service.Create(context.Background(), command).(TaskCreated)
-	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
 	result := service.Reserve(context.Background(), worker, created.Value.ID)
 	reserved, matched := result.(ReservationCreated)
@@ -86,7 +87,7 @@ func TestServiceReserveIssuesTaskScopedWorkerCredentialWhenImmediatelyActive(t *
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 	created := service.Create(context.Background(), command).(TaskCreated)
-	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
 	result := service.Reserve(context.Background(), worker, created.Value.ID)
 	reserved, matched := result.(ReservationCreated)
@@ -112,7 +113,7 @@ func TestServiceApproveReservationIssuesTaskScopedWorkerCredential(t *testing.T)
 	worker := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 	created := service.Create(context.Background(), command).(TaskCreated)
-	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 	reserved := service.Reserve(context.Background(), worker, created.Value.ID).(ReservationCreated)
 
 	// Reset the issuer so we can attribute this credential specifically to
@@ -141,7 +142,7 @@ func TestServiceReserveRejectsRequester(t *testing.T) {
 	requester := testUserSubject(t)
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 	created := service.Create(context.Background(), command).(TaskCreated)
-	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
 	result := service.Reserve(context.Background(), requester, created.Value.ID)
 	if _, matched := result.(ReservationRejected); !matched {
@@ -161,7 +162,7 @@ func TestServiceReserveCreatesOrganizationTeamReservation(t *testing.T) {
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 	command.AssigneeScope = AssigneeScopeOrganizationTeam
 	created := service.Create(context.Background(), command).(TaskCreated)
-	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
 	result := service.ReserveForOrganizationTeam(context.Background(), worker, created.Value.ID, organizationID, teamID)
 	reserved, matched := result.(ReservationCreated)
@@ -185,7 +186,7 @@ func TestServiceReserveRejectsUserReservationForOrganizationTeamAssigneeScope(t 
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 	command.AssigneeScope = AssigneeScopeOrganizationTeam
 	created := service.Create(context.Background(), command).(TaskCreated)
-	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
 	result := service.Reserve(context.Background(), worker, created.Value.ID)
 	if _, matched := result.(ReservationRejected); !matched {
@@ -201,7 +202,7 @@ func TestServiceReserveRejectsOrganizationTeamNonMember(t *testing.T) {
 	command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 	command.AssigneeScope = AssigneeScopeOrganizationTeam
 	created := service.Create(context.Background(), command).(TaskCreated)
-	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
 	result := service.ReserveForOrganizationTeam(context.Background(), worker, created.Value.ID, testOrganizationID(t), testTeamID(t))
 	if _, matched := result.(ReservationRejected); !matched {
@@ -222,7 +223,7 @@ func TestServiceCancelReservationRecordsActorVariant(t *testing.T) {
 		worker := testUserSubject(t)
 		command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 		created := service.Create(context.Background(), command).(TaskCreated)
-		store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen)
+		store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 		reserved := service.Reserve(context.Background(), worker, created.Value.ID).(ReservationCreated)
 		return service, store, requester, worker, created.Value.ID, reserved.Value.ID
 	}
@@ -306,6 +307,17 @@ type taskMemoryStore struct {
 	tasks        map[string]Task
 	reservations map[string]Reservation
 	series       []Series
+	// events, when set, captures the drafts the store "recorded" inside its
+	// mutations, so emission tests can assert on them.
+	events *eventtest.CapturingStore
+}
+
+// record captures a recorded draft when a sink is wired; nil-safe for tests
+// that assert nothing about emissions.
+func (store *taskMemoryStore) record(draft event.Draft) {
+	if store.events != nil {
+		store.events.Record(draft)
+	}
 }
 
 func newTaskMemoryStore() *taskMemoryStore {
@@ -341,20 +353,26 @@ func (store *taskMemoryStore) FindTask(_ context.Context, taskID core.TaskID) Fi
 	return FindTaskStoreAccepted{Value: value}
 }
 
-func (store *taskMemoryStore) ChangeTaskState(_ context.Context, taskID core.TaskID, state State) ChangeTaskStateStoreResult {
+func (store *taskMemoryStore) ChangeTaskState(_ context.Context, taskID core.TaskID, state State, plan event.Plan) ChangeTaskStateStoreResult {
 	value, matched := store.tasks[taskID.String()]
 	if !matched {
 		return ChangeTaskStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "task missing")}
 	}
 	value.State = state
 	store.tasks[taskID.String()] = value
-	return ChangeTaskStateStoreAccepted{Value: value}
+	recorded := []event.Draft{}
+	if record, planMatched := plan.(event.Record); planMatched {
+		draft := record.Draft.WithRecipients(value.CreatedBy)
+		store.record(draft)
+		recorded = []event.Draft{draft}
+	}
+	return ChangeTaskStateStoreAccepted{Value: value, RecordedEvents: recorded}
 }
 
 func (store *taskMemoryStore) ListTasks(_ context.Context, _ ListScope, _ ListFilters, _ core.Page) ListTasksStoreResult {
 	values := make([]ListItem, 0, len(store.tasks))
 	for taskKey := range store.tasks {
-		values = append(values, ListItem{Task: store.tasks[taskKey], ActiveAssignee: NoActiveAssignee{}})
+		values = append(values, ListItem{Task: store.tasks[taskKey], ActiveAssignee: NoActiveAssignee{}, HolderDisplayName: NoHolderName{}, Funded: FundedStateFor(store.tasks[taskKey].Reward, false)})
 	}
 	return ListTasksStoreAccepted{Values: values}
 }
@@ -368,17 +386,24 @@ func (store *taskMemoryStore) CreateReservation(_ context.Context, reservationID
 		RequestedBy: command.RequestedBy,
 	}
 	store.reservations[reservationID.String()] = value
+	store.record(command.Draft)
 	return CreateReservationStoreAccepted{Value: value}
 }
 
-func (store *taskMemoryStore) ChangeReservationState(_ context.Context, taskID core.TaskID, reservationID core.TaskReservationID, state ReservationState) ChangeReservationStateStoreResult {
+func (store *taskMemoryStore) ChangeReservationState(_ context.Context, taskID core.TaskID, reservationID core.TaskReservationID, state ReservationState, plan event.Plan) ChangeReservationStateStoreResult {
 	value, matched := store.reservations[reservationID.String()]
 	if !matched || value.TaskID != taskID {
 		return ChangeReservationStateStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reservation missing")}
 	}
 	value.State = state
 	store.reservations[reservationID.String()] = value
-	return ChangeReservationStateStoreAccepted{Value: value}
+	recorded := []event.Draft{}
+	if record, planMatched := plan.(event.Record); planMatched {
+		draft := record.Draft.WithRecipients(value.RequestedBy)
+		store.record(draft)
+		recorded = []event.Draft{draft}
+	}
+	return ChangeReservationStateStoreAccepted{Value: value, RecordedEvents: recorded}
 }
 
 func (store *taskMemoryStore) ListReservations(_ context.Context, taskID core.TaskID, _ core.Page) ListReservationsStoreResult {
@@ -488,7 +513,8 @@ func (store *taskMemoryStore) ReorderSeries(_ context.Context, seriesID core.Tas
 	return store.seriesDetail(seriesID)
 }
 
-func (store *taskMemoryStore) CreateSeriesComment(_ context.Context, comment SeriesComment) CreateSeriesCommentStoreResult {
+func (store *taskMemoryStore) CreateSeriesComment(_ context.Context, comment SeriesComment, draft event.Draft) CreateSeriesCommentStoreResult {
+	store.record(draft)
 	return CreateSeriesCommentStoreAccepted{Value: comment}
 }
 
@@ -496,7 +522,8 @@ func (store *taskMemoryStore) ListSeriesComments(_ context.Context, _ core.TaskS
 	return ListSeriesCommentsStoreAccepted{Values: nil}
 }
 
-func (store *taskMemoryStore) CreateTaskComment(_ context.Context, comment TaskComment) CreateTaskCommentStoreResult {
+func (store *taskMemoryStore) CreateTaskComment(_ context.Context, comment TaskComment, draft event.Draft) CreateTaskCommentStoreResult {
+	store.record(draft)
 	return CreateTaskCommentStoreAccepted{Value: comment}
 }
 

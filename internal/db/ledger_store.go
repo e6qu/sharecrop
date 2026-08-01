@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -47,7 +48,7 @@ func (store LedgerStore) FundTask(ctx context.Context, command ledger.FundStoreC
 		return rejected
 	}
 
-	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient credits to fund the task")
+	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient credits to fund the task", command.Draft)
 }
 
 func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command ledger.OrganizationFundStoreCommand) ledger.FundResult {
@@ -76,7 +77,16 @@ func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command l
 		return rejected
 	}
 
-	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient organization credits to fund the task")
+	// The task owner is resolved here (only the store sees the task row in
+	// this transaction) and merged into the recipients alongside the acting
+	// user the service already named.
+	ownerID, ownerProblem := parseReviewWorker(taskRow.rawCreatedBy)
+	if ownerProblem != nil {
+		return ledger.FundRejected{Reason: *ownerProblem}
+	}
+	draft := command.Draft.WithRecipients(ownerID)
+
+	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient organization credits to fund the task", draft)
 }
 
 func (store LedgerStore) OrganizationBalance(ctx context.Context, organizationID core.OrganizationID) ledger.BalanceResult {
@@ -180,11 +190,31 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 		return ledger.AcceptRejected{Reason: *workerProblem}
 	}
 
+	// The accept closes the task, so every other submission still in
+	// 'submitted' is superseded in this same transaction, each with its own
+	// event addressed to its submitter.
+	supersededDrafts, supersedeProblem := supersedeCompetingSubmissions(ctx, tx, command.TaskID, command.SubmissionID, command.RequesterUserID)
+	if supersedeProblem != nil {
+		return ledger.AcceptRejected{Reason: *supersedeProblem}
+	}
+
+	acceptedDraft := command.Draft.WithRecipients(workerID)
+	payoutDrafts, payoutDraftProblem := ledger.ReviewEventDrafts(acceptedDraft, command.RequesterUserID, command.TaskID, outcome, tipOutcome)
+	if payoutDraftProblem != nil {
+		return ledger.AcceptRejected{Reason: *payoutDraftProblem}
+	}
+	recorded := append(append([]event.Draft{acceptedDraft}, payoutDrafts...), supersededDrafts...)
+	for _, draft := range recorded {
+		if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+			return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record accept events failed")}
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit accept submission transaction failed")}
 	}
 
-	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: outcome, Tip: tipOutcome}
+	return ledger.SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: outcome, Tip: tipOutcome, Execution: ledger.FirstExecution{}, RecordedEvents: recorded}
 }
 
 func combinePayouts(first ledger.PayoutOutcome, second ledger.PayoutOutcome) ledger.PayoutOutcome {
@@ -249,7 +279,7 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 	}
 	if submissionState == "changes_requested" {
 		if changesKey == command.IdempotencyKey.String() {
-			return ledger.ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, ReviewNote: storedNote}
+			return ledger.ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, ReviewNote: storedNote, Execution: ledger.IdempotentReplay{}, RecordedEvents: []event.Draft{}}
 		}
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "changes were already requested with a different idempotency key")}
 	}
@@ -273,11 +303,16 @@ func (store LedgerStore) RequestChanges(ctx context.Context, command ledger.Requ
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "reactivate task reservation failed")}
 	}
 
+	draft := command.Draft.WithRecipients(workerID)
+	if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record changes requested event failed")}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit request changes transaction failed")}
 	}
 
-	return ledger.ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, ReviewNote: command.ReviewNote.String()}
+	return ledger.ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, ReviewNote: command.ReviewNote.String(), Execution: ledger.FirstExecution{}, RecordedEvents: []event.Draft{draft}}
 }
 
 func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.RejectStoreCommand) ledger.RejectResult {
@@ -317,7 +352,7 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 	}
 	if submissionState == "rejected" {
 		if reviewKey == command.IdempotencyKey.String() {
-			return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
+			return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}, Execution: ledger.IdempotentReplay{}, RecordedEvents: []event.Draft{}}
 		}
 		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "submission was already rejected with a different idempotency key")}
 	}
@@ -371,11 +406,23 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 		}
 	}
 
+	rejectedDraft := command.Draft.WithRecipients(workerID)
+	payoutDrafts, payoutDraftProblem := ledger.ReviewEventDrafts(rejectedDraft, command.RequesterUserID, command.TaskID, payout.outcome, tip.outcome)
+	if payoutDraftProblem != nil {
+		return ledger.RejectRejected{Reason: *payoutDraftProblem}
+	}
+	recorded := append([]event.Draft{rejectedDraft}, payoutDrafts...)
+	for _, draft := range recorded {
+		if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+			return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record reject events failed")}
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit reject submission transaction failed")}
 	}
 
-	return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: payout.outcome, Tip: tip.outcome}
+	return ledger.SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: workerID, Payout: payout.outcome, Tip: tip.outcome, Execution: ledger.FirstExecution{}, RecordedEvents: recorded}
 }
 
 // GrantCredits writes a platform-admin manual_adjustment ledger entry
@@ -414,7 +461,8 @@ func (store LedgerStore) GrantCredits(ctx context.Context, command ledger.GrantS
 		return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "check credit grant idempotency failed")}
 	}
 	entryID := command.EntryID
-	if scanErr == nil {
+	replayed := scanErr == nil
+	if replayed {
 		if existingKind != ledger.EntryKindManualAdjustment.String() || existingAmount != command.Amount.Int64() {
 			return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "idempotency key was used for a different command")}
 		}
@@ -438,10 +486,22 @@ func (store LedgerStore) GrantCredits(ctx context.Context, command ledger.GrantS
 		return ledger.GrantRejected{Reason: *recipientsReason}
 	}
 
+	execution := ledger.Execution(ledger.FirstExecution{})
+	recorded := []event.Draft{}
+	if replayed {
+		execution = ledger.IdempotentReplay{}
+	} else {
+		draft := command.Draft.WithRecipients(recipients...)
+		if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+			return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record credit grant event failed")}
+		}
+		recorded = []event.Draft{draft}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit credit grant transaction failed")}
 	}
-	return ledger.CreditsGranted{EntryID: entryID, Amount: command.Amount, RecipientUserIDs: recipients}
+	return ledger.CreditsGranted{EntryID: entryID, Amount: command.Amount, RecipientUserIDs: recipients, Execution: execution, RecordedEvents: recorded}
 }
 
 // grantRecipients resolves who a credit grant should notify: the granted user
@@ -558,16 +618,28 @@ func (store LedgerStore) RefundTask(ctx context.Context, command ledger.RefundSt
 
 	// A refund cancels the task, so release the worker's reservation too -
 	// otherwise it would dangle in an active/submitted state on a cancelled
-	// task, exactly like the cancel path (releaseReservationsOnCancel).
+	// task, exactly like the cancel path (releaseReservationsOnCancel). The
+	// holders are read first (inside this transaction) and merged into the
+	// event draft's recipients, so the released workers learn the task is
+	// gone.
+	holders, holdersReason := lockedReservationHolders(ctx, tx, command.TaskID.String())
+	if holdersReason != nil {
+		return ledger.RefundRejected{Reason: *holdersReason}
+	}
 	if reason := releaseReservationsOnCancel(ctx, tx, command.TaskID); reason != nil {
 		return ledger.RefundRejected{Reason: *reason}
+	}
+
+	draft := command.Draft.WithRecipients(holders...)
+	if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record task refund event failed")}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return ledger.RefundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit refund task transaction failed")}
 	}
 
-	return ledger.TaskRefunded{Fund: fundValue.value}
+	return ledger.TaskRefunded{Fund: fundValue.value, Execution: ledger.FirstExecution{}, RecordedEvents: []event.Draft{draft}}
 }
 
 // lockTaskRefundable locks the task and authorizes the refund. A refund is
@@ -630,7 +702,7 @@ func replayOrRejectRefund(ctx context.Context, tx Tx, command ledger.RefundStore
 	if !fundMatched {
 		return ledger.RefundRejected{Reason: fundResult.(fundBuildRejected).reason}
 	}
-	return ledger.TaskRefunded{Fund: fundValue.value}
+	return ledger.TaskRefunded{Fund: fundValue.value, Execution: ledger.IdempotentReplay{}, RecordedEvents: []event.Draft{}}
 }
 
 func (store LedgerStore) Balance(ctx context.Context, owner core.UserID) ledger.BalanceResult {
@@ -658,6 +730,15 @@ func (store LedgerStore) TaskAllocatedCredits(ctx context.Context, taskID core.T
 }
 
 func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, page core.Page) ledger.ListEntriesResult {
+	var total int64
+	if err := store.db.QueryRow(ctx, `
+		select count(*)
+		from ledger_entries
+		join credit_accounts on credit_accounts.id = ledger_entries.account_id
+		where credit_accounts.user_id = $1
+	`, owner.String()).Scan(&total); err != nil {
+		return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "count ledger entries failed")}
+	}
 	rows, err := store.db.Query(ctx, `
 		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, ''), coalesce(ledger_entries.note, '')
 		from ledger_entries
@@ -691,10 +772,19 @@ func (store LedgerStore) ListEntries(ctx context.Context, owner core.UserID, pag
 	if err := rows.Err(); err != nil {
 		return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read ledger entries failed")}
 	}
-	return ledger.EntriesListed{Values: entries}
+	return ledger.EntriesListed{Values: entries, Total: total}
 }
 
 func (store LedgerStore) ListOrganizationEntries(ctx context.Context, organizationID core.OrganizationID, page core.Page) ledger.ListEntriesResult {
+	var total int64
+	if err := store.db.QueryRow(ctx, `
+		select count(*)
+		from ledger_entries
+		join credit_accounts on credit_accounts.id = ledger_entries.account_id
+		where credit_accounts.organization_id = $1
+	`, organizationID.String()).Scan(&total); err != nil {
+		return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "count organization ledger entries failed")}
+	}
 	rows, err := store.db.Query(ctx, `
 		select ledger_entries.id::text, ledger_entries.kind, ledger_entries.amount, coalesce(ledger_entries.task_id::text, ''), coalesce(ledger_entries.note, '')
 		from ledger_entries
@@ -728,5 +818,5 @@ func (store LedgerStore) ListOrganizationEntries(ctx context.Context, organizati
 	if err := rows.Err(); err != nil {
 		return ledger.ListEntriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read organization ledger entries failed")}
 	}
-	return ledger.EntriesListed{Values: entries}
+	return ledger.EntriesListed{Values: entries, Total: total}
 }

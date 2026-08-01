@@ -30,7 +30,8 @@ func emittedKinds(events *eventtest.CapturingStore) []string {
 
 func TestFundTaskEmitsTaskFunded(t *testing.T) {
 	events := eventtest.NewCapturingStore()
-	service := NewService(&memoryStore{}, eventtest.RecorderOver(events), noopAuditRecorder{})
+	store := &memoryStore{events: events}
+	service := NewService(store, eventtest.RecorderOver(events), noopAuditRecorder{})
 	funder := newTestUserID(t)
 
 	if _, matched := service.FundTask(context.Background(), funder, newTestTaskID(t), newTestAmount(t, 50), newTestKey(t, "fund-emit-1")).(TaskFunded); !matched {
@@ -52,6 +53,7 @@ func TestReviewAcceptEmitsAcceptedPayoutAndTip(t *testing.T) {
 		worker: worker,
 		payout: CreditPayout{WorkerUserID: worker, Amount: newTestAmount(t, 40)},
 		tip:    CreditTip{WorkerUserID: worker, Amount: newTestAmount(t, 5)},
+		events: events,
 	}
 	service := NewService(store, eventtest.RecorderOver(events), noopAuditRecorder{})
 	requester := newTestUserID(t)
@@ -84,7 +86,7 @@ func TestReviewAcceptEmitsAcceptedPayoutAndTip(t *testing.T) {
 func TestReviewAcceptWithoutRewardStillEmitsAcceptedToWorker(t *testing.T) {
 	events := eventtest.NewCapturingStore()
 	worker := newTestUserID(t)
-	service := NewService(&memoryStore{worker: worker}, eventtest.RecorderOver(events), noopAuditRecorder{})
+	service := NewService(&memoryStore{worker: worker, events: events}, eventtest.RecorderOver(events), noopAuditRecorder{})
 
 	if _, matched := service.AcceptSubmission(context.Background(), newTestUserID(t), newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "accept-emit-2")).(SubmissionAccepted); !matched {
 		t.Fatalf("accept rejected")
@@ -101,7 +103,7 @@ func TestReviewAcceptWithoutRewardStillEmitsAcceptedToWorker(t *testing.T) {
 func TestRequestChangesAndRejectEmitReviewEvents(t *testing.T) {
 	events := eventtest.NewCapturingStore()
 	worker := newTestUserID(t)
-	service := NewService(&memoryStore{worker: worker}, eventtest.RecorderOver(events), noopAuditRecorder{})
+	service := NewService(&memoryStore{worker: worker, events: events}, eventtest.RecorderOver(events), noopAuditRecorder{})
 	requester := newTestUserID(t)
 
 	if _, matched := service.RequestChanges(context.Background(), requester, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "changes-emit-1"), submissionNote(t, "needs current data")).(ChangesRequested); !matched {
@@ -124,7 +126,8 @@ func TestRequestChangesAndRejectEmitReviewEvents(t *testing.T) {
 
 func TestRefundTaskEmitsTaskCancelledWithRefundCause(t *testing.T) {
 	events := eventtest.NewCapturingStore()
-	service := NewService(&memoryStore{}, eventtest.RecorderOver(events), noopAuditRecorder{})
+	store := &memoryStore{events: events}
+	service := NewService(store, eventtest.RecorderOver(events), noopAuditRecorder{})
 	requester := newTestUserID(t)
 	taskID := newTestTaskID(t)
 
@@ -159,7 +162,7 @@ func (recorder *capturingAuditRecorder) Record(_ context.Context, actor core.Use
 func TestGrantCreditsEmitsCreditGrantedAndAudits(t *testing.T) {
 	events := eventtest.NewCapturingStore()
 	auditRecorder := &capturingAuditRecorder{}
-	service := NewService(&memoryStore{}, eventtest.RecorderOver(events), auditRecorder)
+	service := NewService(&memoryStore{events: events}, eventtest.RecorderOver(events), auditRecorder)
 	admin := newTestUserID(t)
 	grantee := newTestUserID(t)
 

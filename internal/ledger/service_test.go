@@ -6,6 +6,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/event/eventtest"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
@@ -143,14 +144,29 @@ func TestServiceRejectSubmissionDelegates(t *testing.T) {
 }
 
 type memoryStore struct {
-	fundCommand   FundStoreCommand
-	grantCommand  GrantStoreCommand
-	acceptCommand AcceptStoreCommand
-	refundCommand RefundStoreCommand
-	rejectCommand RejectStoreCommand
-	worker        core.UserID
-	payout        PayoutOutcome
-	tip           TipOutcome
+	fundCommand    FundStoreCommand
+	grantCommand   GrantStoreCommand
+	acceptCommand  AcceptStoreCommand
+	refundCommand  RefundStoreCommand
+	rejectCommand  RejectStoreCommand
+	orgFundCommand OrganizationFundStoreCommand
+	worker         core.UserID
+	payout         PayoutOutcome
+	tip            TipOutcome
+	// events, when set, captures the drafts the store "recorded" inside its
+	// mutations, so emission tests can assert on them.
+	events *eventtest.CapturingStore
+}
+
+// record captures a recorded draft when a sink is wired; nil-safe for tests
+// that assert nothing about emissions.
+func (store *memoryStore) record(drafts ...event.Draft) {
+	if store.events == nil {
+		return
+	}
+	for _, draft := range drafts {
+		store.events.Record(draft)
+	}
 }
 
 // reviewPayout returns the configured payout outcome, defaulting to NoPayout.
@@ -170,30 +186,44 @@ func (store *memoryStore) reviewTip() TipOutcome {
 
 func (store *memoryStore) FundTask(_ context.Context, command FundStoreCommand) FundResult {
 	store.fundCommand = command
-	return TaskFunded{Fund: TaskFund{TaskID: command.TaskID, CreditAmount: command.Amount}}
+	store.record(command.Draft)
+	return TaskFunded{Fund: TaskFund{TaskID: command.TaskID, CreditAmount: command.Amount}, Execution: FirstExecution{}, RecordedEvents: []event.Draft{command.Draft}}
 }
 
 func (store *memoryStore) AcceptSubmission(_ context.Context, command AcceptStoreCommand) AcceptResult {
 	store.acceptCommand = command
-	return SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, Payout: store.reviewPayout(), Tip: store.reviewTip()}
+	draft := command.Draft.WithRecipients(store.worker)
+	payoutDrafts, _ := ReviewEventDrafts(draft, command.RequesterUserID, command.TaskID, store.reviewPayout(), store.reviewTip())
+	recorded := append([]event.Draft{draft}, payoutDrafts...)
+	store.record(recorded...)
+	return SubmissionAccepted{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, Payout: store.reviewPayout(), Tip: store.reviewTip(), Execution: FirstExecution{}, RecordedEvents: recorded}
 }
 
 func (store *memoryStore) RequestChanges(_ context.Context, command RequestChangesStoreCommand) RequestChangesResult {
-	return ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, ReviewNote: command.ReviewNote.String()}
+	draft := command.Draft.WithRecipients(store.worker)
+	store.record(draft)
+	return ChangesRequested{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, ReviewNote: command.ReviewNote.String(), Execution: FirstExecution{}, RecordedEvents: []event.Draft{draft}}
 }
 
 func (store *memoryStore) RejectSubmission(_ context.Context, command RejectStoreCommand) RejectResult {
 	store.rejectCommand = command
-	return SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, Payout: store.reviewPayout(), Tip: store.reviewTip()}
+	draft := command.Draft.WithRecipients(store.worker)
+	payoutDrafts, _ := ReviewEventDrafts(draft, command.RequesterUserID, command.TaskID, store.reviewPayout(), store.reviewTip())
+	recorded := append([]event.Draft{draft}, payoutDrafts...)
+	store.record(recorded...)
+	return SubmissionRejected{TaskID: command.TaskID, SubmissionID: command.SubmissionID, WorkerUserID: store.worker, Payout: store.reviewPayout(), Tip: store.reviewTip(), Execution: FirstExecution{}, RecordedEvents: recorded}
 }
 
 func (store *memoryStore) RefundTask(_ context.Context, command RefundStoreCommand) RefundResult {
 	store.refundCommand = command
-	return TaskRefunded{Fund: TaskFund{TaskID: command.TaskID}}
+	store.record(command.Draft)
+	return TaskRefunded{Fund: TaskFund{TaskID: command.TaskID}, Execution: FirstExecution{}, RecordedEvents: []event.Draft{command.Draft}}
 }
 
 func (store *memoryStore) FundTaskFromOrganization(_ context.Context, command OrganizationFundStoreCommand) FundResult {
-	return TaskFunded{Fund: TaskFund{TaskID: command.TaskID, CreditAmount: command.Amount}}
+	store.orgFundCommand = command
+	store.record(command.Draft)
+	return TaskFunded{Fund: TaskFund{TaskID: command.TaskID, CreditAmount: command.Amount}, Execution: FirstExecution{}, RecordedEvents: []event.Draft{command.Draft}}
 }
 
 func (store *memoryStore) TaskAllocatedCredits(_ context.Context, _ core.TaskID) TaskAllocatedResult {
@@ -302,7 +332,9 @@ func (store *memoryStore) GrantCredits(_ context.Context, command GrantStoreComm
 	if target, matched := command.Target.(GrantToUser); matched {
 		recipients = append(recipients, target.ID)
 	}
-	return CreditsGranted{EntryID: command.EntryID, Amount: command.Amount, RecipientUserIDs: recipients}
+	draft := command.Draft.WithRecipients(recipients...)
+	store.record(draft)
+	return CreditsGranted{EntryID: command.EntryID, Amount: command.Amount, RecipientUserIDs: recipients, Execution: FirstExecution{}, RecordedEvents: []event.Draft{draft}}
 }
 
 func TestNewGrantNoteTrimsAndBounds(t *testing.T) {

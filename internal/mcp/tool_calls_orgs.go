@@ -467,11 +467,11 @@ func (server Server) callGetTeamWork(ctx context.Context, subject auth.UserSubje
 		return toolFailed{code: result.(task.ListRejected).Reason.Code(), message: result.(task.ListRejected).Reason.Description()}
 	}
 	visible, nextOffset := core.ProbeListWindow(len(listed.Values), page)
-	summaries := make([]taskSummary, 0, visible)
+	rows := make([]taskListRow, 0, visible)
 	for index := range listed.Values[:visible] {
-		summaries = append(summaries, taskToSummary(listed.Values[index].Task))
+		rows = append(rows, listItemToRow(listed.Values[index]))
 	}
-	return marshalPayload(tasksPayload{Tasks: summaries, NextOffset: nextOffset})
+	return marshalPayload(tasksPayload{Tasks: rows, NextOffset: nextOffset, Total: listed.Total})
 }
 
 func (server Server) callAddTeamMember(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {

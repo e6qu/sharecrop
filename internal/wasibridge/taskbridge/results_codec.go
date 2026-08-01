@@ -6,6 +6,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/eventbridge"
 )
 
 // ---- taskResultWire: shared by create/find/change-state (single Task) ----
@@ -15,8 +16,11 @@ type taskResultWire struct {
 	Task    *taskWire `json:"task,omitempty"`
 	// CreatorDisplayName carries the detail-read enrichment of
 	// task.FindTaskStoreAccepted; the other task results leave it empty.
-	CreatorDisplayName string                  `json:"creator_display_name,omitempty"`
-	Error              *domainwire.DomainError `json:"error,omitempty"`
+	CreatorDisplayName string `json:"creator_display_name,omitempty"`
+	// RecordedEvents carries the drafts a state-change mutation recorded in
+	// its transaction; the other task results leave it empty.
+	RecordedEvents []eventbridge.DraftWire `json:"recorded_events,omitempty"`
+	Error          *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func taskSuccessWire(variant string, value task.Task) taskResultWire {
@@ -84,7 +88,9 @@ func decodeFindTaskResult(wire taskResultWire) (task.FindTaskStoreResult, error)
 func encodeChangeTaskStateResult(result task.ChangeTaskStateStoreResult) taskResultWire {
 	switch typed := result.(type) {
 	case task.ChangeTaskStateStoreAccepted:
-		return taskSuccessWire("changed", typed.Value)
+		wire := taskSuccessWire("changed", typed.Value)
+		wire.RecordedEvents = eventbridge.EncodeDrafts(typed.RecordedEvents)
+		return wire
 	case task.ChangeTaskStateStoreRejected:
 		return taskResultWire{Variant: "rejected", Error: encodeReason(typed.Reason)}
 	default:
@@ -100,15 +106,23 @@ func decodeChangeTaskStateResult(wire taskResultWire) (task.ChangeTaskStateStore
 	if err != nil {
 		return nil, err
 	}
-	return task.ChangeTaskStateStoreAccepted{Value: value}, nil
+	recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+	if err != nil {
+		return nil, err
+	}
+	return task.ChangeTaskStateStoreAccepted{Value: value, RecordedEvents: recorded}, nil
 }
 
 // ---- reservationResultWire: shared by create/change-state (single Reservation) ----
 
 type reservationResultWire struct {
-	Variant     string                  `json:"variant"`
-	Reservation *reservationWire        `json:"reservation,omitempty"`
-	Error       *domainwire.DomainError `json:"error,omitempty"`
+	Variant     string           `json:"variant"`
+	Reservation *reservationWire `json:"reservation,omitempty"`
+	// RecordedEvents carries the drafts a state-change mutation recorded in
+	// its transaction; the create result leaves it empty (the caller already
+	// holds the command's draft).
+	RecordedEvents []eventbridge.DraftWire `json:"recorded_events,omitempty"`
+	Error          *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func reservationSuccessWire(variant string, value task.Reservation) reservationResultWire {
@@ -148,7 +162,9 @@ func decodeCreateReservationResult(wire reservationResultWire) (task.CreateReser
 func encodeChangeReservationStateResult(result task.ChangeReservationStateStoreResult) reservationResultWire {
 	switch typed := result.(type) {
 	case task.ChangeReservationStateStoreAccepted:
-		return reservationSuccessWire("changed", typed.Value)
+		wire := reservationSuccessWire("changed", typed.Value)
+		wire.RecordedEvents = eventbridge.EncodeDrafts(typed.RecordedEvents)
+		return wire
 	case task.ChangeReservationStateStoreRejected:
 		return reservationResultWire{Variant: "rejected", Error: encodeReason(typed.Reason)}
 	default:
@@ -164,7 +180,11 @@ func decodeChangeReservationStateResult(wire reservationResultWire) (task.Change
 	if err != nil {
 		return nil, err
 	}
-	return task.ChangeReservationStateStoreAccepted{Value: value}, nil
+	recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+	if err != nil {
+		return nil, err
+	}
+	return task.ChangeReservationStateStoreAccepted{Value: value, RecordedEvents: recorded}, nil
 }
 
 // ---- seriesDetailResultWire: shared by find-series/series-mutation ----
@@ -229,13 +249,14 @@ func decodeSeriesMutationResult(wire seriesDetailResultWire) (task.SeriesMutatio
 type listItemsResultWire struct {
 	Variant string                  `json:"variant"`
 	Items   []listItemWire          `json:"items,omitempty"`
+	Total   int64                   `json:"total,omitempty"`
 	Error   *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeListTasksResult(result task.ListTasksStoreResult) listItemsResultWire {
 	switch typed := result.(type) {
 	case task.ListTasksStoreAccepted:
-		return listItemsResultWire{Variant: "listed", Items: encodeListItems(typed.Values)}
+		return listItemsResultWire{Variant: "listed", Items: encodeListItems(typed.Values), Total: typed.Total}
 	case task.ListTasksStoreRejected:
 		return listItemsResultWire{Variant: "rejected", Error: encodeReason(typed.Reason)}
 	default:
@@ -250,7 +271,7 @@ func decodeListTasksResult(wire listItemsResultWire) (task.ListTasksStoreResult,
 		if err != nil {
 			return nil, err
 		}
-		return task.ListTasksStoreAccepted{Values: values}, nil
+		return task.ListTasksStoreAccepted{Values: values, Total: wire.Total}, nil
 	case "rejected":
 		return task.ListTasksStoreRejected{Reason: decodeReason(wire.Error)}, nil
 	default:

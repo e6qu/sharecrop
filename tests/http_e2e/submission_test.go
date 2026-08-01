@@ -149,6 +149,8 @@ type submissionCreatedHTTPResponse struct {
 
 type submissionsHTTPResponse struct {
 	Submissions []submissionHTTPResponse `json:"submissions"`
+	NextOffset  int                      `json:"next_offset"`
+	Total       int64                    `json:"total"`
 }
 
 func publicSensitiveTaskRequestJSON(userID string) string {

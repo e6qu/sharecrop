@@ -14,6 +14,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/wasibridge/attachmentwire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
+	"github.com/e6qu/sharecrop/internal/wasibridge/eventbridge"
 )
 
 // ---- opaque value types (string wrappers) ----
@@ -152,6 +153,7 @@ type submitCommandWire struct {
 	SubmitterID    string                `json:"submitter_id"`
 	ResponseSource string                `json:"response_source"`
 	Attachments    []attachmentwire.Wire `json:"attachments,omitempty"`
+	Draft          eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeSubmitCommand(command submission.SubmitCommand) submitCommandWire {
@@ -160,6 +162,7 @@ func encodeSubmitCommand(command submission.SubmitCommand) submitCommandWire {
 		SubmitterID:    corewire.EncodeUserID(command.SubmitterID),
 		ResponseSource: encodeResponseSource(command.ResponseSource),
 		Attachments:    attachmentwire.EncodeSlice(command.Attachments),
+		Draft:          eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
@@ -180,11 +183,16 @@ func decodeSubmitCommand(wire submitCommandWire) (submission.SubmitCommand, erro
 	if err != nil {
 		return submission.SubmitCommand{}, err
 	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return submission.SubmitCommand{}, err
+	}
 	return submission.SubmitCommand{
 		TaskID:         taskID,
 		SubmitterID:    submitterID,
 		ResponseSource: responseSource,
 		Attachments:    attachments,
+		Draft:          draft,
 	}, nil
 }
 
@@ -486,13 +494,14 @@ func decodeFindSubmissionResult(wire submissionResultWire) (submission.FindSubmi
 type submissionsResultWire struct {
 	Variant     string                  `json:"variant"`
 	Submissions []SubmissionWire        `json:"submissions,omitempty"`
+	Total       int64                   `json:"total,omitempty"`
 	Error       *domainwire.DomainError `json:"error,omitempty"`
 }
 
 func encodeListSubmissionsResult(result submission.ListSubmissionsStoreResult) submissionsResultWire {
 	switch typed := result.(type) {
 	case submission.ListSubmissionsStoreAccepted:
-		return submissionsResultWire{Variant: "listed", Submissions: encodeSubmissions(typed.Values)}
+		return submissionsResultWire{Variant: "listed", Submissions: encodeSubmissions(typed.Values), Total: typed.Total}
 	case submission.ListSubmissionsStoreRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
 		return submissionsResultWire{Variant: "rejected", Error: &reason}
@@ -508,7 +517,7 @@ func decodeListSubmissionsResult(wire submissionsResultWire) (submission.ListSub
 		if err != nil {
 			return nil, err
 		}
-		return submission.ListSubmissionsStoreAccepted{Values: values}, nil
+		return submission.ListSubmissionsStoreAccepted{Values: values, Total: wire.Total}, nil
 	case "rejected":
 		return submission.ListSubmissionsStoreRejected{Reason: decodeReason(wire.Error)}, nil
 	default:

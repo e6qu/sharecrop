@@ -52,7 +52,7 @@ func TestGenerateUsesExtractedFormMediaType(t *testing.T) {
 
 func TestGenerateUsesExtractedResponseMediaType(t *testing.T) {
 	document := Generate([]Route{{Method: "GET", Path: "/signed-out", OperationID: "signedOut", ResponseMediaType: "text/html"}}, nil, nil)
-	content := document.Paths["/signed-out"]["get"].Responses["default"].Content
+	content := document.Paths["/signed-out"]["get"].Responses["200"].Content
 	media, ok := content["text/html"]
 	if !ok || media.Schema.Type != "string" {
 		t.Fatalf("response content = %#v", content)
@@ -145,7 +145,7 @@ func TestGenerateUsesGenericObjectWhenTypeUnresolvedOrUnknown(t *testing.T) {
 		t.Fatalf("unresolved request schema = %#v, want a bare object placeholder", requestSchema)
 	}
 
-	responseSchema := operation.Responses["default"].Content["application/json"].Schema
+	responseSchema := operation.Responses["200"].Content["application/json"].Schema
 	if responseSchema.Type != "object" || responseSchema.Properties != nil {
 		t.Fatalf("unresolved response schema = %#v, want a bare object placeholder", responseSchema)
 	}
@@ -168,7 +168,7 @@ func TestGenerateBuildsTypedSchemaWithRequiredFieldsAndNestedStruct(t *testing.T
 		{Method: "GET", Path: "/api/tasks/{task_id}", OperationID: "getTask", RequiresAuth: true, ResponseType: "taskResponse"},
 	}, structs, nil)
 
-	schema := document.Paths["/api/tasks/{task_id}"]["get"].Responses["default"].Content["application/json"].Schema
+	schema := document.Paths["/api/tasks/{task_id}"]["get"].Responses["200"].Content["application/json"].Schema
 	if schema.Type != "object" {
 		t.Fatalf("schema type = %q, want object", schema.Type)
 	}

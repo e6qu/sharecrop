@@ -74,6 +74,8 @@ type ListDeliveriesStoreResult interface {
 
 type ListDeliveriesStoreListed struct {
 	Values []Delivery
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
 }
 
 type ListDeliveriesStoreRejected struct {

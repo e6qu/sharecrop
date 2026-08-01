@@ -1197,9 +1197,11 @@ Package intent:
 - `internal/capability`: opaque scoped token generation and verification.
 - `internal/http`: HTTP handlers, DTO parsing, response rendering.
 - `internal/mcp`: MCP adapter.
-- `internal/event`: the append-only domain event stream; services emit events
-  for every externally meaningful mutation, and notifications, webhook
-  deliveries, and the browser live feed derive from it.
+- `internal/event`: the append-only domain event stream with a transactional
+  outbox; services hand event drafts into store mutations so the event and
+  its recipients commit with the mutation, and notifications, webhook
+  deliveries, and the browser live feed derive from the stream through an
+  idempotent post-commit dispatch backed by a runner recovery sweep.
 - `internal/webhook`: webhook subscription domain model and management
   (guest-safe); `internal/webhookdispatch` is the host-only signed-delivery
   dispatcher.

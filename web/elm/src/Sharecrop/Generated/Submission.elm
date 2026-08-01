@@ -11,6 +11,7 @@ type SubmissionState
     | SubmissionStateAccepted
     | SubmissionStateRejected
     | SubmissionStateChangesRequested
+    | SubmissionStateSuperseded
 
 submissionStateDecoder : Decoder SubmissionState
 submissionStateDecoder =
@@ -33,6 +34,9 @@ submissionStateDecoder =
                     "changes_requested" ->
                         Decode.succeed SubmissionStateChangesRequested
 
+                    "superseded" ->
+                        Decode.succeed SubmissionStateSuperseded
+
                     _ ->
                         Decode.fail "invalid SubmissionState"
             )
@@ -54,6 +58,9 @@ submissionStateEncoder submissionState =
 
         SubmissionStateChangesRequested ->
             Encode.string "changes_requested"
+
+        SubmissionStateSuperseded ->
+            Encode.string "superseded"
 
 
 type alias SubmissionValidationErrorResponse =
@@ -177,19 +184,22 @@ submissionResponseEncoder submissionResponse =
 type alias SubmissionsResponse =
     { submissions : List SubmissionResponse
     , nextOffset : Int
+    , total : Int
     }
 
 submissionsResponseDecoder : Decoder SubmissionsResponse
 submissionsResponseDecoder =
-    Decode.map2 SubmissionsResponse
+    Decode.map3 SubmissionsResponse
         (Decode.field "submissions" (Decode.list submissionResponseDecoder))
         (Decode.field "next_offset" Decode.int)
+        (Decode.field "total" Decode.int)
 
 submissionsResponseEncoder : SubmissionsResponse -> Encode.Value
 submissionsResponseEncoder submissionsResponse =
     Encode.object
         [ ( "submissions", Encode.list submissionResponseEncoder submissionsResponse.submissions )
         , ( "next_offset", Encode.int submissionsResponse.nextOffset )
+        , ( "total", Encode.int submissionsResponse.total )
         ]
 
 type alias SubmissionCommentResponse =

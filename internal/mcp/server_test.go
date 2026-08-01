@@ -12,6 +12,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/notification"
 	"github.com/e6qu/sharecrop/internal/org"
@@ -271,6 +272,8 @@ type fakeServices struct {
 	// honors the requested page limit like a real store, so probe-based
 	// pagination is observable in tests.
 	listTaskCount int
+	// eventFeed is the stored-event stream ListEvents serves.
+	eventFeed []event.StoredEvent
 }
 
 func (services fakeServices) ListTasks(_ context.Context, _ auth.Subject, _ task.ListScope, _ task.ListFilters, page core.Page) task.ListResult {
@@ -284,9 +287,15 @@ func (services fakeServices) ListTasks(_ context.Context, _ auth.Subject, _ task
 	values := make([]task.ListItem, 0, remaining)
 	for range remaining {
 		created := core.NewTaskID().(core.TaskIDCreated)
-		values = append(values, task.ListItem{Task: task.Task{ID: created.Value, State: task.StateOpen}})
+		values = append(values, task.ListItem{
+			Task:               task.Task{ID: created.Value, State: task.StateOpen},
+			CreatorDisplayName: auth.NewDisplayName("mara").(auth.DisplayNameAccepted).Value,
+			HolderDisplayName:  task.HolderNamed{DisplayName: auth.NewDisplayName("ada").(auth.DisplayNameAccepted).Value},
+			PendingReviewCount: 2,
+			Funded:             task.FundedStateRewardFunded,
+		})
 	}
-	return task.TasksListed{Values: values}
+	return task.TasksListed{Values: values, Total: int64(services.listTaskCount)}
 }
 
 func (services fakeServices) GetTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.GetResult {
@@ -686,7 +695,7 @@ func (services fakeServices) ListNotifications(_ context.Context, _ core.UserID,
 	if _, matched := filter.(notification.UnreadOnly); matched {
 		echoed = "unread_only"
 	}
-	return notification.NotificationsListed{Values: []notification.Notification{{Kind: notification.KindTaskFunded, State: notification.StateUnread, Subject: notification.Subject{Kind: echoed, ID: "echo"}}}}
+	return notification.NotificationsListed{Values: []notification.Notification{{Kind: notification.KindTaskFunded, State: notification.StateUnread, Subject: notification.Subject{Kind: echoed, ID: "echo"}}}, Total: 1}
 }
 
 func (services fakeServices) MarkNotificationRead(_ context.Context, recipient core.UserID, notificationID core.NotificationID) notification.MarkReadResult {

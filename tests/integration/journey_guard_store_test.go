@@ -15,6 +15,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -51,7 +52,7 @@ func TestTaskStoreCancelWithPendingReviewSucceeds(t *testing.T) {
 
 	// Cancelling is allowed even with a submission pending review; the task is
 	// simply cancelled (unfunded here, so nothing to settle).
-	result := store.ChangeTaskState(context.Background(), taskID, task.StateCancelled)
+	result := store.ChangeTaskState(context.Background(), taskID, task.StateCancelled, event.NoEvent{})
 	if _, matched := result.(task.ChangeTaskStateStoreAccepted); !matched {
 		t.Fatalf("cancel with pending review = %T, want ChangeTaskStateStoreAccepted", result)
 	}

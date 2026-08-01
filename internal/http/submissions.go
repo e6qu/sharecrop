@@ -117,7 +117,7 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
 	server.recordSensitiveFieldAccessForList(r.Context(), actor.subject.ID, listed.Values[:visible])
-	response := submissionsResponse{Submissions: make([]submissionResponse, 0, visible), NextOffset: nextOffset}
+	response := submissionsResponse{Submissions: make([]submissionResponse, 0, visible), NextOffset: nextOffset, Total: listed.Total}
 	for _, value := range listed.Values[:visible] {
 		response.Submissions = append(response.Submissions, submissionToResponse(value))
 	}

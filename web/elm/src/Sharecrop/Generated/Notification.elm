@@ -10,6 +10,7 @@ type NotificationKind
     | NotificationKindSubmissionAccepted
     | NotificationKindSubmissionChangesRequested
     | NotificationKindSubmissionRejected
+    | NotificationKindSubmissionSuperseded
     | NotificationKindSubmissionCommented
     | NotificationKindTaskFunded
     | NotificationKindTaskCancelled
@@ -43,6 +44,9 @@ notificationKindDecoder =
 
                     "submission_rejected" ->
                         Decode.succeed NotificationKindSubmissionRejected
+
+                    "submission_superseded" ->
+                        Decode.succeed NotificationKindSubmissionSuperseded
 
                     "submission_commented" ->
                         Decode.succeed NotificationKindSubmissionCommented
@@ -107,6 +111,9 @@ notificationKindEncoder notificationKind =
 
         NotificationKindSubmissionRejected ->
             Encode.string "submission_rejected"
+
+        NotificationKindSubmissionSuperseded ->
+            Encode.string "submission_superseded"
 
         NotificationKindSubmissionCommented ->
             Encode.string "submission_commented"
@@ -206,19 +213,22 @@ notificationResponseEncoder notificationResponse =
 type alias NotificationsResponse =
     { notifications : List NotificationResponse
     , nextOffset : Int
+    , total : Int
     }
 
 notificationsResponseDecoder : Decoder NotificationsResponse
 notificationsResponseDecoder =
-    Decode.map2 NotificationsResponse
+    Decode.map3 NotificationsResponse
         (Decode.field "notifications" (Decode.list notificationResponseDecoder))
         (Decode.field "next_offset" Decode.int)
+        (Decode.field "total" Decode.int)
 
 notificationsResponseEncoder : NotificationsResponse -> Encode.Value
 notificationsResponseEncoder notificationsResponse =
     Encode.object
         [ ( "notifications", Encode.list notificationResponseEncoder notificationsResponse.notifications )
         , ( "next_offset", Encode.int notificationsResponse.nextOffset )
+        , ( "total", Encode.int notificationsResponse.total )
         ]
 
 type alias NotificationUnreadCountResponse =

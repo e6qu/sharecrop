@@ -615,7 +615,7 @@ test("users open an organization and manage its teams and members", async ({ pag
   await page.getByTestId("org-task-search").click();
   await expect(page.getByTestId("org-tasks-empty")).toBeVisible();
   await expect(page.getByTestId("org-tasks-page-offset")).toHaveText(
-    "Page 1",
+    "Page 1 of 1",
   );
   await page.getByTestId("org-task-filter-open").click();
   await page.getByTestId("org-task-saved-view-name").fill("Open tasks");
@@ -678,7 +678,7 @@ test("users open an organization and manage its teams and members", async ({ pag
   await page.getByTestId("team-work-query").fill("missing task");
   await page.getByTestId("team-work-search").click();
   await expect(page.getByTestId("team-work-page-offset")).toHaveText(
-    "Page 1",
+    "Page 1 of 1",
   );
   await page.getByTestId("team-work-filter-ready").click();
   await page.getByTestId("team-work-saved-view-name").fill("Ready work");
@@ -1686,18 +1686,19 @@ test("another actor's submission raises the unread badge and the inbox unread fi
   });
   await expect(unreadRow).toHaveCount(1);
 
-  // The row is a humane sentence naming the actor, with a relative
-  // timestamp - not a leading UUID/ISO dump. The absolute instant stays
-  // available as the timestamp's hover title. (Submission-subject
-  // notifications carry no task title from the API yet, so the sentence
-  // falls back to "a task".)
+  // The row is a humane sentence naming the actor and the task title, with
+  // a relative timestamp - not a leading UUID/ISO dump. The absolute instant
+  // stays available as the timestamp's hover title. (The test title itself
+  // embeds a UUID for uniqueness, so it is stripped before asserting the
+  // sentence contains no raw ids of its own.)
   await expect(unreadRow.getByTestId("notification-sentence")).toContainText(
-    "Ren Okafor submitted a response to a task.",
+    `Ren Okafor submitted a response to '${title}'.`,
   );
   const sentenceText = await unreadRow.getByTestId("notification-sentence")
     .textContent();
-  expect(sentenceText).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
-  expect(sentenceText).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
+  const sentenceWithoutTitle = (sentenceText ?? "").replace(title, "");
+  expect(sentenceWithoutTitle).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  expect(sentenceWithoutTitle).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
   await expect(unreadRow.getByTestId("notification-time")).toContainText(
     /just now|ago/,
   );

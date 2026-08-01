@@ -15,7 +15,9 @@ import (
 type Store interface {
 	CreateTask(context.Context, core.TaskSeriesID, core.TaskID, CreateCommand) CreateTaskStoreResult
 	FindTask(context.Context, core.TaskID) FindTaskStoreResult
-	ChangeTaskState(context.Context, core.TaskID, State) ChangeTaskStateStoreResult
+	// ChangeTaskState performs the state transition and records the plan's
+	// event draft (when the plan records one) inside the same transaction.
+	ChangeTaskState(context.Context, core.TaskID, State, event.Plan) ChangeTaskStateStoreResult
 	ListTasks(context.Context, ListScope, ListFilters, core.Page) ListTasksStoreResult
 	ListSeries(context.Context, core.UserID, core.Page) ListSeriesStoreResult
 	FindSeries(context.Context, core.TaskSeriesID) FindSeriesStoreResult
@@ -25,12 +27,16 @@ type Store interface {
 	AddTaskToSeries(context.Context, core.TaskSeriesID, core.TaskID) SeriesMutationStoreResult
 	RemoveTaskFromSeries(context.Context, core.TaskSeriesID, core.TaskID) SeriesMutationStoreResult
 	ReorderSeries(context.Context, core.TaskSeriesID, []core.TaskID) SeriesMutationStoreResult
-	CreateSeriesComment(context.Context, SeriesComment) CreateSeriesCommentStoreResult
+	CreateSeriesComment(context.Context, SeriesComment, event.Draft) CreateSeriesCommentStoreResult
 	ListSeriesComments(context.Context, core.TaskSeriesID, core.Page) ListSeriesCommentsStoreResult
-	CreateTaskComment(context.Context, TaskComment) CreateTaskCommentStoreResult
+	CreateTaskComment(context.Context, TaskComment, event.Draft) CreateTaskCommentStoreResult
 	ListTaskComments(context.Context, core.TaskID, core.Page) ListTaskCommentsStoreResult
 	CreateReservation(context.Context, core.TaskReservationID, ReservationCommand) CreateReservationStoreResult
-	ChangeReservationState(context.Context, core.TaskID, core.TaskReservationID, ReservationState) ChangeReservationStateStoreResult
+	// ChangeReservationState performs the transition and records the plan's
+	// event draft (when the plan records one) inside the same transaction,
+	// merging the
+	// reservation holder into the draft's recipients.
+	ChangeReservationState(context.Context, core.TaskID, core.TaskReservationID, ReservationState, event.Plan) ChangeReservationStateStoreResult
 	ListReservations(context.Context, core.TaskID, core.Page) ListReservationsStoreResult
 	CheckSubmissionEligibility(context.Context, core.TaskID, core.UserID) SubmissionEligibilityStoreResult
 }
@@ -80,22 +86,30 @@ func eventActor(actor auth.Subject) event.Actor {
 	return event.ActorSystem{}
 }
 
-// emitTaskEvent emits one task-subject event after a committed mutation.
-// Emission is post-commit best-effort: a rejected emission never fails the
-// operation that already committed (the recorder documents the trade-off).
-func (service Service) emitTaskEvent(ctx context.Context, kind event.Kind, actor event.Actor, taskID core.TaskID, metadata event.Metadata, recipients event.Recipients) {
+// taskEventDraft builds the draft of one task-subject event a store mutation
+// records inside its transaction; the service dispatches it after commit.
+func taskEventDraft(kind event.Kind, actor event.Actor, taskID core.TaskID, metadata event.Metadata, recipients event.Recipients) (event.Draft, *core.DomainError) {
 	subject := event.NoSubjectRefs()
 	subject.Task = event.TaskSubject{ID: taskID}
-	_ = service.recorder.Emit(ctx, event.EmitCommand{Kind: kind, Actor: actor, Subject: subject, Metadata: metadata, Recipients: recipients})
+	return draftOrProblem(event.NewDraft(kind, actor, subject, metadata, recipients))
 }
 
-// emitReservationEvent emits one task+reservation-subject event after a
-// committed reservation mutation, also best-effort.
-func (service Service) emitReservationEvent(ctx context.Context, kind event.Kind, actor event.Actor, taskID core.TaskID, reservationID core.TaskReservationID, recipients event.Recipients) {
+// reservationEventDraft builds the draft of one task+reservation-subject
+// event a store mutation records inside its transaction.
+func reservationEventDraft(kind event.Kind, actor event.Actor, taskID core.TaskID, reservationID core.TaskReservationID, recipients event.Recipients) (event.Draft, *core.DomainError) {
 	subject := event.NoSubjectRefs()
 	subject.Task = event.TaskSubject{ID: taskID}
 	subject.Reservation = event.ReservationSubject{ID: reservationID}
-	_ = service.recorder.Emit(ctx, event.EmitCommand{Kind: kind, Actor: actor, Subject: subject, Metadata: event.TaskMetadata(taskID), Recipients: recipients})
+	return draftOrProblem(event.NewDraft(kind, actor, subject, event.TaskMetadata(taskID), recipients))
+}
+
+func draftOrProblem(result event.DraftResult) (event.Draft, *core.DomainError) {
+	created, matched := result.(event.DraftCreated)
+	if !matched {
+		reason := result.(event.DraftRejected).Reason
+		return event.Draft{}, &reason
+	}
+	return created.Value, nil
 }
 
 // activeReservationHolders lists the users holding an active or submitted
@@ -222,39 +236,39 @@ func (TaskStateChanged) changeStateResult() {}
 func (ChangeStateRejected) changeStateResult() {}
 
 func (service Service) Open(ctx context.Context, actor auth.Subject, taskID core.TaskID) ChangeStateResult {
-	result := service.changeState(ctx, actor, taskID, OpenState)
-	changed, matched := result.(TaskStateChanged)
-	if !matched {
-		return result
+	// The draft names the actor; the store merges the task creator into its
+	// recipients inside the transition transaction, and changeState
+	// dispatches the recorded drafts after commit.
+	draft, draftProblem := taskEventDraft(event.KindTaskOpened, eventActor(actor), taskID, event.TaskMetadata(taskID),
+		event.NewRecipients(event.ActorUserID(eventActor(actor))))
+	if draftProblem != nil {
+		return ChangeStateRejected{Reason: *draftProblem}
 	}
-	service.emitTaskEvent(ctx, event.KindTaskOpened, eventActor(actor), taskID, event.TaskMetadata(taskID),
-		event.NewRecipients(changed.Value.CreatedBy, event.ActorUserID(eventActor(actor))))
-	return result
+	return service.changeState(ctx, actor, taskID, OpenState, event.Record{Draft: draft})
 }
 
 func (service Service) Cancel(ctx context.Context, actor auth.Subject, taskID core.TaskID) ChangeStateResult {
 	// The reservation holders are read before the cancel commits: cancelling
 	// releases active reservations, after which a just-released holder is
-	// indistinguishable from a long-gone one.
+	// indistinguishable from a long-gone one. The store merges the task
+	// creator into the recipients inside the transition transaction.
 	holders := service.activeReservationHolders(ctx, taskID)
-	result := service.changeState(ctx, actor, taskID, CancelState)
-	changed, matched := result.(TaskStateChanged)
-	if !matched {
-		return result
-	}
-	recipients := append([]core.UserID{changed.Value.CreatedBy, event.ActorUserID(eventActor(actor))}, holders...)
-	service.emitTaskEvent(ctx, event.KindTaskCancelled, eventActor(actor), taskID, event.TaskMetadata(taskID),
+	recipients := append([]core.UserID{event.ActorUserID(eventActor(actor))}, holders...)
+	draft, draftProblem := taskEventDraft(event.KindTaskCancelled, eventActor(actor), taskID, event.TaskMetadata(taskID),
 		event.NewRecipients(recipients...))
-	return result
+	if draftProblem != nil {
+		return ChangeStateRejected{Reason: *draftProblem}
+	}
+	return service.changeState(ctx, actor, taskID, CancelState, event.Record{Draft: draft})
 }
 
 func (service Service) Unpublish(ctx context.Context, actor auth.Subject, taskID core.TaskID) ChangeStateResult {
-	return service.changeState(ctx, actor, taskID, UnpublishState)
+	return service.changeState(ctx, actor, taskID, UnpublishState, event.NoEvent{})
 }
 
 type StateTransition func(State) StateTransitionResult
 
-func (service Service) changeState(ctx context.Context, actor auth.Subject, taskID core.TaskID, transition StateTransition) ChangeStateResult {
+func (service Service) changeState(ctx context.Context, actor auth.Subject, taskID core.TaskID, transition StateTransition, plan event.Plan) ChangeStateResult {
 	taskResult := service.store.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
 	if !taskMatched {
@@ -274,13 +288,14 @@ func (service Service) changeState(ctx context.Context, actor auth.Subject, task
 		return ChangeStateRejected{Reason: rejected.Reason}
 	}
 
-	storeResult := service.store.ChangeTaskState(ctx, taskID, transitionAccepted.Value)
+	storeResult := service.store.ChangeTaskState(ctx, taskID, transitionAccepted.Value, plan)
 	changed, matched := storeResult.(ChangeTaskStateStoreAccepted)
 	if !matched {
 		rejected := storeResult.(ChangeTaskStateStoreRejected)
 		return ChangeStateRejected{Reason: rejected.Reason}
 	}
 
+	service.recorder.Dispatch(ctx, changed.RecordedEvents...)
 	return TaskStateChanged{Value: changed.Value}
 }
 
@@ -524,6 +539,24 @@ func (order SortOrder) String() string {
 	return order.value
 }
 
+// FundedFilter is an optional funded-state filter for task listing.
+// AnyFundedFilter means no restriction; FundedEquals restricts the listing to
+// one funded state (e.g. reward_funded for "work whose reward is actually
+// claimable").
+type FundedFilter interface {
+	fundedFilter()
+}
+
+type AnyFundedFilter struct{}
+
+type FundedEquals struct {
+	Value FundedState
+}
+
+func (AnyFundedFilter) fundedFilter() {}
+
+func (FundedEquals) fundedFilter() {}
+
 // ListFilters groups the optional discovery/list filters applied to a task listing.
 type ListFilters struct {
 	State         StateFilter
@@ -531,11 +564,12 @@ type ListFilters struct {
 	Search        SearchFilter
 	Type          TypeFilter
 	Created       CreatedFilter
+	Funded        FundedFilter
 	Sort          SortOrder
 }
 
 func NoListFilters() ListFilters {
-	return ListFilters{State: AnyStateFilter{}, Participation: AnyParticipationPolicyFilter{}, Search: NoSearchFilter{}, Type: AnyTypeFilter{}, Created: AnyCreatedFilter{}, Sort: SortNewest}
+	return ListFilters{State: AnyStateFilter{}, Participation: AnyParticipationPolicyFilter{}, Search: NoSearchFilter{}, Type: AnyTypeFilter{}, Created: AnyCreatedFilter{}, Funded: AnyFundedFilter{}, Sort: SortNewest}
 }
 
 type PublicListScope struct {
@@ -591,6 +625,8 @@ type ListResult interface {
 
 type TasksListed struct {
 	Values []ListItem
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
 }
 
 type ListRejected struct {
@@ -613,13 +649,16 @@ func (service Service) List(ctx context.Context, actor auth.Subject, scope ListS
 		rejected := storeResult.(ListTasksStoreRejected)
 		return ListRejected{Reason: rejected.Reason}
 	}
-	return TasksListed{Values: listed.Values}
+	return TasksListed{Values: listed.Values, Total: listed.Total}
 }
 
 type ReservationCommand struct {
 	TaskID      core.TaskID
 	Assignee    Assignee
 	RequestedBy core.UserID
+	// Draft is the reservation_requested event recorded inside the create
+	// transaction.
+	Draft event.Draft
 }
 
 type ReservationResult interface {
@@ -690,10 +729,17 @@ func (service Service) reserve(ctx context.Context, actor auth.UserSubject, task
 		return ReservationRejected{Reason: rejected.Reason}
 	}
 
+	draft, draftProblem := reservationEventDraft(event.KindReservationRequested, event.ActorUser{ID: actor.ID}, taskID, reservationIDCreated.Value,
+		event.NewRecipients(taskFound.Value.CreatedBy, actor.ID))
+	if draftProblem != nil {
+		return ReservationRejected{Reason: *draftProblem}
+	}
+
 	storeResult := service.store.CreateReservation(ctx, reservationIDCreated.Value, ReservationCommand{
 		TaskID:      taskID,
 		Assignee:    assignee,
 		RequestedBy: actor.ID,
+		Draft:       draft,
 	})
 	created, matched := storeResult.(CreateReservationStoreAccepted)
 	if !matched {
@@ -705,8 +751,7 @@ func (service Service) reserve(ctx context.Context, actor auth.UserSubject, task
 	if created.Value.State == ReservationStateActive {
 		secret = service.issueWorkerCredential(ctx, created.Value.RequestedBy, taskID)
 	}
-	service.emitReservationEvent(ctx, event.KindReservationRequested, event.ActorUser{ID: actor.ID}, taskID, created.Value.ID,
-		event.NewRecipients(taskFound.Value.CreatedBy, actor.ID))
+	service.recorder.Dispatch(ctx, draft)
 	return ReservationCreated{Value: created.Value, IssuedWorkerCredentialSecret: secret}
 }
 
@@ -732,26 +777,27 @@ func (ReservationStateChanged) reservationStateChangeResult() {}
 func (ReservationStateChangeRejected) reservationStateChangeResult() {}
 
 func (service Service) ApproveReservation(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
-	result := service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateActive)
+	draft, draftProblem := reservationEventDraft(event.KindReservationApproved, eventActor(actor), taskID, reservationID,
+		event.NewRecipients(event.ActorUserID(eventActor(actor))))
+	if draftProblem != nil {
+		return ReservationStateChangeRejected{Reason: *draftProblem}
+	}
+	result := service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateActive, event.Record{Draft: draft})
 	changed, matched := result.(ReservationStateChanged)
 	if !matched {
 		return result
 	}
 	changed.IssuedWorkerCredentialSecret = service.issueWorkerCredential(ctx, changed.Value.RequestedBy, taskID)
-	service.emitReservationEvent(ctx, event.KindReservationApproved, eventActor(actor), taskID, reservationID,
-		event.NewRecipients(changed.Value.RequestedBy, event.ActorUserID(eventActor(actor))))
 	return changed
 }
 
 func (service Service) DeclineReservation(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
-	result := service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateDeclined)
-	changed, matched := result.(ReservationStateChanged)
-	if !matched {
-		return result
+	draft, draftProblem := reservationEventDraft(event.KindReservationDeclined, eventActor(actor), taskID, reservationID,
+		event.NewRecipients(event.ActorUserID(eventActor(actor))))
+	if draftProblem != nil {
+		return ReservationStateChangeRejected{Reason: *draftProblem}
 	}
-	service.emitReservationEvent(ctx, event.KindReservationDeclined, eventActor(actor), taskID, reservationID,
-		event.NewRecipients(changed.Value.RequestedBy, event.ActorUserID(eventActor(actor))))
-	return result
+	return service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateDeclined, event.Record{Draft: draft})
 }
 
 // CancelReservation, unlike Approve/Decline, isn't owner-only: the worker who
@@ -793,7 +839,12 @@ func (service Service) CancelReservation(ctx context.Context, actor auth.Subject
 		}
 	}
 
-	storeResult := service.store.ChangeReservationState(ctx, taskID, reservationID, cancelledState)
+	draft, draftProblem := reservationEventDraft(event.KindReservationCancelled, eventActor(actor), taskID, reservationID,
+		event.NewRecipients(event.ActorUserID(eventActor(actor))))
+	if draftProblem != nil {
+		return ReservationStateChangeRejected{Reason: *draftProblem}
+	}
+	storeResult := service.store.ChangeReservationState(ctx, taskID, reservationID, cancelledState, event.Record{Draft: draft})
 	changed, matched := storeResult.(ChangeReservationStateStoreAccepted)
 	if !matched {
 		rejected := storeResult.(ChangeReservationStateStoreRejected)
@@ -802,12 +853,11 @@ func (service Service) CancelReservation(ctx context.Context, actor auth.Subject
 	if changed.Value.TaskID != taskID {
 		return ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "reservation was not found for the task")}
 	}
-	service.emitReservationEvent(ctx, event.KindReservationCancelled, eventActor(actor), taskID, reservationID,
-		event.NewRecipients(changed.Value.RequestedBy, event.ActorUserID(eventActor(actor))))
+	service.recorder.Dispatch(ctx, changed.RecordedEvents...)
 	return ReservationStateChanged{Value: changed.Value}
 }
 
-func (service Service) changeReservationByRequester(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID, state ReservationState) ReservationStateChangeResult {
+func (service Service) changeReservationByRequester(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID, state ReservationState, plan event.Plan) ReservationStateChangeResult {
 	taskResult := service.store.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
 	if !taskMatched {
@@ -822,7 +872,7 @@ func (service Service) changeReservationByRequester(ctx context.Context, actor a
 	// The mutation is bound to taskID in the store query, so a reservation that
 	// belongs to a different task is never touched (the post-check below is then
 	// only defense-in-depth, not the load-bearing authorization).
-	storeResult := service.store.ChangeReservationState(ctx, taskID, reservationID, state)
+	storeResult := service.store.ChangeReservationState(ctx, taskID, reservationID, state, plan)
 	changed, matched := storeResult.(ChangeReservationStateStoreAccepted)
 	if !matched {
 		rejected := storeResult.(ChangeReservationStateStoreRejected)
@@ -831,6 +881,7 @@ func (service Service) changeReservationByRequester(ctx context.Context, actor a
 	if changed.Value.TaskID != taskID {
 		return ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "reservation was not found for the task")}
 	}
+	service.recorder.Dispatch(ctx, changed.RecordedEvents...)
 	return ReservationStateChanged{Value: changed.Value}
 }
 

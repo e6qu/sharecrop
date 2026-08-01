@@ -66,7 +66,95 @@ type ListItem struct {
 	Task               Task
 	ActiveAssignee     ActiveAssignee
 	CreatorDisplayName auth.DisplayName
+	// HolderDisplayName names the user holding the active reservation, when
+	// one exists and the reservation is user-assigned; absent otherwise.
+	HolderDisplayName  HolderNameRef
 	PendingReviewCount int64
+	// Funded reports whether the task's declared credit reward is currently
+	// escrowed (a task_funds row exists), so a worker browsing the
+	// marketplace can tell claimable rewards from unfunded declarations.
+	Funded FundedState
+}
+
+// HolderNameRef is the active reservation holder's display name on a list
+// row, or its explicit absence (no active reservation, or a non-user
+// assignee).
+type HolderNameRef interface {
+	holderNameRef()
+}
+
+type NoHolderName struct{}
+
+type HolderNamed struct {
+	DisplayName auth.DisplayName
+}
+
+func (NoHolderName) holderNameRef() {}
+
+func (HolderNamed) holderNameRef() {}
+
+// FundedState is a credit-reward task's escrow status on a list row:
+// reward_funded (a task_funds row backs the declared credit reward),
+// reward_unfunded (a credit reward is declared but nothing is escrowed), or
+// no_credit_reward (the task declares no credit reward, so funding does not
+// apply).
+type FundedState struct {
+	value string
+}
+
+var (
+	FundedStateRewardFunded   = FundedState{value: "reward_funded"}
+	FundedStateRewardUnfunded = FundedState{value: "reward_unfunded"}
+	FundedStateNoCreditReward = FundedState{value: "no_credit_reward"}
+)
+
+func (state FundedState) String() string {
+	return state.value
+}
+
+type FundedStateResult interface {
+	fundedStateResult()
+}
+
+type FundedStateParsed struct {
+	Value FundedState
+}
+
+type FundedStateRejected struct {
+	Reason core.DomainError
+}
+
+func (FundedStateParsed) fundedStateResult() {}
+
+func (FundedStateRejected) fundedStateResult() {}
+
+// ParseFundedState converts a raw boundary string into a sealed FundedState.
+func ParseFundedState(raw string) FundedStateResult {
+	switch raw {
+	case FundedStateRewardFunded.value:
+		return FundedStateParsed{Value: FundedStateRewardFunded}
+	case FundedStateRewardUnfunded.value:
+		return FundedStateParsed{Value: FundedStateRewardUnfunded}
+	case FundedStateNoCreditReward.value:
+		return FundedStateParsed{Value: FundedStateNoCreditReward}
+	default:
+		return FundedStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "unknown task funded state")}
+	}
+}
+
+// FundedStateFor derives the funded state from the task's reward kind and
+// whether an escrow row exists — shared by both storage adapters' list scans
+// and the in-memory test doubles.
+func FundedStateFor(reward RewardSpec, escrowExists bool) FundedState {
+	switch reward.(type) {
+	case CreditRewardSpec, BundleRewardSpec:
+		if escrowExists {
+			return FundedStateRewardFunded
+		}
+		return FundedStateRewardUnfunded
+	default:
+		return FundedStateNoCreditReward
+	}
 }
 
 type Series struct {

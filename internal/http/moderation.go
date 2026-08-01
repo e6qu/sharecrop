@@ -107,7 +107,11 @@ func (ModerationTriageSaved) moderationTriageMutationResult()            {}
 func (ModerationTriageMutationRejected) moderationTriageMutationResult() {}
 
 type ModerationTriageListResult interface{ moderationTriageListResult() }
-type ModerationTriageListed struct{ Values []ModerationTriageRecord }
+type ModerationTriageListed struct {
+	Values []ModerationTriageRecord
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
+}
 type ModerationTriageListRejected struct{ Reason core.DomainError }
 
 func (ModerationTriageListed) moderationTriageListResult()       {}
@@ -157,7 +161,7 @@ func (service *memoryModerationTriageService) List(_ context.Context, filter Mod
 	if end > len(values) {
 		end = len(values)
 	}
-	return ModerationTriageListed{Values: values[start:end]}
+	return ModerationTriageListed{Values: values[start:end], Total: int64(len(values))}
 }
 
 func (service *memoryModerationTriageService) Update(_ context.Context, actor core.UserID, reportID core.AuditEventID, state ModerationTriageState, note string) ModerationTriageMutationResult {
@@ -284,7 +288,7 @@ func (server Server) listAdminModerationReports(w http.ResponseWriter, r *http.R
 		return
 	}
 	visible, nextOffset := probeListWindow(len(triageListed.Values), page)
-	response := moderationReportsResponse{Reports: make([]moderationReportResponse, 0, visible), NextOffset: nextOffset}
+	response := moderationReportsResponse{Reports: make([]moderationReportResponse, 0, visible), NextOffset: nextOffset, Total: triageListed.Total}
 	for _, triage := range triageListed.Values[:visible] {
 		eventResult := server.auditService.Get(r.Context(), triage.ReportID)
 		found, foundMatched := eventResult.(audit.EventFound)
@@ -362,9 +366,14 @@ func validModerationSubjectKind(value string) bool {
 	}
 }
 
+// validModerationReason is the sealed report-category enum, matching the
+// contracts ModerationReason enum (internal/contracts/definitions.go).
+// "dispute" is the structured path for a worker contesting a submission
+// review: a dispute report references the submission subject and carries the
+// worker's case in details.
 func validModerationReason(value string) bool {
 	switch value {
-	case "spam", "abuse", "pii", "policy", "other":
+	case "spam", "abuse", "pii", "policy", "dispute", "other":
 		return true
 	default:
 		return false

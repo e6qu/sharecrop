@@ -7,19 +7,32 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/submission"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
-func (store SubmissionStore) CreateSubmissionComment(ctx context.Context, comment submission.SubmissionComment) submission.CreateSubmissionCommentStoreResult {
+func (store SubmissionStore) CreateSubmissionComment(ctx context.Context, comment submission.SubmissionComment, draft event.Draft) submission.CreateSubmissionCommentStoreResult {
+	tx, txErr := store.db.Begin(ctx)
+	if txErr != nil {
+		return submission.CreateSubmissionCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin create submission comment transaction failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	var createdAt time.Time
-	err := store.db.QueryRow(ctx, `
+	err := tx.QueryRow(ctx, `
 		insert into submission_comments (id, submission_id, author_user_id, body)
 		values ($1, $2, $3, $4)
 		returning created_at
 	`, comment.ID.String(), comment.SubmissionID.String(), comment.AuthorID.String(), comment.Body.String()).Scan(&createdAt)
 	if err != nil {
 		return submission.CreateSubmissionCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "create submission comment failed")}
+	}
+	if err := recordEventDraftInTx(ctx, tx, draft); err != nil {
+		return submission.CreateSubmissionCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "record submission comment event failed")}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return submission.CreateSubmissionCommentStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit create submission comment transaction failed")}
 	}
 	comment.CreatedAt = createdAt
 	authorName, nameReason := fetchUserDisplayName(ctx, store.db, comment.AuthorID)

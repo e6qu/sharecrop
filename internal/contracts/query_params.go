@@ -73,6 +73,7 @@ func QueryParameters() []EndpointQueryParameters {
 				QueryParameter{Name: "query", Type: QueryParameterString, Description: "Substring match on title and description."},
 				QueryParameter{Name: "sort", Type: QueryParameterString, Description: "Sort order. Defaults to newest.", Enum: []string{"newest", "oldest", "title_asc", "title_desc", "reward_desc", "reward_asc"}, Default: "newest"},
 				QueryParameter{Name: "created_after", Type: QueryParameterString, Description: "RFC3339 instant; only tasks created strictly after it are listed."},
+				QueryParameter{Name: "funded", Type: QueryParameterString, Description: "Funded-state filter; absent lists tasks regardless of reward funding.", Enum: []string{"reward_funded", "reward_unfunded", "no_credit_reward"}},
 				QueryParameter{Name: "include_reserved", Type: QueryParameterBoolean, Description: "Include open tasks another worker has actively reserved. Defaults to false."},
 			),
 		},
@@ -87,6 +88,7 @@ func QueryParameters() []EndpointQueryParameters {
 			Parameters: []QueryParameter{
 				{Name: "after", Type: QueryParameterString, Description: "Resume cursor; absent starts from the beginning of the caller's visible stream."},
 				{Name: "limit", Type: QueryParameterInteger, Description: "Page size (1-100). Defaults to the server page size."},
+				{Name: "wait", Type: QueryParameterInteger, Description: "Long-poll hold in whole seconds (0-25; larger values are capped). When the page would be empty, the server holds the request until an event arrives or the wait elapses."},
 			},
 		},
 		{

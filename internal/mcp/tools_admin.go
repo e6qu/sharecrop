@@ -47,9 +47,9 @@ func adminToolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolCreateModerationReport,
-			Description: "Report a task, submission, comment, user, organization, team, or collectible for moderation review. reason is one of spam, abuse, pii, policy, other.",
+			Description: "Report a task, submission, comment, user, organization, team, or collectible for moderation review. reason is the report's category: one of spam, abuse, pii, policy, dispute, other. To dispute a rejected submission review, pass subject_kind \"submission\", the submission id, reason \"dispute\", and details explaining why the review was wrong; platform admins see the category in the triage queue.",
 			Scope:       agent.ScopeTasksRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"subject_kind":{"type":"string"},"subject_id":{"type":"string"},"reason":{"type":"string"},"details":{"type":"string"}},"required":["subject_kind","subject_id","reason"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"subject_kind":{"type":"string","enum":["task","submission","task_comment","submission_comment","task_series_comment","user","organization","team","collectible"]},"subject_id":{"type":"string"},"reason":{"type":"string","enum":["spam","abuse","pii","policy","dispute","other"]},"details":{"type":"string"}},"required":["subject_kind","subject_id","reason"]}`),
 		},
 		{
 			Name:        toolListAdminModerationReports,

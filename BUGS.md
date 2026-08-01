@@ -72,65 +72,37 @@ Test gaps:
 - `tests/playwright/demo.spec.ts` and `tests/playwright/mobile.spec.ts` passed
   against the Go/WASM default demo on non-default port `29181`.
 
-Review-upgrade notes (event stream, webhooks, runner, retheme):
+Event-pipeline and agent-loop notes (post-hardening):
 
-- Domain-event emission is post-commit best-effort: a crash between a
-  committed mutation and its `Emit` loses that event/notification (the same
-  exposure the old handler-level notify had). A strict in-transaction outbox
-  is the recorded follow-up in [DO_NEXT.md](./DO_NEXT.md).
-- Idempotent fund/accept/request-changes replays re-emit their events because
-  the store results do not distinguish replay from first execution.
-- `FundTaskFromOrganization` emits with the system actor and no recipients
-  (no user identity reaches the ledger service), and `RefundTask`'s
-  `task_cancelled` event reaches the requester only (the released holder is
-  not exposed by the refund result).
+- Host-side expiry sweeps (task/reservation expiry) still emit their events
+  post-commit, outside the expiry transaction - the one emission path not on
+  the in-transaction outbox. All service mutations are on the outbox.
 - Webhook secrets are stored as written; the dispatcher must compute HMACs.
-  At-rest encryption is open. The dial-time SSRF guard rejects non-public
-  addresses at delivery; the URL constructor only checks form.
-- The guest-side rate-limit bridge fails open on transport errors; the host
-  Postgres store now fails closed on storage errors.
-- Comment and reservation listings became newest-first (previously
-  oldest-first) when pagination landed; series detail embeds at most 100
-  tasks and the newest 20 comments, with the paginated endpoints serving the
-  rest.
-- The OpenAPI generator now declares path parameters and contract-declared
-  query parameters (enums and defaults included) but still emits no
-  per-status responses and no error schema (`code` does not appear there) —
-  the remaining generator scope limit.
-- The Elm activity feed re-reads from the stream start on each Overview entry
-  (the cursor only advances within the visit) and caps at 50 rows. The
-  decoded `unauthenticated` error code is not yet wired to a forced logout
-  (no per-request 401 handling existed before either).
-- `site/demo/sharecrop-wasm-backend.wasm` and `seed-snapshot.b64` are
-  gitignored build artifacts; a stale local copy breaks the demo silently
-  until `deno task wasm:demo:build` is rerun (CI rebuilds them).
-
-Agent-loop-completion notes:
-
-- Notifications whose subject is a submission resolve no task title
-  (`subject_title` joins tasks only), so inbox sentences fall back to
-  "a task" for submission events; the feed row for the same event has the
-  title. Follow-up: join submissions→tasks in the notification read model.
-- Webhook delivery bodies carry empty `actor_display_name`/`task_title`
-  because the dispatcher reads the unenriched event stream; documented in the
-  API reference.
-- MCP `list_tasks` summaries omit `creator_display_name` and
-  `pending_review_count` (available in the store read model); reviewer
-  agents wanting queue triage must call `get_task` per row.
-- `TaskListItemResponse` has no reservation-holder display name; the UI
-  shows "reserved" with the holder UUID in a tooltip only.
-- `tests/integration/webhookdispatch_test.go` assumes no leftover active
-  webhook subscriptions in the database: on a reused dev DB, accumulated
-  subscriptions fan `task_opened` into more due deliveries than one claim
-  batch and starve the test's own delivery. CI's fresh DB is unaffected;
-  a cleanup helper (revoke leftover subscriptions like `parkPendingDeliveries`
-  parks deliveries) is the fix.
+  At-rest encryption needs a key-management decision. The dial-time SSRF
+  guard rejects non-public addresses at delivery; the URL constructor only
+  checks form.
+- Comment and reservation listings are newest-first (previously oldest-first,
+  changed when pagination landed); series detail embeds at most 100 tasks and
+  the newest 20 comments, with the paginated endpoints serving the rest.
 - The expiry input is `datetime-local` labeled UTC and does no timezone
   conversion (elm/time cannot read the local zone offset without a new
   dependency).
 - Registration is throttled per IP (capacity 5, ~12 min refill), which slows
   but does not prevent signup-grant farming; grants remain the only
   non-admin credit faucet and the sybil stance is otherwise open.
+- `site/demo/sharecrop-wasm-backend.wasm` and `seed-snapshot.b64` are
+  gitignored build artifacts; a stale local copy breaks the demo silently
+  until `deno task wasm:demo:build` is rerun (CI rebuilds them).
+- `tests/integration` mirrors two unexported dispatcher constants as
+  `dispatcherRunOnceCapacity` (claim batch 10 x max 50 batches per cycle);
+  changing those constants requires updating the fan-out scale test constant
+  (its comment points here).
+- The moderation reason enum is a closed set in three places (the shared
+  HTTP validator, the contracts enum, and the MCP tool schema); a new
+  category must be added to all three.
+- The 16px gnome favicon's tunic sliver can read as a mouth at that scale,
+  and the dozing-gnome empty state is mostly hat - accepted cosmetic trade-
+  offs after three art iterations, noted for a future art pass.
 
 Known risks:
 

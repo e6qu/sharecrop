@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/event/eventtest"
 )
 
@@ -79,6 +80,17 @@ func TestServiceMintScopesOrganizationOwnedCollectible(t *testing.T) {
 
 type memoryStore struct {
 	created []Collectible
+	// events, when set, captures the drafts the store "recorded" inside its
+	// mutations, so emission tests can assert on them.
+	events *eventtest.CapturingStore
+}
+
+// record captures a recorded draft when a sink is wired; nil-safe for tests
+// that assert nothing about emissions.
+func (store *memoryStore) record(draft event.Draft) {
+	if store.events != nil {
+		store.events.Record(draft)
+	}
 }
 
 func (store *memoryStore) CreateCollectible(_ context.Context, collectible Collectible) CreateStoreResult {
@@ -103,11 +115,13 @@ func (store *memoryStore) RefundCollectibleReward(_ context.Context, _ RefundRew
 }
 
 func (store *memoryStore) GiftCollectible(_ context.Context, command GiftStoreCommand) GiftResult {
-	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerKind: CollectibleOwnerKindUser, OwnerID: command.ToUserID.String()}}
+	store.record(command.Draft)
+	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerKind: CollectibleOwnerKindUser, OwnerID: command.ToUserID.String()}, RecordedEvents: []event.Draft{command.Draft}}
 }
 
 func (store *memoryStore) AwardOrganizationCollectible(_ context.Context, command AwardOrganizationCollectibleStoreCommand) GiftResult {
-	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerKind: CollectibleOwnerKindUser, OwnerID: command.RecipientUserID.String()}}
+	store.record(command.Draft)
+	return CollectibleGifted{Value: Collectible{ID: command.CollectibleID, OwnerKind: CollectibleOwnerKindUser, OwnerID: command.RecipientUserID.String()}, RecordedEvents: []event.Draft{command.Draft}}
 }
 
 func (store *memoryStore) TaskHeldCollectibles(_ context.Context, _ core.TaskID) TaskHeldCollectiblesResult {

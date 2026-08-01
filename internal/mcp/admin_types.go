@@ -54,7 +54,11 @@ func (ModerationReportSaved) moderationReportResult()    {}
 func (ModerationReportRejected) moderationReportResult() {}
 
 type ModerationReportsListResult interface{ moderationReportsListResult() }
-type ModerationReportsListed struct{ Values []ModerationReport }
+type ModerationReportsListed struct {
+	Values []ModerationReport
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
+}
 type ModerationReportsListRejected struct{ Reason core.DomainError }
 
 func (ModerationReportsListed) moderationReportsListResult()       {}

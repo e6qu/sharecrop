@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -14,9 +15,11 @@ import (
 
 // WebhookStore persists webhook subscriptions and deliveries. The bridged
 // webhook.Store surface (create/list/revoke/list-deliveries) runs everywhere
-// the app mux runs; the pump/claim/mark methods further down are host-only
-// (used by internal/webhookdispatch) and deliberately NOT part of the bridged
-// interface, so the WASI guest can never reach them.
+// the app mux runs; the claim/mark methods further down are host-only (used
+// by internal/webhookdispatch) and deliberately NOT part of the bridged
+// interface, so the WASI guest can never reach them. Delivery rows are
+// created by the event dispatch step (expandWebhookDeliveries, called from
+// db.EventStore.Dispatch).
 //
 // The signing secret is stored AS WRITTEN, never hashed: the dispatcher must
 // compute an HMAC-SHA256 over each delivery body with the original secret,
@@ -201,6 +204,13 @@ func (store WebhookStore) ListDeliveries(ctx context.Context, owner webhook.Owne
 		return webhook.ListDeliveriesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "webhook subscription was not found")}
 	}
 
+	var total int64
+	if err := store.db.QueryRow(ctx,
+		"select count(*) from webhook_deliveries where subscription_id = $1",
+		id.String()).Scan(&total); err != nil {
+		return webhook.ListDeliveriesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "count webhook deliveries failed")}
+	}
+
 	rows, err := store.db.Query(ctx, `
 		select id::text, event_seq, state, attempt_count, next_attempt_at, last_status
 		from webhook_deliveries
@@ -241,7 +251,7 @@ func (store WebhookStore) ListDeliveries(ctx context.Context, owner webhook.Owne
 	if rows.Err() != nil {
 		return webhook.ListDeliveriesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read webhook deliveries failed")}
 	}
-	return webhook.ListDeliveriesStoreListed{Values: values}
+	return webhook.ListDeliveriesStoreListed{Values: values, Total: total}
 }
 
 // scanWebhookSubscription decodes one row selected with
@@ -346,95 +356,13 @@ func parseWebhookAudience(rawAudience string, rawTaskType string, rawMinReward i
 	}
 }
 
-// ---- host-only pump/claim/mark methods (internal/webhookdispatch) ----
-
-// webhookPumpBatchLimit caps how many new events one pump pass expands.
-const webhookPumpBatchLimit = 500
-
-type PumpEventsResult interface {
-	pumpEventsResult()
-}
-
-type PumpEventsCompleted struct {
-	// ExpandedEvents is how many new stream events the pump walked past;
-	// InsertedDeliveries is how many pending delivery rows they produced.
-	ExpandedEvents     int
-	InsertedDeliveries int
-}
-
-type PumpEventsRejected struct {
-	Reason core.DomainError
-}
-
-func (PumpEventsCompleted) pumpEventsResult() {}
-
-func (PumpEventsRejected) pumpEventsResult() {}
-
-// PumpEvents advances the shared fan-out cursor under row lock: it reads the
-// domain events past last_seq (bounded batch), inserts one pending delivery
-// per matching active subscription — kind in the subscription's filter AND
-// (user owner is a recipient of the event, or organization owner matches the
-// event's organization) — and moves the cursor. The unique
-// (subscription_id, event_seq) constraint plus ON CONFLICT DO NOTHING makes
-// a replayed batch idempotent, and FOR UPDATE serializes concurrent pumps
-// across replicas.
-func (store WebhookStore) PumpEvents(ctx context.Context) PumpEventsResult {
-	tx, err := store.db.Begin(ctx)
-	if err != nil {
-		return PumpEventsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin webhook pump transaction failed")}
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	var lastSeq int64
-	if err := tx.QueryRow(ctx, `select last_seq from webhook_pump_cursor where singleton = 1 for update`).Scan(&lastSeq); err != nil {
-		return PumpEventsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read webhook pump cursor failed")}
-	}
-
-	rows, err := tx.Query(ctx, `
-		select seq from domain_events
-		where seq > $1
-		order by seq
-		limit $2
-	`, lastSeq, webhookPumpBatchLimit)
-	if err != nil {
-		return PumpEventsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read new domain events failed")}
-	}
-	sequences := make([]int64, 0)
-	for rows.Next() {
-		var sequence int64
-		if err := rows.Scan(&sequence); err != nil {
-			rows.Close()
-			return PumpEventsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan domain event sequence failed")}
-		}
-		sequences = append(sequences, sequence)
-	}
-	rowsErr := rows.Err()
-	rows.Close()
-	if rowsErr != nil {
-		return PumpEventsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "iterate new domain events failed")}
-	}
-
-	inserted := 0
-	for _, sequence := range sequences {
-		count, expandErr := expandWebhookDeliveries(ctx, tx, sequence)
-		if expandErr != nil {
-			return PumpEventsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "expand webhook deliveries failed")}
-		}
-		inserted += count
-	}
-
-	if len(sequences) > 0 {
-		if _, err := tx.Exec(ctx, `update webhook_pump_cursor set last_seq = $1 where singleton = 1`, sequences[len(sequences)-1]); err != nil {
-			return PumpEventsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "advance webhook pump cursor failed")}
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return PumpEventsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit webhook pump transaction failed")}
-	}
-	return PumpEventsCompleted{ExpandedEvents: len(sequences), InsertedDeliveries: inserted}
-}
+// ---- host-only claim/mark methods (internal/webhookdispatch) ----
 
 // expandWebhookDeliveries inserts the pending delivery rows for one event.
+// It runs inside the event dispatch transaction (db.EventStore.Dispatch):
+// delivery expansion is a dispatch effect of each recorded event, executed
+// inline after the mutation commits and replayed by the lifecycle runner's
+// dispatch sweep after a crash.
 // The matching happens in SQL so the pump never loads subscription or
 // recipient rows: a subscription matches when it is active, its kind filter
 // contains the event's kind, and its owner can see the event (user owners
@@ -552,13 +480,20 @@ func (store WebhookStore) ClaimDueDeliveries(ctx context.Context, limit int) Cla
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// The delivery body is built from this row, so the claim resolves the
+	// read-time enrichment the feed read also carries: the acting user's
+	// display name and the referenced task's title.
 	rows, err := tx.Query(ctx, `
 		select webhook_deliveries.id::text, webhook_deliveries.attempt_count,
 			webhook_subscriptions.id::text, webhook_subscriptions.url, webhook_subscriptions.secret,
-			`+eventColumns+`
+			`+eventColumns+`,
+			`+displayNameSQL("actor_user")+`,
+			coalesce(subject_task.title, '')
 		from webhook_deliveries
 		join webhook_subscriptions on webhook_subscriptions.id = webhook_deliveries.subscription_id
 		join domain_events on domain_events.seq = webhook_deliveries.event_seq
+		join users as actor_user on actor_user.id = domain_events.actor_user_id
+		left join tasks as subject_task on subject_task.id = domain_events.task_id
 		where webhook_deliveries.state = 'pending' and webhook_deliveries.next_attempt_at <= now()
 		order by webhook_deliveries.next_attempt_at
 		limit $1
@@ -609,10 +544,11 @@ func scanClaimedWebhookDelivery(rows Rows) (ClaimedWebhookDelivery, error) {
 	var rawTask, rawSubmission, rawReservation, rawSeries, rawOrganization, rawCollectible *string
 	var rawMetadata string
 	var occurredAt time.Time
+	var rawActorName, rawTaskTitle string
 	if err := rows.Scan(&rawDeliveryID, &attemptCount, &rawSubscriptionID, &rawURL, &rawSecret,
 		&sequence, &rawEventID, &rawKind, &actorKind, &rawActorUser,
 		&rawTask, &rawSubmission, &rawReservation, &rawSeries, &rawOrganization, &rawCollectible,
-		&rawMetadata, &occurredAt); err != nil {
+		&rawMetadata, &occurredAt, &rawActorName, &rawTaskTitle); err != nil {
 		return ClaimedWebhookDelivery{}, err
 	}
 
@@ -636,6 +572,14 @@ func scanClaimedWebhookDelivery(rows Rows) (ClaimedWebhookDelivery, error) {
 		rawTask, rawSubmission, rawReservation, rawSeries, rawOrganization, rawCollectible, rawMetadata, occurredAt)
 	if storedErr != nil {
 		return ClaimedWebhookDelivery{}, storedErr
+	}
+	nameResult, nameMatched := auth.NewDisplayName(rawActorName).(auth.DisplayNameAccepted)
+	if !nameMatched {
+		return ClaimedWebhookDelivery{}, ErrNoRows
+	}
+	stored.ActorName = event.ActorNamed{DisplayName: nameResult.Value}
+	if rawTaskTitle != "" {
+		stored.TaskTitle = event.TaskTitled{Title: rawTaskTitle}
 	}
 
 	return ClaimedWebhookDelivery{

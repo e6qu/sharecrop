@@ -89,6 +89,7 @@ type ModerationReason
     | ModerationReasonAbuse
     | ModerationReasonPII
     | ModerationReasonPolicy
+    | ModerationReasonDispute
     | ModerationReasonOther
 
 moderationReasonDecoder : Decoder ModerationReason
@@ -108,6 +109,9 @@ moderationReasonDecoder =
 
                     "policy" ->
                         Decode.succeed ModerationReasonPolicy
+
+                    "dispute" ->
+                        Decode.succeed ModerationReasonDispute
 
                     "other" ->
                         Decode.succeed ModerationReasonOther
@@ -130,6 +134,9 @@ moderationReasonEncoder moderationReason =
 
         ModerationReasonPolicy ->
             Encode.string "policy"
+
+        ModerationReasonDispute ->
+            Encode.string "dispute"
 
         ModerationReasonOther ->
             Encode.string "other"
@@ -190,17 +197,20 @@ moderationReportResponseEncoder moderationReportResponse =
 type alias ModerationReportsResponse =
     { reports : List ModerationReportResponse
     , nextOffset : Int
+    , total : Int
     }
 
 moderationReportsResponseDecoder : Decoder ModerationReportsResponse
 moderationReportsResponseDecoder =
-    Decode.map2 ModerationReportsResponse
+    Decode.map3 ModerationReportsResponse
         (Decode.field "reports" (Decode.list moderationReportResponseDecoder))
         (Decode.field "next_offset" Decode.int)
+        (Decode.field "total" Decode.int)
 
 moderationReportsResponseEncoder : ModerationReportsResponse -> Encode.Value
 moderationReportsResponseEncoder moderationReportsResponse =
     Encode.object
         [ ( "reports", Encode.list moderationReportResponseEncoder moderationReportsResponse.reports )
         , ( "next_offset", Encode.int moderationReportsResponse.nextOffset )
+        , ( "total", Encode.int moderationReportsResponse.total )
         ]

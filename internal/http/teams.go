@@ -97,6 +97,7 @@ func (server Server) getTeamWork(w http.ResponseWriter, r *http.Request) {
 	visible, nextOffset := probeListWindow(len(listed.Values), pageAccepted.value)
 	response := tasksToResponse(listed.Values[:visible], actor.subject)
 	response.NextOffset = nextOffset
+	response.Total = listed.Total
 	writeTasksResponse(w, http.StatusOK, response)
 }
 

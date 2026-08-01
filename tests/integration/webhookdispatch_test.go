@@ -140,7 +140,8 @@ func runDispatcherOnce(t *testing.T, dispatcher webhookdispatch.Dispatcher) webh
 func TestWebhookDispatchEndToEnd(t *testing.T) {
 	pool := newPool(t)
 	store := db.NewWebhookStore(pool)
-	drainWebhookPump(t, store)
+	parkActiveSubscriptions(t, pool)
+	dispatchAllRecordedEvents(t, pool)
 	parkPendingDeliveries(t, pool)
 	server := newWebhookDispatchServer(t, pool)
 	receiver := newWebhookReceiver(t, http.StatusOK)
@@ -269,7 +270,8 @@ func verifyWebhookSignature(t *testing.T, rawSecret string, request recordedWebh
 func TestWebhookDispatchRetriesAndDies(t *testing.T) {
 	pool := newPool(t)
 	store := db.NewWebhookStore(pool)
-	drainWebhookPump(t, store)
+	parkActiveSubscriptions(t, pool)
+	dispatchAllRecordedEvents(t, pool)
 	parkPendingDeliveries(t, pool)
 	server := newWebhookDispatchServer(t, pool)
 	receiver := newWebhookReceiver(t, http.StatusInternalServerError)
@@ -313,8 +315,8 @@ func TestWebhookDispatchRetriesAndDies(t *testing.T) {
 // strict dial policy rejects it at delivery time, recording the block.
 func TestWebhookDispatchBlocksPrivateAddresses(t *testing.T) {
 	pool := newPool(t)
-	store := db.NewWebhookStore(pool)
-	drainWebhookPump(t, store)
+	parkActiveSubscriptions(t, pool)
+	dispatchAllRecordedEvents(t, pool)
 	parkPendingDeliveries(t, pool)
 	server := newWebhookDispatchServer(t, pool)
 

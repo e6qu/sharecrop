@@ -52,7 +52,7 @@ sessionView model =
         LoggedOut ->
             div [ Html.Attributes.class "space-y-6" ]
                 [ div [ Html.Attributes.class "flex flex-col items-center gap-3 pt-4 text-center" ]
-                    [ Sprites.pixel "rainbow-field" 7
+                    [ Sprites.pixel "gnome-hero" 6
                     , Ui.pageTitle "Sharecrop"
                     ]
                 , authView model
@@ -74,6 +74,7 @@ authView model =
             [ p [ Html.Attributes.class "text-farm-muted" ] [ text "Continue through Shauth to use your organization identity." ]
             , Ui.secondaryLink [ testId "shauth-login" ] "/api/auth/shauth" "Continue with Shauth"
             , maybeError model.authError "auth-error"
+            , sessionEndedNoticeView model.sessionNotice
             ]
 
          else
@@ -116,6 +117,7 @@ authView model =
                 ]
             ]
         , maybeError model.authError "auth-error"
+        , sessionEndedNoticeView model.sessionNotice
         , case model.authNotice of
             Just notice ->
                 Ui.successText "auth-notice" notice
@@ -124,6 +126,19 @@ authView model =
                 text ""
             ]
         )
+
+
+{-| The factual notice shown after a forced sign-out (an authorized request
+came back `unauthenticated` mid-session).
+-}
+sessionEndedNoticeView : Maybe String -> Html Msg
+sessionEndedNoticeView notice =
+    case notice of
+        Just message ->
+            Ui.noteText "session-ended-notice" message
+
+        Nothing ->
+            text ""
 
 
 loggedInView : Model -> LoggedInModel -> Html Msg
@@ -192,7 +207,7 @@ navBar demo current subjectId accountName username isAdmin openNavMenu unreadCou
         -- The brand row is a span, not a heading: each route renders its own
         -- <h1> (see pageView), so the wordmark is purely identity/decoration.
         [ span [ Html.Attributes.class "mr-auto inline-flex items-center gap-2" ]
-            [ Sprites.pixel "red-barn" 2
+            [ Sprites.pixel "gnome" 3
             , span [ Html.Attributes.class "font-display text-sm leading-relaxed text-farm-accent-strong [text-shadow:2px_2px_0_var(--color-farm-surface-raised)]" ] [ text "Sharecrop" ]
             ]
         , navLink current OverviewPage "overview" "Overview"
@@ -404,9 +419,9 @@ adminView state =
                 , Ui.fieldLabel "Triage note"
                     [ Ui.textInput [ placeholder "Decision note", value state.adminModerationResolutionNote, onInput AdminModerationResolutionNoteChanged, testId "admin-moderation-note" ] ]
                 ]
-            , paginationControls "admin-moderation-page" PreviousAdminModerationPageClicked NextAdminModerationPageClicked state.adminModerationOffset state.adminModerationNextOffset
+            , paginationControlsWithTotal "admin-moderation-page" PreviousAdminModerationPageClicked NextAdminModerationPageClicked state.adminModerationOffset state.adminModerationNextOffset state.adminModerationTotal
             , if List.isEmpty state.adminModerationReports then
-                Ui.emptyState "admin-moderation-empty" "scarecrow" "No moderation reports."
+                Ui.emptyState "admin-moderation-empty" "gnome-dozing" "No moderation reports."
 
               else
                 div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "admin-moderation-reports" ]
@@ -549,7 +564,7 @@ inboxView state =
         [ Ui.checkbox [ checked state.inboxUnreadOnly, onCheck InboxUnreadOnlyToggled, testId "inbox-unread-only" ] "Unread only"
         , if List.isEmpty state.notifications then
             Ui.emptyState "inbox-empty"
-                "beehive"
+                "gnome-dozing"
                 (if state.inboxUnreadOnly then
                     "No unread notifications."
 
@@ -560,7 +575,7 @@ inboxView state =
           else
             div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "inbox-list" ]
                 (List.map (notificationRow state.now) state.notifications)
-        , paginationControls "inbox-page" PreviousNotificationsPageClicked NextNotificationsPageClicked state.notificationsOffset state.notificationsNextOffset
+        , paginationControlsWithTotal "inbox-page" PreviousNotificationsPageClicked NextNotificationsPageClicked state.notificationsOffset state.notificationsNextOffset state.notificationsTotal
         , maybeNote state.inboxMessage "inbox-message"
         ]
 
@@ -784,7 +799,7 @@ teamWorkDashboard teamId state =
                 , prefix = "team-work"
                 }
             ]
-        , paginationControls "team-work-page" PreviousTeamWorkPageClicked NextTeamWorkPageClicked state.teamWorkOffset state.teamWorkNextOffset
+        , paginationControlsWithTotal "team-work-page" PreviousTeamWorkPageClicked NextTeamWorkPageClicked state.teamWorkOffset state.teamWorkNextOffset state.teamWorkTotal
         , teamWorkSection state.subjectId "Review queue" "team-review-queue" "No submissions waiting for team review." reviewTasks
         , teamWorkSection state.subjectId "Ready for team" "team-ready-work" "No team-visible tasks are ready for action." readyForTeam
         , teamWorkSection state.subjectId "Assigned to team" "team-assigned-work" "No tasks are currently assigned to this team." assignedToTeam
@@ -1144,6 +1159,20 @@ taskRewardBadge rewardKind rewardCreditAmount rewardCollectibleCount =
         Ui.badgeVariantWithIcon "reward" "◆" (rewardLabel rewardKind rewardCreditAmount rewardCollectibleCount)
 
 
+{-| One factual line under a superseded row: the state chip alone
+("superseded") does not explain what happened to the work.
+-}
+supersededNote : Submission.SubmissionState -> Html Msg
+supersededNote state =
+    case state of
+        Submission.SubmissionStateSuperseded ->
+            p [ Html.Attributes.class "text-xs text-farm-muted", testId "superseded-note" ]
+                [ text "Another submission was accepted." ]
+
+        _ ->
+            text ""
+
+
 submissionStateBadge : Submission.SubmissionState -> Html Msg
 submissionStateBadge state =
     let
@@ -1163,6 +1192,9 @@ submissionStateBadge state =
 
                 Submission.SubmissionStateChangesRequested ->
                     "warning"
+
+                Submission.SubmissionStateSuperseded ->
+                    "neutral"
     in
     Ui.badgeVariant tone (submissionStateLabel state)
 
@@ -1333,7 +1365,7 @@ userTaskListView heading identifier userId tasks =
         [ a [ href ("#/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
         , Ui.sectionTitle heading
         , if List.isEmpty tasks then
-            Ui.emptyState (identifier ++ "-empty") "wheat-sheaf" "Nothing to show."
+            Ui.emptyState (identifier ++ "-empty") "gnome-watering" "Nothing to show."
 
           else
             div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId identifier ]
@@ -1392,7 +1424,7 @@ userSubmissionsSection state =
           else
             div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "user-submissions" ]
                 (List.map userSubmissionRow submissions)
-        , paginationControls "user-submissions-page" PreviousUserSubmissionsPageClicked NextUserSubmissionsPageClicked state.userSubmissionsOffset state.userSubmissionsNextOffset
+        , paginationControlsWithTotal "user-submissions-page" PreviousUserSubmissionsPageClicked NextUserSubmissionsPageClicked state.userSubmissionsOffset state.userSubmissionsNextOffset state.userSubmissionsTotal
         ]
     , revisionTimelineView submissions
     ]
@@ -1411,6 +1443,7 @@ userSubmissionRow item =
     div [ Html.Attributes.class "space-y-1 py-2", testId "user-submission-row" ]
         [ a [ href ("#/tasks/" ++ item.taskID), Html.Attributes.class "text-sm underline", testId "user-submission-task-link" ] [ text ("Task " ++ item.taskID) ]
         , p [ Html.Attributes.class "text-xs text-farm-muted" ] [ text (submissionStateLabel item.state) ]
+        , supersededNote item.state
         , reviewNoteView item.reviewNote
         , Ui.codeBlock [ testId "user-submission-response" ] item.responseJSON
         , validationErrorsView item.validationErrors
@@ -1437,6 +1470,7 @@ revisionTimelineRow item =
             [ submissionStateBadge item.state
             , a [ href ("#/tasks/" ++ item.taskID), Html.Attributes.class "text-sm underline", testId "revision-timeline-task-link" ] [ text ("Task " ++ item.taskID) ]
             ]
+        , supersededNote item.state
         , reviewNoteView item.reviewNote
         , validationErrorsView item.validationErrors
         , sensitiveFieldsView item.sensitiveFields
@@ -1469,7 +1503,7 @@ userDetailView origin userId state =
             , case state.userProfile of
                 Just profile ->
                     if List.isEmpty profile.tasks then
-                        Ui.emptyState "user-tasks-empty" "wheat-sheaf" "No public tasks."
+                        Ui.emptyState "user-tasks-empty" "gnome-watering" "No public tasks."
 
                     else
                         div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "user-tasks" ]
@@ -1677,7 +1711,7 @@ overviewView state =
         , needsReviewCard state
         , Ui.sectionTitle "Credit account"
         , balanceView state.balance
-        , ledgerView state.entries state.ledgerOffset state.ledgerNextOffset
+        , ledgerView state.entries state.ledgerOffset state.ledgerNextOffset state.ledgerTotal
         , activityCard state
         ]
 
@@ -1759,7 +1793,7 @@ activityCard state =
     Ui.card
         [ Ui.sectionTitle "Recent activity"
         , if List.isEmpty state.activityEvents then
-            Ui.emptyState "overview-activity-empty" "sun-token" "Nothing has happened yet. Activity on your tasks and submissions shows up here."
+            Ui.emptyState "overview-activity-empty" "gnome-dozing" "Nothing has happened yet. Activity on your tasks and submissions shows up here."
 
           else
             div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "overview-activity" ]
@@ -1890,7 +1924,7 @@ organizationDetailView state =
 organizationsList : LoggedInModel -> Html Msg
 organizationsList state =
     if List.isEmpty state.organizations then
-        Ui.emptyState "organizations-empty" "red-barn" "You do not belong to any organizations yet."
+        Ui.emptyState "organizations-empty" "gnome-signpost" "You do not belong to any organizations yet."
 
     else
         div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "organizations" ] (List.map organizationRow state.organizations)
@@ -2035,13 +2069,13 @@ organizationOperationsDashboard state =
             , operationMetric "Open tasks" (String.fromInt (countTasks Task.TaskStateOpen state.orgTasks)) "org-ops-tasks-open"
             , operationMetric "Closed tasks" (String.fromInt (countTasks Task.TaskStateClosed state.orgTasks)) "org-ops-tasks-closed"
             ]
-        , orgLedgerPanel state.orgLedger state.orgLedgerOffset state.orgLedgerNextOffset
+        , orgLedgerPanel state.orgLedger state.orgLedgerOffset state.orgLedgerNextOffset state.orgLedgerTotal
         , orgAuditPanel state.orgAuditEvents state.orgAuditMessage
         ]
 
 
-orgLedgerPanel : List Ledger.LedgerEntryResponse -> Int -> Int -> Html Msg
-orgLedgerPanel entries offset nextOffset =
+orgLedgerPanel : List Ledger.LedgerEntryResponse -> Int -> Int -> Int -> Html Msg
+orgLedgerPanel entries offset nextOffset total =
     div [ Html.Attributes.class "space-y-2", testId "org-ledger-panel" ]
         [ h3 [ Html.Attributes.class "font-display text-[0.65rem] leading-relaxed text-farm-accent-strong" ] [ text "Organization ledger" ]
         , if List.isEmpty entries then
@@ -2051,7 +2085,7 @@ orgLedgerPanel entries offset nextOffset =
             table [ Html.Attributes.class "w-full text-left text-sm" ]
                 [ tbody [ testId "org-ledger" ] (List.map ledgerRow entries)
                 ]
-        , paginationControls "org-ledger-page" PreviousOrgLedgerPageClicked NextOrgLedgerPageClicked offset nextOffset
+        , paginationControlsWithTotal "org-ledger-page" PreviousOrgLedgerPageClicked NextOrgLedgerPageClicked offset nextOffset total
         ]
 
 
@@ -2110,7 +2144,7 @@ orgTaskControls state =
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
             [ Ui.secondaryButton [ type_ "button", onClick SearchOrgTasksClicked, testId "org-task-search" ] "Search"
             ]
-        , paginationControls "org-tasks-page" PreviousOrgTasksPageClicked NextOrgTasksPageClicked state.orgTaskOffset state.orgTaskNextOffset
+        , paginationControlsWithTotal "org-tasks-page" PreviousOrgTasksPageClicked NextOrgTasksPageClicked state.orgTaskOffset state.orgTaskNextOffset state.orgTaskTotal
         , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "org-task-filter" ]
             (List.map (orgTaskFilterButton state.orgTaskFilter) orgTaskFilterOptions)
         , queueSavedViews
@@ -2267,7 +2301,7 @@ organizationRoleText role =
 tasksListSimple : String -> List Task.TaskListItemResponse -> Html Msg
 tasksListSimple identifier tasks =
     if List.isEmpty tasks then
-        Ui.emptyState (identifier ++ "-empty") "wheat-sheaf" "No tasks yet."
+        Ui.emptyState (identifier ++ "-empty") "gnome-watering" "No tasks yet."
 
     else
         div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId identifier ]
@@ -2780,8 +2814,8 @@ participationButton selectedPolicy policy =
         (participationPolicyLabel policy)
 
 
-ledgerView : List Ledger.LedgerEntryResponse -> Int -> Int -> Html Msg
-ledgerView entries offset nextOffset =
+ledgerView : List Ledger.LedgerEntryResponse -> Int -> Int -> Int -> Html Msg
+ledgerView entries offset nextOffset total =
     Ui.card
         [ Ui.sectionTitle "Ledger"
         , table [ Html.Attributes.class "w-full text-left text-sm" ]
@@ -2793,7 +2827,7 @@ ledgerView entries offset nextOffset =
                 ]
             , tbody [ testId "ledger" ] (List.map ledgerRow entries)
             ]
-        , paginationControls "ledger-page" PreviousLedgerPageClicked NextLedgerPageClicked offset nextOffset
+        , paginationControlsWithTotal "ledger-page" PreviousLedgerPageClicked NextLedgerPageClicked offset nextOffset total
         ]
 
 
@@ -2918,7 +2952,7 @@ tasksView origin state =
             , taskTypeFilterSelect "tasks-type" state.taskListTypeFilter TaskListTypeFilterChanged
             , taskSortSelect "tasks-sort" state.taskListSort TaskListSortChanged
             ]
-         , paginationControls "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset state.taskListNextOffset
+         , paginationControlsWithTotal "tasks-page" PreviousTasksPageClicked NextTasksPageClicked state.taskListOffset state.taskListNextOffset state.taskListTotal
          , tasksList state.subjectId visibleTasks
          ]
             ++ discoverySection state
@@ -3056,16 +3090,38 @@ activeAssigneeSuffix item =
         " · reserved"
 
 
-{-| "reserved" as a hoverable span: the holder's raw id keeps operational
-value but has no business leading the row, so it lives in the tooltip.
+{-| Who holds the reservation, by display name ("reserved by Ren Okafor");
+the holder's raw id keeps operational value in the tooltip. Falls back to a
+bare "reserved" for holders without a display name (teams, redacted users).
 -}
 reservedIndicator : Task.TaskListItemResponse -> Html Msg
 reservedIndicator item =
     if item.activeAssigneeID == "" then
         text ""
 
-    else
+    else if String.trim item.holderDisplayName == "" then
         span [ Html.Attributes.title item.activeAssigneeID, testId "task-reserved" ] [ text "· reserved" ]
+
+    else
+        span [ Html.Attributes.title item.activeAssigneeID, testId "task-reserved" ] [ text ("· reserved by " ++ item.holderDisplayName) ]
+
+
+{-| Whether a credit-reward task's reward is actually funded: a "funded"
+badge is the go signal for workers, an "unfunded" warning flags a task whose
+declared reward holds nothing yet. Tasks without a credit reward show no
+badge - there is nothing to fund.
+-}
+taskFundedBadge : Task.TaskFundedState -> Html Msg
+taskFundedBadge funded =
+    case funded of
+        Task.TaskFundedStateRewardFunded ->
+            span [ testId "task-funded" ] [ Ui.badgeVariant "success" "funded" ]
+
+        Task.TaskFundedStateRewardUnfunded ->
+            span [ testId "task-unfunded" ] [ Ui.badgeVariant "warning" "unfunded" ]
+
+        Task.TaskFundedStateNoCreditReward ->
+            text ""
 
 
 {-| The task's creator by display name, shown when the row belongs to
@@ -3101,7 +3157,7 @@ filterTasksByQuery query tasks =
 tasksList : String -> List Task.TaskListItemResponse -> Html Msg
 tasksList subjectId tasks =
     if List.isEmpty tasks then
-        Ui.emptyState "tasks-empty" "wheat-sheaf" "No tasks yet."
+        Ui.emptyState "tasks-empty" "gnome-watering" "No tasks yet."
 
     else
         div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "tasks" ] (List.map (taskRow subjectId) tasks)
@@ -3147,6 +3203,7 @@ taskRow subjectId item =
             , p [ Html.Attributes.class "flex flex-wrap items-center gap-1.5 text-xs text-farm-muted break-words" ]
                 [ taskStateBadge item.state
                 , taskRewardBadge item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount
+                , taskFundedBadge item.funded
                 , pendingReviewBadge item.pendingReviewCount
                 , taskCreatorSpan subjectId item
                 , reservedIndicator item
@@ -3229,7 +3286,7 @@ webhooksSection state =
             , Ui.codeBlock [ testId "webhook-signature-scheme" ] webhookSignatureScheme
             ]
         , if List.isEmpty state.webhookSubscriptions then
-            Ui.emptyState "webhook-list-empty" "windmill" "No webhook subscriptions yet."
+            Ui.emptyState "webhook-list-empty" "gnome-signpost" "No webhook subscriptions yet."
 
           else
             div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "webhook-list" ]
@@ -3295,6 +3352,7 @@ webhookKindGroups =
         , Events.DomainEventKindSubmissionAccepted
         , Events.DomainEventKindSubmissionChangesRequested
         , Events.DomainEventKindSubmissionRejected
+        , Events.DomainEventKindSubmissionSuperseded
         , Events.DomainEventKindSubmissionCommented
         ]
       )
@@ -3685,10 +3743,11 @@ discoverySection state =
         False
         "Filters"
         [ Ui.checkbox [ checked state.discoveryIncludeReserved, onClick (DiscoveryIncludeReservedChanged (not state.discoveryIncludeReserved)), testId "include-reserved" ] "Include reserved"
+        , Ui.checkbox [ checked state.discoveryFundedOnly, onClick (DiscoveryFundedOnlyChanged (not state.discoveryFundedOnly)), testId "discovery-funded-only" ] "Funded only"
         , Ui.fieldLabel "Search loaded discovery"
             [ Ui.textInput [ type_ "search", placeholder "Task title or ID", value state.discoveryQuery, onInput DiscoveryQueryChanged, testId "discovery-query" ] ]
         ]
-    , paginationControls "discovery-page" PreviousDiscoveryPageClicked NextDiscoveryPageClicked state.discoveryOffset state.discoveryNextOffset
+    , paginationControlsWithTotal "discovery-page" PreviousDiscoveryPageClicked NextDiscoveryPageClicked state.discoveryOffset state.discoveryNextOffset state.discoveryTotal
     , discoveryList state.subjectId visibleTasks
     ]
 
@@ -3696,7 +3755,7 @@ discoverySection state =
 discoveryList : String -> List Task.TaskListItemResponse -> Html Msg
 discoveryList subjectId tasks =
     if List.isEmpty tasks then
-        Ui.emptyState "discovery-empty" "rainbow-field" "No public tasks available."
+        Ui.emptyState "discovery-empty" "gnome-watering" "No public tasks available."
 
     else
         div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "discovery-tasks" ] (List.map (discoveryRow subjectId) tasks)
@@ -3733,6 +3792,7 @@ discoveryRow subjectId item =
             , p [ Html.Attributes.class "flex flex-wrap items-center gap-1.5 text-xs text-farm-muted break-words" ]
                 [ taskStateBadge item.state
                 , taskRewardBadge item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount
+                , taskFundedBadge item.funded
                 , text ("· " ++ participationPolicyLabel item.participationPolicy)
                 , taskCreatorSpan subjectId item
                 , reservedIndicator item
@@ -3748,9 +3808,22 @@ discoveryRow subjectId item =
 -- full final page, which the old shown-count heuristic could not detect.
 paginationControls : String -> Msg -> Msg -> Int -> Int -> Html Msg
 paginationControls identifier previous next offset nextOffset =
+    paginationRow identifier previous next offset nextOffset (pageLabel offset)
+
+
+{-| Like paginationControls, for lists whose response carries a `total` row
+count: the label reads "Page N of M" instead of a bare "Page N".
+-}
+paginationControlsWithTotal : String -> Msg -> Msg -> Int -> Int -> Int -> Html Msg
+paginationControlsWithTotal identifier previous next offset nextOffset total =
+    paginationRow identifier previous next offset nextOffset (pageLabelWithTotal offset total)
+
+
+paginationRow : String -> Msg -> Msg -> Int -> Int -> String -> Html Msg
+paginationRow identifier previous next offset nextOffset label =
     div [ Html.Attributes.class "flex flex-wrap items-center gap-2 text-xs text-farm-muted", testId identifier ]
         [ Ui.secondaryButton [ type_ "button", disabled (offset == 0), onClick previous, testId (identifier ++ "-previous") ] "Previous"
-        , span [ testId (identifier ++ "-offset") ] [ text (pageLabel offset) ]
+        , span [ testId (identifier ++ "-offset") ] [ text label ]
         , Ui.secondaryButton [ type_ "button", disabled (nextOffset == 0), onClick next, testId (identifier ++ "-next") ] "Next"
         ]
 
@@ -3761,6 +3834,18 @@ human page number is derivable and reads far better than "Offset 40".
 pageLabel : Int -> String
 pageLabel offset =
     "Page " ++ String.fromInt (offset // pageSize + 1)
+
+
+{-| "Page N of M" where M is ceil(total / pageSize), floored at one page so
+an empty list still reads "Page 1 of 1".
+-}
+pageLabelWithTotal : Int -> Int -> String
+pageLabelWithTotal offset total =
+    let
+        pageCount =
+            max 1 ((total + pageSize - 1) // pageSize)
+    in
+    pageLabel offset ++ " of " ++ String.fromInt pageCount
 
 
 
@@ -3850,10 +3935,15 @@ moderationReportCard state =
     case state.detail of
         Just detail ->
             Ui.card
+                -- The open flag is derived from the report subject, which only
+                -- changes on the explicit "File a dispute" click - exactly the
+                -- moment the panel should force itself open (never from live
+                -- form fields, per the Ui.disclosure caveat).
                 [ Ui.disclosure "moderation-report-panel"
-                    False
-                    "Report task"
-                    [ div [ Html.Attributes.class "flex flex-wrap gap-2", testId "moderation-reasons" ]
+                    (state.moderationSubject /= ReportAboutTask)
+                    "Report a problem"
+                    [ moderationSubjectLine state.moderationSubject
+                    , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "moderation-reasons" ]
                         (List.map (moderationReasonButton state.moderationReason) moderationReasonOptions)
                     , Ui.textarea_
                         [ placeholder "Describe the issue"
@@ -3871,12 +3961,31 @@ moderationReportCard state =
             text ""
 
 
+{-| What the report will be filed about. The default (the task itself) needs
+no announcement; a dispute names the submission and offers a way back to
+reporting the task.
+-}
+moderationSubjectLine : ModerationSubject -> Html Msg
+moderationSubjectLine subject =
+    case subject of
+        ReportAboutTask ->
+            text ""
+
+        ReportAboutSubmission submissionId ->
+            div [ Html.Attributes.class "space-y-1" ]
+                [ p [ Html.Attributes.class "text-xs text-farm-ink break-all", testId "moderation-subject" ]
+                    [ text ("This report disputes the review of submission " ++ submissionId ++ ".") ]
+                , Ui.secondaryButton [ type_ "button", onClick ReportSubjectClearedClicked, testId "moderation-subject-clear" ] "Report the task instead"
+                ]
+
+
 moderationReasonOptions : List ( Moderation.ModerationReason, String )
 moderationReasonOptions =
     [ ( Moderation.ModerationReasonPolicy, "Policy" )
     , ( Moderation.ModerationReasonSpam, "Spam" )
     , ( Moderation.ModerationReasonAbuse, "Abuse" )
     , ( Moderation.ModerationReasonPII, "PII" )
+    , ( Moderation.ModerationReasonDispute, "Dispute" )
     , ( Moderation.ModerationReasonOther, "Other" )
     ]
 
@@ -4157,7 +4266,6 @@ ownerControlsCard state =
                         , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
                         , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset state.organizationNextOffset
                         , Ui.primaryButton [ type_ "button", onClick FundClicked, testId "fund" ] "Fund task"
-                        , maybeNote state.fundMessage "fund-message"
                         ]
 
                   else if canFund then
@@ -4167,11 +4275,14 @@ ownerControlsCard state =
                         [ Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
                         , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset state.organizationNextOffset
                         , Ui.primaryButton [ type_ "button", onClick FundClicked, testId "fund" ] "Fund task"
-                        , maybeNote state.fundMessage "fund-message"
                         ]
 
                   else
                     text ""
+
+                -- Card-level so the note survives the callout->collapsed-panel
+                -- swap that happens the moment funding succeeds.
+                , maybeNote state.fundMessage "fund-message"
                 , if canFund then
                     -- state.awardTaskId is kept synced to the currently-viewed
                     -- task on entering this page (see enterPage), so this
@@ -4640,13 +4751,34 @@ mySubmissionRow state submission =
             , Ui.secondaryButton [ type_ "button", onClick (OpenSubmissionComments submission.id), testId "my-submission-comments-toggle" ] (discussionButtonLabel state submission.id)
             ]
         , p [ Html.Attributes.class "font-mono text-xs text-farm-muted break-all", testId "my-submission-id" ] [ text ("Submission " ++ submission.id) ]
+        , supersededNote submission.state
         , reviewNoteView submission.reviewNote
         , Ui.codeBlock [ testId "my-submission-response" ] submission.responseJSON
         , submissionAttachmentsView submission.attachments
         , validationErrorsView submission.validationErrors
         , sensitiveFieldsView submission.sensitiveFields
+        , fileDisputeControl submission
         , submissionCommentsThread state submission
         ]
+
+
+{-| On the worker's own rejected submission: opens the report form on this
+page preset to a dispute about exactly this submission (see
+moderationReportCard). Rejection is the one review outcome worth contesting
+formally, so the affordance only appears there.
+-}
+fileDisputeControl : Submission.SubmissionResponse -> Html Msg
+fileDisputeControl submission =
+    case submission.state of
+        Submission.SubmissionStateRejected ->
+            div [ Html.Attributes.class "space-y-1" ]
+                [ Ui.secondaryButton [ type_ "button", onClick (FileDisputeClicked submission.id), testId "file-dispute" ] "File a dispute"
+                , Ui.explainToggle "file-dispute-info" "Filing a dispute sends this rejection to the platform moderators for review. Describe why the review outcome was wrong in the report form below."
+                ]
+
+        _ ->
+            text ""
+
 
 
 submissionsCard : LoggedInModel -> Html Msg

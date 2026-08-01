@@ -4,7 +4,7 @@ This reference lists the stable application routes used by the Elm UI, external 
 
 All protected routes require `Authorization: Bearer <access_token>` unless the route is explicitly public. Browser sessions also use the refresh-token cookie for `/api/auth/refresh`. When Shauth is configured, a user access token is accepted only alongside its active Sharecrop browser-session cookie; RP-Initiated, Front-Channel, and Back-Channel Logout therefore fail closed immediately instead of leaving the SPA usable until the access token expires. Agent and organization credentials remain independent non-browser credentials.
 
-[docs/openapi.json](./openapi.json) is generated from the route registrations in `internal/http/server.go` (`make openapi`, checked in CI by `make check-openapi`) and is an accurate machine-readable method/path/operationId/bearer-auth inventory. Request/response body schemas are derived from the actual Go DTO struct each handler decodes/writes, resolved through `internal/openapi`'s `go/ast`-based analysis of `internal/http`; a route whose handler does not match one of the standard decode/write patterns (raw MCP JSON-RPC passthrough or `healthz`) gets a generic `{"type": "object"}` (or empty) placeholder rather than a guess. This document remains the source for prose per-route request/response descriptions where the generated schema is generic. The same document is browsable at `/docs/openapi.html` on the deployed GitHub Pages site, and served raw at `/docs/openapi.json`.
+[docs/openapi.json](./openapi.json) is generated from the route registrations in `internal/http/server.go` (`make openapi`, checked in CI by `make check-openapi`) and is an accurate machine-readable method/path/operationId/bearer-auth inventory. Request/response body schemas are derived from the actual Go DTO struct each handler decodes/writes, resolved through `internal/openapi`'s `go/ast`-based analysis of `internal/http`; a route whose handler does not match one of the standard decode/write patterns (raw MCP JSON-RPC passthrough or `healthz`) gets a generic `{"type": "object"}` (or empty) placeholder rather than a guess. Response status codes are derived from the handler bodies as well: each operation lists the success statuses its handler actually writes (200/201/202/204, or a redirect), the 4xx statuses it can produce, and a `default` error response. All error responses reference the shared `ErrorResponse` component schema (`{error, code}`, with `code` enumerating the ten error codes). This document remains the source for prose per-route request/response descriptions where the generated schema is generic. The same document is browsable at `/docs/openapi.html` on the deployed GitHub Pages site, and served raw at `/docs/openapi.json`.
 
 ## Credential Coverage
 
@@ -13,8 +13,8 @@ Three bearer credential kinds reach the API. Their coverage differs:
 | Credential | Prefix | Covers |
 | --- | --- | --- |
 | User access token | JWT | Every route in this document. User sessions carry no scope model. |
-| Organization credential | `scrop_org_` | Routes widened to org parity: task listing/state changes/detail-adjacent flows that accept an org actor, reservation review, submission listing/review, webhook management, MCP. Each call is checked against the scopes the credential was minted with. `scope=organization` task listings only; the org credential acts as the organization, not as a member. |
-| Personal agent credential | `scrop_agent_` | `GET /api/tasks` (public scope only, `tasks_read`), `GET /api/tasks/{task_id}` (`tasks_read`), `POST /api/tasks/{task_id}/submissions` (`submissions_write`), `POST /api/tasks/{task_id}/reservations` (`submissions_write`), and the MCP endpoint (all tools, per scope). Other REST routes reject it. A task-scoped credential (auto-issued on reservation) is additionally bound to its task. |
+| Organization credential | `scrop_org_` | Routes widened to org parity: task listing/state changes/detail-adjacent flows that accept an org actor, reservation review, submission listing/review, webhook management, the event feed (`GET /api/events`, `notifications_read`), MCP. Each call is checked against the scopes the credential was minted with. `scope=organization` task listings only; the org credential acts as the organization, not as a member. |
+| Personal agent credential | `scrop_agent_` | `GET /api/tasks` (public scope only, `tasks_read`), `GET /api/tasks/{task_id}` (`tasks_read`), `POST /api/tasks/{task_id}/submissions` (`submissions_write`), `POST /api/tasks/{task_id}/reservations` (`submissions_write`), `GET /api/events` (`notifications_read`), and the MCP endpoint (all tools, per scope). Other REST routes reject it. A task-scoped credential (auto-issued on reservation) is additionally bound to its task. |
 
 ## Authentication
 
@@ -46,7 +46,7 @@ Three bearer credential kinds reach the API. Their coverage differs:
 - `DELETE /api/account`: deactivate the authenticated account.
 - `POST /api/privacy-requests`: create an audited privacy request. Accepted `kind` values are `data_export` and `sensitive_field_deletion`; the response includes `kind`, `status`, `requested_by`, timestamps, `export_json`, `resolution_note`, and `redacted_field_count`.
 - `GET /api/privacy-requests`: list the authenticated user's privacy requests.
-- `POST /api/moderation/reports`: report a task, submission, comment, user, organization, team, or collectible for moderation review. Requires `subject_kind`, `subject_id`, and a `reason` enum value; `details` is optional and length-limited. Any authenticated user can report; triage is admin-only (see the admin routes below).
+- `POST /api/moderation/reports`: report a task, submission, comment, user, organization, team, or collectible for moderation review. Requires `subject_kind`, `subject_id`, and a `reason` category (`spam`, `abuse`, `pii`, `policy`, `dispute`, or `other`); `details` is optional and length-limited. `dispute` with a `submission` subject is the structured path for a worker contesting a rejected submission review. Any authenticated user can report; triage is admin-only (see the admin routes below).
 
 ## Agent Credentials
 
@@ -65,7 +65,7 @@ Three bearer credential kinds reach the API. Their coverage differs:
   content types are PNG, JPEG, GIF, WebP, plain text, JSON, and PDF. Each decoded
   file must be under 500 KiB, and each request may include up to five
   attachments.
-- `GET /api/tasks`: list tasks visible to the requester. `scope` is optional and defaults to `public`; the other values are `user`, `organization` (requires `organization_id`), and `team` (requires `team_id`). Filters: `state` (repeatable), `participation_policy`, `task_type`, `query`, `sort`, `created_after` (RFC3339; only tasks created strictly after it), `include_reserved`, `limit`, `offset`. List items carry `creator_display_name` on every row and `pending_review_count` (submissions in state `submitted`), which is populated only on tasks the caller created and 0 on every other row. Personal agent credentials holding `tasks_read` may call this endpoint for the public scope only; any other scope answers 403 `permission_denied`.
+- `GET /api/tasks`: list tasks visible to the requester. `scope` is optional and defaults to `public`; the other values are `user`, `organization` (requires `organization_id`), and `team` (requires `team_id`). Filters: `state` (repeatable), `participation_policy`, `task_type`, `query`, `sort`, `created_after` (RFC3339; only tasks created strictly after it), `funded` (`reward_funded`, `reward_unfunded`, or `no_credit_reward`; absent applies no funding restriction), `include_reserved`, `limit`, `offset`. List items carry `creator_display_name` on every row, `holder_display_name` (the user holding the active reservation when the reservation is user-assigned; empty otherwise), `funded` (the same three-value funded state), and `pending_review_count` (submissions in state `submitted`), which is populated only on tasks the caller created and 0 on every other row. The response carries `total` alongside `next_offset`. Personal agent credentials holding `tasks_read` may call this endpoint for the public scope only; any other scope answers 403 `permission_denied`.
 - `GET /api/tasks/{task_id}`: read task detail, including `creator_display_name`.
 - `POST /api/tasks/{task_id}/open`: open a draft task.
 - `POST /api/tasks/{task_id}/cancel`: cancel an unfunded draft or open no-reward task.
@@ -84,13 +84,13 @@ Three bearer credential kinds reach the API. Their coverage differs:
 - `POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel`: cancel a reservation as requester.
 - `POST /api/tasks/{task_id}/submissions`: submit a JSON response. The request
   may include the same small `attachments` shape and limits as task creation.
-- `GET /api/tasks/{task_id}/submissions`: list task submissions for an authorized reviewer. Each submission carries `submitter_display_name`.
+- `GET /api/tasks/{task_id}/submissions`: list task submissions for an authorized reviewer. Each submission carries `submitter_display_name`. Submission `state` values are `submitted`, `invalid`, `accepted`, `rejected`, `changes_requested`, and `superseded` (terminal: another submission's accept closed the task while this one was still awaiting review).
 - `GET /api/users/{user_id}/submissions`: list the authenticated user's own submissions. Supports `limit` and `offset`.
 - `GET /api/users`: search the user directory with `query`, `limit`, and `offset`; returns id/email/display_name/status entries for selector-backed flows.
 - `GET /api/users/{user_id}`: read a user's profile: their `display_name` and the tasks they created that are visible to the caller.
 - `GET /api/users/{user_id}/work`: list the tasks currently assigned to a user that are visible to the caller.
 - `GET /api/submission-receipts/{receipt_token}`: read receipt status by receipt token.
-- `POST /api/tasks/{task_id}/submissions/{submission_id}/accept`: accept a submission and settle reward/tips.
+- `POST /api/tasks/{task_id}/submissions/{submission_id}/accept`: accept a submission and settle reward/tips. Competing submissions still in state `submitted` move to the terminal `superseded` state, and each superseded submitter receives a `submission_superseded` event and notification.
 - `POST /api/tasks/{task_id}/submissions/{submission_id}/request-changes`: request changes and keep the task active.
 - `POST /api/tasks/{task_id}/submissions/{submission_id}/reject`: reject a submission with a required note and optional partial/tip.
 
@@ -105,8 +105,9 @@ Three bearer credential kinds reach the API. Their coverage differs:
 
 The domain event stream is one wire shape shared by the live feed and webhook deliveries: `id`, `kind`, `actor_kind`, `actor_user_id`, `actor_display_name`, `occurred_at`, `cursor`, subject references (`task_id`, `task_title`, `submission_id`, `reservation_id`, `series_id`, `organization_id`, `collectible_id`), and `metadata_json`. `actor_display_name` and `task_title` are read-time enrichments; they are empty for system actors, events without a task subject, and webhook deliveries (the dispatcher reads the unenriched stream).
 
-- `GET /api/events`: list the authenticated user's visible events after an optional `after` cursor. Feed paging is cursor-based (`after` and `limit`); `offset` is not accepted. The response carries `next_cursor` to resume from.
-- `GET /api/events/stream`: the same feed as Server-Sent Events. The `Last-Event-ID` header takes precedence over `?after` on reconnect. Connections end cleanly before the 30-second edge cap; clients reconnect with `Last-Event-ID`.
+- `GET /api/events`: list the caller's visible events after an optional `after` cursor. Feed paging is cursor-based (`after` and `limit`); `offset` is not accepted. The response carries `next_cursor` to resume from. Callers are a user session, a personal agent credential holding `notifications_read` (the feed is the owning user's own event stream), or an organization credential holding `notifications_read` (the feed is the organization's own event stream: events whose subject organization is the credential's organization, the same rule an organization-owned recipient-audience webhook uses). The scope is `notifications_read` because the feed carries the same recipient-scoped facts the notification inbox is built from; a credential never sees more than its owner would.
+- `GET /api/events?wait=N`: optional long poll for agents. `wait` is a whole number of seconds; when the page after `after` would be empty, the server holds the request until an event for the caller arrives or the wait elapses, then responds with the normal list shape (possibly empty). Waits above 25 seconds are capped at 25 (the API Gateway edge cuts requests at 30 seconds); malformed or negative values are rejected with `invalid_argument`. Under the WASI guest runtime the hold degrades to an immediate response with the same shape, so clients must treat an empty page as "poll again with the same `after`".
+- `GET /api/events/stream`: the same feed as Server-Sent Events, for browser sessions only (agents and org credentials poll or long-poll `GET /api/events` instead). The `Last-Event-ID` header takes precedence over `?after` on reconnect. Connections end cleanly before the 30-second edge cap; clients reconnect with `Last-Event-ID`.
 - `POST /api/webhook-subscriptions`: create a subscription with `url`, `kinds` (domain event kinds), and an optional `audience`:
   - `recipient` (the default): deliveries carry events addressed to the subscription owner.
   - `marketplace`: deliveries carry every public open `task_opened` event, regardless of recipients. Requires `kinds` to be exactly `["task_opened"]`. Optional narrowing filters: `filter_task_type` (one task type) and `filter_min_credit_reward` (a positive integer credit floor). The filter fields are rejected with `invalid_argument` on recipient subscriptions.
@@ -132,7 +133,13 @@ expected = "v1=" + hmac.new(secret.encode(), f"{timestamp}.".encode() + raw_body
 valid = hmac.compare_digest(expected, signature_header)
 ```
 
-Reject deliveries whose timestamp is far from your clock to bound replay.
+Reject deliveries whose timestamp is far from your clock to bound replay, and deduplicate by `Sharecrop-Webhook-Id` (retries can legitimately repeat an id).
+
+A runnable reference receiver implementing this recipe — signature check, five-minute timestamp-skew rejection, and id dedupe — is [tools/webhook_receiver_sample.ts](../tools/webhook_receiver_sample.ts):
+
+```
+SHARECROP_WEBHOOK_SECRET=scrop_whsec_... deno run --allow-net --allow-env tools/webhook_receiver_sample.ts
+```
 
 ## Task Series
 
@@ -176,7 +183,7 @@ Reject deliveries whose timestamp is far from your clock to bound replay.
 - `GET /api/organizations/{id}/collectibles`: list organization collectible holdings.
 - `POST /api/organizations/{organization_id}/collectibles/{id}/award`: award one of the organization's held collectibles to a user (`recipient_id`). Requires membership-management permission on the organization.
 - `GET /api/teams/{id}/collectibles`: list team collectible holdings.
-- `GET /api/notifications`: list authenticated-user notifications. Supports `state=unread`, `limit`, and `offset`. Each notification carries `actor_display_name` (empty for system actors) and `subject_title` (the subject task's title when the subject is a task, empty otherwise).
+- `GET /api/notifications`: list authenticated-user notifications. Supports `state=unread`, `limit`, and `offset`. Each notification carries `actor_display_name` (empty for system actors) and `subject_title` (the subject task's title when the subject is a task, or the submission's task title when the subject is a submission; empty otherwise).
 - `POST /api/notifications/{notification_id}/read`: mark a notification read.
 - `GET /api/admin/operations`: platform-admin runtime status.
 - `GET /api/admin/platform-admins`: platform-admin configuration list.
@@ -192,9 +199,12 @@ Reject deliveries whose timestamp is far from your clock to bound replay.
 
 ## Notes
 
-- Pagination uses `limit` and `offset` where list handlers expose paging.
+- Pagination uses `limit` and `offset` where list handlers expose paging. `next_offset` is the offset of the next page, or 0 on the last page.
+- The pager-backed list responses for tasks (including a user's work and a team's work), notifications, the user and organization credits ledgers, task submissions, a user's own submissions, webhook deliveries, and the admin moderation report list also carry `total`: the count of every row matching the filter, ignoring `limit`/`offset`. `total` is additive; `next_offset` semantics are unchanged.
+- Idempotent mutations (task funding, submission accept/request-changes/reject, task refund, admin credit grants) treat a replayed `idempotency_key` as a replay: the response returns the original result, and no duplicate domain events, notifications, or webhook deliveries are recorded.
+- Error responses share one shape: `{"error": "<description>", "code": "<error code>"}` with the ten codes enumerated in the generated OpenAPI `ErrorResponse` component schema.
 - Selector-backed browser flows use `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams.
-- Task list endpoints support `state`, `participation_policy`, `query`, `task_type`, `sort`, `created_after`, `limit`, and `offset` where the corresponding scope is exposed. Sort values are `newest`, `oldest`, `title_asc`, `title_desc`, `reward_desc`, and `reward_asc`.
+- Task list endpoints support `state`, `participation_policy`, `query`, `task_type`, `sort`, `created_after`, `funded`, `limit`, and `offset` where the corresponding scope is exposed. Sort values are `newest`, `oldest`, `title_asc`, `title_desc`, `reward_desc`, and `reward_asc`.
 - Submission responses include `sensitive_fields` metadata for indexed sensitive response paths. The metadata identifies path, category, retention, redaction policy, lifecycle state, and redaction time.
 - Task detail and submission responses include `attachments` as
   `{name, content_type, size_bytes, data_url}`. Attachment bytes are stored

@@ -7,6 +7,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/event/eventtest"
 	"github.com/e6qu/sharecrop/internal/org"
 	"github.com/e6qu/sharecrop/internal/task"
@@ -199,6 +200,17 @@ type submissionMemoryStore struct {
 	valuesByID           map[string]Submission
 	submissionByHash     map[string]string
 	commentsBySubmission map[string][]SubmissionComment
+	// events, when set, captures the drafts the store "recorded" inside its
+	// mutations, so emission tests can assert on them.
+	events *eventtest.CapturingStore
+}
+
+// record captures a recorded draft when a sink is wired; nil-safe for tests
+// that assert nothing about emissions.
+func (store *submissionMemoryStore) record(draft event.Draft) {
+	if store.events != nil {
+		store.events.Record(draft)
+	}
 }
 
 func newSubmissionMemoryStore() *submissionMemoryStore {
@@ -213,8 +225,9 @@ func (store *submissionMemoryStore) FindSubmission(_ context.Context, submission
 	return FindSubmissionStoreAccepted{Value: value}
 }
 
-func (store *submissionMemoryStore) CreateSubmissionComment(_ context.Context, comment SubmissionComment) CreateSubmissionCommentStoreResult {
+func (store *submissionMemoryStore) CreateSubmissionComment(_ context.Context, comment SubmissionComment, draft event.Draft) CreateSubmissionCommentStoreResult {
 	store.commentsBySubmission[comment.SubmissionID.String()] = append(store.commentsBySubmission[comment.SubmissionID.String()], comment)
+	store.record(draft)
 	return CreateSubmissionCommentStoreAccepted{Value: comment}
 }
 
@@ -226,6 +239,7 @@ func (store *submissionMemoryStore) CreateSubmission(_ context.Context, submissi
 	value := Submission{ID: submissionID, TaskID: command.TaskID, SubmitterID: command.SubmitterID, State: state, ResponseSource: command.ResponseSource, Validation: outcome}
 	store.valuesByID[submissionID.String()] = value
 	store.submissionByHash[receiptHash.String()] = submissionID.String()
+	store.record(command.Draft)
 	accepted := CreateSubmissionStoreAccepted{Value: value}
 	return accepted
 }

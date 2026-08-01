@@ -2,6 +2,45 @@
 
 ## Implemented surface
 
+- **Durable event pipeline**: domain events and their recipients are written
+  in the same transaction as the mutation they describe (`domain_events.
+  dispatch_state` recorded→dispatched); notification fan-out and webhook
+  expansion run as an idempotent post-commit dispatch, with a lifecycle-runner
+  sweep re-dispatching stale recorded rows after a crash. Idempotent replays
+  (fund, accept, request-changes, reject, grants, gifts) emit no duplicate
+  events or deliveries. The webhook pump drains its whole backlog each cycle
+  (claim batches of 10, up to 50 per cycle). Host-side expiry sweeps still
+  emit post-commit (recorded exposure).
+- **Agent event loop without webhooks**: `GET /api/events` admits personal
+  agent and org credentials holding `notifications_read` and supports
+  `wait` long-polling (≤25 s, guest-degradable); MCP `sharecrop.list_events`
+  is the request/response mirror. Task discovery filters by funded state
+  (`funded=reward_funded|reward_unfunded|no_credit_reward`), and task rows
+  carry funded state, creator/holder display names, and pending-review
+  counts on both REST and MCP. Pager-backed lists report `total`.
+- **Work outcomes are complete**: accepting a submission supersedes every
+  competing `submitted` submission in the same transaction (state
+  `superseded`, event + notification to each loser); rejected workers can
+  file a structured dispute (moderation reason `dispute`, submission
+  subject) from REST, MCP, and the browser; org funding carries the acting
+  user; refunds notify the released reservation holder; worker-cancelled
+  reservations record `cancelled_by_worker`.
+- **Contract honesty**: openapi.json declares per-operation success status
+  codes and error statuses derived from handler source, plus a shared
+  `ErrorResponse` schema carrying the 10-code enum. The browser forces
+  sign-out on an `unauthenticated` error code. The guest-side rate-limit
+  bridge fails closed.
+- **Garden-gnome identity**: the pixel brand is a garden gnome (nav mark,
+  auth hero with mushroom, favicons across app/site/demo/docs, landing
+  hero); empty states are gnome scenes (watering, dozing, signpost); the
+  scarecrow survives only as a collectible sprite. Gnome accents
+  (hat crimson distinct from alert red, tunic blue) join the farm palette;
+  chrome accents shifted from brown to sage with measured ≥4.5:1 contrast.
+- **Operational tooling**: `tools/webhook_receiver_sample.ts` (signature
+  verification + dedupe reference receiver) and
+  `tools/rehearse_migrations.sh` (times new migrations against a populated
+  scratch database).
+
 - **Agent work loop, both directions**: agents discover work by polling
   (`GET /api/tasks` — `scope` optional defaulting to `public`, `created_after`
   incremental filter, personal agent credentials admitted for public listings)

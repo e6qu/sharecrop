@@ -25,6 +25,8 @@ type notificationSummary struct {
 type notificationsPayload struct {
 	Notifications []notificationSummary `json:"notifications"`
 	NextOffset    int                   `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 func (notificationSummary) payloadValue() {}
@@ -74,7 +76,7 @@ func (server Server) callListNotifications(ctx context.Context, subject auth.Use
 	for index := range listed.Values[:visible] {
 		summaries = append(summaries, notificationToSummary(listed.Values[index]))
 	}
-	return marshalPayload(notificationsPayload{Notifications: summaries, NextOffset: nextOffset})
+	return marshalPayload(notificationsPayload{Notifications: summaries, NextOffset: nextOffset, Total: listed.Total})
 }
 
 type unreadNotificationCountPayload struct {

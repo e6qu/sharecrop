@@ -53,6 +53,8 @@ type webhookDeliverySummary struct {
 type webhookDeliveriesPayload struct {
 	Deliveries []webhookDeliverySummary `json:"deliveries"`
 	NextOffset int                      `json:"next_offset"`
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64 `json:"total"`
 }
 
 func (webhookSubscriptionSummary) payloadValue() {}
@@ -365,5 +367,5 @@ func (server Server) callListWebhookDeliveries(ctx context.Context, subject auth
 			LastStatus:    listed.Values[index].LastStatus,
 		})
 	}
-	return marshalPayload(webhookDeliveriesPayload{Deliveries: summaries, NextOffset: nextOffset})
+	return marshalPayload(webhookDeliveriesPayload{Deliveries: summaries, NextOffset: nextOffset, Total: listed.Total})
 }

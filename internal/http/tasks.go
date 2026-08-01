@@ -105,6 +105,7 @@ func (server Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		visible, nextOffset := probeListWindow(len(listed.Values), pageAccepted.value)
 		response := tasksToResponse(listed.Values[:visible], actor.actor)
 		response.NextOffset = nextOffset
+		response.Total = listed.Total
 		writeTasksResponse(w, http.StatusOK, response)
 	}
 }
@@ -894,6 +895,15 @@ func parseTaskListFilters(r *http.Request) taskListFiltersResult {
 		filters.Created = task.CreatedAfter{Instant: instant.UTC()}
 	}
 
+	if rawFunded := query.Get("funded"); rawFunded != "" {
+		fundedResult := task.ParseFundedState(rawFunded)
+		fundedParsed, matched := fundedResult.(task.FundedStateParsed)
+		if !matched {
+			return taskListFiltersRejected{reason: fundedResult.(task.FundedStateRejected).Reason}
+		}
+		filters.Funded = task.FundedEquals{Value: fundedParsed.Value}
+	}
+
 	return taskListFiltersAccepted{value: filters}
 }
 
@@ -930,8 +940,19 @@ func taskListItemToResponse(item task.ListItem, viewer auth.Subject) taskListIte
 		ActiveAssigneeKind:     active.kind,
 		ActiveAssigneeID:       active.id,
 		CreatorDisplayName:     item.CreatorDisplayName.String(),
+		HolderDisplayName:      holderDisplayNameResponse(item.HolderDisplayName),
+		Funded:                 item.Funded.String(),
 		PendingReviewCount:     pendingReviewCount,
 	}
+}
+
+// holderDisplayNameResponse flattens the holder-name reference to the wire
+// convention for absent names: the empty string.
+func holderDisplayNameResponse(ref task.HolderNameRef) string {
+	if named, matched := ref.(task.HolderNamed); matched {
+		return named.DisplayName.String()
+	}
+	return ""
 }
 func activeAssigneeResponseParts(active task.ActiveAssignee) activeAssigneeParts {
 	switch typed := active.(type) {

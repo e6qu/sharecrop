@@ -14,22 +14,19 @@ continuity files if task scope changes.
    implementing. The WASI bridge still cannot stream; native mode already
    pushes.
 
-2. **Event-stream follow-ups.** Emission is post-commit best-effort; a strict
-   in-transaction outbox would close the small loss window. List responses
-   report `next_offset` but no totals (COUNT queries). Webhook secrets are
-   stored as written because HMAC needs the plaintext; at-rest encryption is
-   open. The guest-side rate-limit bridge still fails open on transport
-   errors while the host store now fails closed.
+2. **Remaining durability edges.** Host-side expiry sweeps still emit their
+   events post-commit (outside the expiry transaction) — the one emission
+   path not yet on the outbox. Webhook secrets are stored as written because
+   HMAC needs the plaintext; at-rest encryption needs a key-management
+   decision.
 
-3. **Agent-loop polish.** Join submissions→tasks in the notification read
-   model so submission-subject inbox sentences carry the task title; enrich
-   MCP `list_tasks` summaries with creator name and pending-review count;
-   add the reservation-holder display name to task list DTOs; enrich webhook
-   delivery bodies (dispatcher currently reads the unenriched stream); add a
-   funded-state discovery filter so pollers can skip unfunded credit-reward
-   tasks; isolate `webhookdispatch_test.go` against reused dev databases.
-   Decide the long-term sybil stance for signup grants (per-IP throttle is
-   the only guard).
+3. **Deliberate product decisions still open.** Sybil stance for signup
+   grants (per-IP throttle is the only guard); auto-accept policy
+   (validation + escrow + limits exist as building blocks); collectible
+   scarcity (anyone can mint); API versioning (`/v1`); socket-mode webhooks
+   for local agents (outbound connection, Slack-style) — gated on the edge
+   decision in item 1, with agent event polling/long-poll as the shipped
+   interim; local-timezone expiry input (needs a JS port or dependency).
 
 4. **Maintain the AWS deployment.** The Terraform in `deploy/terraform/`
    provisions private Amazon ECS Fargate tasks and an Amazon API Gateway HTTP
@@ -84,6 +81,14 @@ UI minors queue:
 
 Recently finished (details in [WHAT_WE_DID.md](./WHAT_WE_DID.md)):
 
+- Agent loop hardening: the in-transaction event outbox with idempotent
+  dispatch and crash-recovery sweep, replay-aware emission, superseded
+  competing submissions, structured disputes, agent/org event-feed access
+  with long-polling and MCP `list_events`, funded-state discovery, list
+  totals, handler-derived OpenAPI status codes and error schema, forced
+  sign-out on `unauthenticated`, the garden-gnome identity, the
+  test-hardening pass (fan-out scale, multi-replica exactly-once, two-actor
+  live flow, reference webhook receiver, migration rehearsal).
 - Agent loop completion: marketplace webhook audience with filters (push
   discovery of new public tasks), mintable webhook scopes, reviewer
   submission reads over MCP, validation errors + kept reservations on

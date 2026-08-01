@@ -56,6 +56,8 @@ type ListSubmissionsStoreResult interface {
 
 type ListSubmissionsStoreAccepted struct {
 	Values []Submission
+	// Total counts every row matching the filter, ignoring limit/offset.
+	Total int64
 }
 
 type ListSubmissionsStoreRejected struct {

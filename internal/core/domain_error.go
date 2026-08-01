@@ -26,6 +26,25 @@ var (
 	ErrorCodeUnavailable = ErrorCode{value: "unavailable"}
 )
 
+// AllErrorCodes lists every error code an API error response can carry, in
+// wire order. The OpenAPI generator embeds this list in the shared
+// ErrorResponse schema, so a code added here appears in the generated
+// document without a second hand-maintained list.
+func AllErrorCodes() []ErrorCode {
+	return []ErrorCode{
+		ErrorCodeInvalidID,
+		ErrorCodeInvalidEnum,
+		ErrorCodeInvalidState,
+		ErrorCodeInvalidArgument,
+		ErrorCodeNotFound,
+		ErrorCodePermissionDenied,
+		ErrorCodeConflict,
+		ErrorCodeUnauthenticated,
+		ErrorCodeRateLimited,
+		ErrorCodeUnavailable,
+	}
+}
+
 func NewDomainError(code ErrorCode, description string) DomainError {
 	return DomainError{
 		code:        code,

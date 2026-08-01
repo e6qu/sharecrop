@@ -89,7 +89,9 @@ func (store *MemoryStore) ListDeliveries(_ context.Context, owner Owner, id core
 	defer store.mu.Unlock()
 	for _, subscription := range store.subscriptions {
 		if subscription.ID == id && ownerKey(subscription.Owner) == ownerKey(owner) {
-			return ListDeliveriesStoreListed{Values: []Delivery{}}
+			// The memory runtime has no delivery engine, so the delivery
+			// history is empty and the total is 0.
+			return ListDeliveriesStoreListed{Values: []Delivery{}, Total: 0}
 		}
 	}
 	return ListDeliveriesStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "webhook subscription was not found")}

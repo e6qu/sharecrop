@@ -19,6 +19,17 @@ func NewMemoryStore() *MemoryStore {
 func (store *MemoryStore) Create(_ context.Context, value Notification) CreateStoreResult {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	// Rows keyed by a source event deduplicate on (event, recipient), the
+	// same uniqueness the Postgres store enforces, so a re-dispatched event
+	// refreshes nothing.
+	if source, matched := value.Source.(FromEvent); matched {
+		for index := range store.values {
+			existing, existingMatched := store.values[index].Source.(FromEvent)
+			if existingMatched && existing.ID == source.ID && store.values[index].RecipientID == value.RecipientID {
+				return CreateStoreAccepted{}
+			}
+		}
+	}
 	store.values = append(store.values, value)
 	return CreateStoreAccepted{}
 }
@@ -48,7 +59,7 @@ func (store *MemoryStore) List(_ context.Context, recipient core.UserID, filter 
 	}
 	values := make([]Notification, end-start)
 	copy(values, matching[start:end])
-	return ListStoreAccepted{Values: values}
+	return ListStoreAccepted{Values: values, Total: int64(len(matching))}
 }
 
 func (store *MemoryStore) CountUnread(_ context.Context, recipient core.UserID) CountStoreResult {

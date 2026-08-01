@@ -9,6 +9,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/e6qu/sharecrop/internal/task/tasktest"
 	"github.com/e6qu/sharecrop/internal/wasibridge/rpc"
@@ -65,7 +66,7 @@ func TestTaskBridgeDualRun(t *testing.T) {
 	})
 
 	t.Run("change task state to open through the bridge", func(t *testing.T) {
-		result := bridgeStore.ChangeTaskState(ctx, taskID, task.StateOpen)
+		result := bridgeStore.ChangeTaskState(ctx, taskID, task.StateOpen, event.NoEvent{})
 		accepted, matched := result.(task.ChangeTaskStateStoreAccepted)
 		if !matched {
 			t.Fatalf("bridge ChangeTaskState = %T, want accepted", result)
@@ -93,6 +94,7 @@ func TestTaskBridgeDualRun(t *testing.T) {
 			TaskID:      taskID,
 			Assignee:    task.UserAssignee{UserID: worker},
 			RequestedBy: worker,
+			Draft:       testEventDraft(t, event.KindReservationRequested, worker),
 		})
 		if _, matched := result.(task.CreateReservationStoreAccepted); !matched {
 			t.Fatalf("bridge CreateReservation = %T, want accepted", result)
@@ -109,7 +111,7 @@ func TestTaskBridgeDualRun(t *testing.T) {
 
 	t.Run("comment on the task through the bridge", func(t *testing.T) {
 		comment := task.TaskComment{ID: newTaskCommentID(t), TaskID: taskID, AuthorID: owner, Body: tasktest.CommentBody(t, "progress update?")}
-		if _, matched := bridgeStore.CreateTaskComment(ctx, comment).(task.CreateTaskCommentStoreAccepted); !matched {
+		if _, matched := bridgeStore.CreateTaskComment(ctx, comment, testEventDraft(t, event.KindTaskCommented, owner)).(task.CreateTaskCommentStoreAccepted); !matched {
 			t.Fatalf("bridge CreateTaskComment did not accept")
 		}
 		viaBridge := requireTaskComments(t, bridgeStore.ListTaskComments(ctx, taskID, core.DefaultPage()))
@@ -162,7 +164,7 @@ func TestTaskBridgeDualRun(t *testing.T) {
 
 	t.Run("comment on the series through the bridge", func(t *testing.T) {
 		comment := task.SeriesComment{ID: newSeriesCommentID(t), SeriesID: seriesID2, AuthorID: owner, Body: tasktest.CommentBody(t, "kickoff")}
-		if _, matched := bridgeStore.CreateSeriesComment(ctx, comment).(task.CreateSeriesCommentStoreAccepted); !matched {
+		if _, matched := bridgeStore.CreateSeriesComment(ctx, comment, testEventDraft(t, event.KindSeriesCommented, owner)).(task.CreateSeriesCommentStoreAccepted); !matched {
 			t.Fatalf("bridge CreateSeriesComment did not accept")
 		}
 		viaBridge := requireSeriesComments(t, bridgeStore.ListSeriesComments(ctx, seriesID2, core.DefaultPage()))

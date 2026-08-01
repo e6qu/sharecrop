@@ -8,6 +8,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -24,6 +25,7 @@ func grantStoreCommand(t *testing.T, target ledger.GrantTarget, amount int64, no
 		Amount:         creditAmount(t, amount),
 		Note:           noteAccepted.Value,
 		IdempotencyKey: idempotencyKey(t, key),
+		Draft:          testEventDraft(t, event.KindCreditGranted, grantDraftActor(t, target)),
 	}
 }
 

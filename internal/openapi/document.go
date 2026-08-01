@@ -1,8 +1,50 @@
 package openapi
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+
+	"github.com/e6qu/sharecrop/internal/core"
+)
 
 const bearerSchemeName = "bearerAuth"
+
+// errorResponseSchemaName is the shared error body component: every error a
+// handler writes (writeError / writeDomainError) has the same
+// {error, code} shape, mirrored from internal/http's errorResponse DTO.
+const errorResponseSchemaName = "ErrorResponse"
+
+const errorResponseSchemaRef = "#/components/schemas/" + errorResponseSchemaName
+
+// errorResponseComponentSchema builds the shared error body schema; the code
+// enum comes from core.AllErrorCodes so a new code appears here without a
+// second hand-maintained list.
+func errorResponseComponentSchema() Schema {
+	codes := core.AllErrorCodes()
+	values := make([]string, 0, len(codes))
+	for _, code := range codes {
+		values = append(values, code.String())
+	}
+	return Schema{
+		Type: "object",
+		Properties: map[string]Schema{
+			"error": {Type: "string"},
+			"code":  {Type: "string", Enum: values},
+		},
+		Required: []string{"error", "code"},
+	}
+}
+
+// errorResponse is the per-operation error entry: a reference to the shared
+// ErrorResponse component.
+func errorResponse() Response {
+	return Response{
+		Description: "error",
+		Content: map[string]MediaType{
+			"application/json": {Schema: Schema{Ref: errorResponseSchemaRef}},
+		},
+	}
+}
 
 // Info, ServerEntry, SecurityScheme, Components, MediaType, RequestBody,
 // Response, Operation, and Document model the subset of the OpenAPI 3.0
@@ -25,6 +67,7 @@ type SecurityScheme struct {
 
 type Components struct {
 	SecuritySchemes map[string]SecurityScheme `json:"securitySchemes"`
+	Schemas         map[string]Schema         `json:"schemas,omitempty"`
 }
 
 // Schema models the subset of the JSON Schema object OpenAPI uses that this
@@ -35,6 +78,9 @@ type Components struct {
 // FieldKind) gets the zero Schema — an empty `{}`, meaning an unconstrained
 // JSON value — rather than a guessed type.
 type Schema struct {
+	// Ref points at a shared component schema (e.g. the ErrorResponse
+	// component); a schema with Ref set carries no other fields.
+	Ref        string            `json:"$ref,omitempty"`
 	Type       string            `json:"type,omitempty"`
 	Properties map[string]Schema `json:"properties,omitempty"`
 	Required   []string          `json:"required,omitempty"`
@@ -104,9 +150,7 @@ func Generate(routes []Route, structs map[string]StructShape, queryParameters ma
 		operation := Operation{
 			OperationID: route.OperationID,
 			Parameters:  append(pathParameters(route.Path), queryParameters[route.OperationID]...),
-			Responses: map[string]Response{
-				"default": responseFor(route.ResponseMediaType, route.ResponseType, structs),
-			},
+			Responses:   responsesFor(route, structs),
 		}
 		if !route.RequiresAuth {
 			noSecurity := []map[string][]string{}
@@ -135,12 +179,16 @@ func Generate(routes []Route, structs map[string]StructShape, queryParameters ma
 			Title:   "Sharecrop HTTP API",
 			Version: "unversioned",
 			Description: "Generated from the route registrations in internal/http/server.go " +
-				"(see internal/openapi). Method, path, operationId, and bearer-auth " +
-				"requirements are derived from the actual mux table and handler bodies. " +
+				"(see internal/openapi). Method, path, operationId, bearer-auth " +
+				"requirements, and response status codes are derived from the actual mux " +
+				"table and handler bodies. " +
 				"Request/response body schemas are derived from the Go DTO struct each " +
 				"handler actually decodes/writes where that struct could be resolved; an " +
 				"empty schema (`{}`, an unconstrained JSON value) means the handler did not match one " +
-				"of the standard decode/write patterns, not that the body is untyped. See " +
+				"of the standard decode/write patterns, not that the body is untyped. " +
+				"Error responses share the ErrorResponse component ({error, code}); the " +
+				"listed 4xx statuses are the ones the handler can produce, and `default` " +
+				"covers every other error. See " +
 				"docs/api_reference.md for prose request/response descriptions per route.",
 		},
 		Servers:  []ServerEntry{{URL: "/"}},
@@ -150,8 +198,35 @@ func Generate(routes []Route, structs map[string]StructShape, queryParameters ma
 			SecuritySchemes: map[string]SecurityScheme{
 				bearerSchemeName: {Type: "http", Scheme: "bearer", BearerFormat: "JWT"},
 			},
+			Schemas: map[string]Schema{
+				errorResponseSchemaName: errorResponseComponentSchema(),
+			},
 		},
 	}
+}
+
+// responsesFor builds one operation's responses: an entry per derived
+// success status (200 when the handler matched no status-writing pattern),
+// an ErrorResponse reference per derivable client-error status, and a
+// uniform `default` -> ErrorResponse for every operation that can write an
+// error body at all.
+func responsesFor(route Route, structs map[string]StructShape) map[string]Response {
+	responses := map[string]Response{}
+	successStatuses := route.SuccessStatuses
+	if len(successStatuses) == 0 {
+		successStatuses = []int{200}
+	}
+	success := responseFor(route.ResponseMediaType, route.ResponseType, structs)
+	for _, status := range successStatuses {
+		responses[strconv.Itoa(status)] = success
+	}
+	for _, status := range route.ErrorStatuses {
+		responses[strconv.Itoa(status)] = errorResponse()
+	}
+	if route.EmitsErrors {
+		responses["default"] = errorResponse()
+	}
+	return responses
 }
 
 func requestBodyMethod(method string) bool {
