@@ -238,7 +238,7 @@ func (server Server) callTriageModerationReport(ctx context.Context, subject aut
 	reportIDResult := core.ParseAuditEventID(args.ReportID)
 	reportID, reportIDMatched := reportIDResult.(core.AuditEventIDCreated)
 	if !reportIDMatched {
-		return toolProtocolError{code: codeInvalidParams, message: reportIDResult.(core.AuditEventIDRejected).Reason.Description()}
+		return invalidIDArgument("report_id")
 	}
 	result := server.services.TriageModerationReport(ctx, subject.ID, reportID.Value, strings.TrimSpace(args.State), args.ResolutionNote)
 	saved, matched := result.(ModerationReportSaved)

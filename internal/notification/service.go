@@ -88,6 +88,8 @@ var (
 	KindCreditGranted              = Kind{value: "credit_granted"}
 	KindTipReceived                = Kind{value: "tip_received"}
 	KindCollectibleAwarded         = Kind{value: "collectible_awarded"}
+	KindCollectibleWithdrawn       = Kind{value: "collectible_withdrawn"}
+	KindCreditsReceived            = Kind{value: "credits_received"}
 )
 
 // AllKinds returns every notification kind. Totality tests (and the generated
@@ -114,6 +116,8 @@ func AllKinds() []Kind {
 		KindCreditGranted,
 		KindTipReceived,
 		KindCollectibleAwarded,
+		KindCollectibleWithdrawn,
+		KindCreditsReceived,
 	}
 }
 

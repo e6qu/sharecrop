@@ -27,6 +27,8 @@ type DomainEventKind
     | DomainEventKindCreditGranted
     | DomainEventKindTipReceived
     | DomainEventKindCollectibleAwarded
+    | DomainEventKindCollectibleWithdrawn
+    | DomainEventKindCreditsSent
 
 domainEventKindDecoder : Decoder DomainEventKind
 domainEventKindDecoder =
@@ -97,6 +99,12 @@ domainEventKindDecoder =
                     "collectible_awarded" ->
                         Decode.succeed DomainEventKindCollectibleAwarded
 
+                    "collectible_withdrawn" ->
+                        Decode.succeed DomainEventKindCollectibleWithdrawn
+
+                    "credits_sent" ->
+                        Decode.succeed DomainEventKindCreditsSent
+
                     _ ->
                         Decode.fail "invalid DomainEventKind"
             )
@@ -166,6 +174,12 @@ domainEventKindEncoder domainEventKind =
 
         DomainEventKindCollectibleAwarded ->
             Encode.string "collectible_awarded"
+
+        DomainEventKindCollectibleWithdrawn ->
+            Encode.string "collectible_withdrawn"
+
+        DomainEventKindCreditsSent ->
+            Encode.string "credits_sent"
 
 
 type EventActorKind

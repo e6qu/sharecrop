@@ -10,7 +10,7 @@ type registerRequest struct {
 	Password string `json:"password"`
 	// DisplayName is optional: absent or empty derives the display name from
 	// the email's local part.
-	DisplayName string `json:"display_name"`
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 type authResponse struct {
@@ -105,7 +105,8 @@ type privacyRequestsResponse struct {
 func (privacyRequestsResponse) writableResponse() {}
 
 type privacyResolveRequest struct {
-	ResolutionNote string `json:"resolution_note"`
+	// ResolutionNote is optional; a resolution may carry no note.
+	ResolutionNote string `json:"resolution_note,omitempty"`
 }
 
 type privacyRetentionRunResponse struct {
@@ -118,7 +119,7 @@ type moderationReportRequest struct {
 	SubjectKind string `json:"subject_kind"`
 	SubjectID   string `json:"subject_id"`
 	Reason      string `json:"reason"`
-	Details     string `json:"details"`
+	Details     string `json:"details,omitempty"`
 }
 
 type moderationReportResponse struct {
@@ -149,7 +150,7 @@ func (moderationReportsResponse) writableResponse() {}
 
 type moderationTriageRequest struct {
 	State          string `json:"state"`
-	ResolutionNote string `json:"resolution_note"`
+	ResolutionNote string `json:"resolution_note,omitempty"`
 }
 
 type platformAdminRequest struct {
@@ -172,12 +173,14 @@ type platformAdminsResponse struct {
 func (platformAdminsResponse) writableResponse() {}
 
 type savedQueueViewRequest struct {
-	Scope       string `json:"scope"`
-	Name        string `json:"name"`
-	Query       string `json:"query"`
-	StateFilter string `json:"state_filter"`
-	TypeFilter  string `json:"type_filter"`
-	Sort        string `json:"sort"`
+	Scope string `json:"scope"`
+	Name  string `json:"name"`
+	// The filter fields are optional; an absent value stores an empty
+	// filter.
+	Query       string `json:"query,omitempty"`
+	StateFilter string `json:"state_filter,omitempty"`
+	TypeFilter  string `json:"type_filter,omitempty"`
+	Sort        string `json:"sort,omitempty"`
 }
 
 type savedQueueViewResponse struct {
@@ -225,30 +228,40 @@ type teamRequest struct {
 	Name string `json:"name"`
 }
 
+// taskOwnerRequest is a discriminated union: kind selects which id field is
+// required (user_id for user, team_id for team/organization_team,
+// organization_id for organization/organization_team).
 type taskOwnerRequest struct {
 	Kind           string `json:"kind"`
-	UserID         string `json:"user_id"`
-	TeamID         string `json:"team_id"`
-	OrganizationID string `json:"organization_id"`
+	UserID         string `json:"user_id,omitempty"`
+	TeamID         string `json:"team_id,omitempty"`
+	OrganizationID string `json:"organization_id,omitempty"`
 }
 
+// taskVisibilityRequest is a discriminated union like taskOwnerRequest; kind
+// "default" derives the visibility from the owner without an id field.
 type taskVisibilityRequest struct {
 	Kind           string `json:"kind"`
-	UserID         string `json:"user_id"`
-	TeamID         string `json:"team_id"`
-	OrganizationID string `json:"organization_id"`
+	UserID         string `json:"user_id,omitempty"`
+	TeamID         string `json:"team_id,omitempty"`
+	OrganizationID string `json:"organization_id,omitempty"`
 }
 
+// taskPlacementRequest is a discriminated union: kind standalone needs no
+// other field; new_series requires series_title and series_position;
+// existing_series requires series_id and series_position.
 type taskPlacementRequest struct {
 	Kind           string `json:"kind"`
-	SeriesID       string `json:"series_id"`
-	SeriesTitle    string `json:"series_title"`
-	SeriesPosition int    `json:"series_position"`
+	SeriesID       string `json:"series_id,omitempty"`
+	SeriesTitle    string `json:"series_title,omitempty"`
+	SeriesPosition int    `json:"series_position,omitempty"`
 }
 
+// taskPayloadRequest is a discriminated union: kind none needs no payload;
+// kind json requires the json field.
 type taskPayloadRequest struct {
 	Kind string `json:"kind"`
-	JSON string `json:"json"`
+	JSON string `json:"json,omitempty"`
 }
 
 type attachmentRequest struct {
@@ -258,44 +271,54 @@ type attachmentRequest struct {
 }
 
 type taskRequest struct {
-	Owner              taskOwnerRequest         `json:"owner"`
-	Title              string                   `json:"title"`
-	Description        string                   `json:"description"`
-	TaskType           string                   `json:"task_type"`
-	ReferenceURL       string                   `json:"reference_url"`
-	Reward             taskRewardRequest        `json:"reward"`
-	Participation      taskParticipationRequest `json:"participation"`
+	Owner       taskOwnerRequest `json:"owner"`
+	Title       string           `json:"title"`
+	Description string           `json:"description"`
+	// TaskType is optional; absent means general.
+	TaskType string `json:"task_type,omitempty"`
+	// ReferenceURL is optional.
+	ReferenceURL string            `json:"reference_url,omitempty"`
+	Reward       taskRewardRequest `json:"reward"`
+	// Participation is optional: every sub-field has a served default (open
+	// policy, user assignee scope, the default reservation TTL).
+	Participation      taskParticipationRequest `json:"participation,omitempty"`
 	Visibility         taskVisibilityRequest    `json:"visibility"`
 	Placement          taskPlacementRequest     `json:"placement"`
 	ResponseSchemaJSON string                   `json:"response_schema_json"`
 	Payload            taskPayloadRequest       `json:"payload"`
-	Attachments        []attachmentRequest      `json:"attachments"`
+	Attachments        []attachmentRequest      `json:"attachments,omitempty"`
 	// ExpiresAt is an optional RFC3339 instant after which an open task
 	// expires. Empty or absent means no expiration.
-	ExpiresAt string `json:"expires_at"`
+	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
+// taskRewardRequest is a discriminated union: kind credit/bundle requires a
+// positive credit_amount; kind collectible requires collectible_ids (a
+// bundle may omit them and declares a single-collectible reward).
 type taskRewardRequest struct {
 	Kind           string   `json:"kind"`
-	CreditAmount   int64    `json:"credit_amount"`
-	CollectibleIDs []string `json:"collectible_ids"`
+	CreditAmount   int64    `json:"credit_amount,omitempty"`
+	CollectibleIDs []string `json:"collectible_ids,omitempty"`
 }
 
 type taskParticipationRequest struct {
-	Policy                 string `json:"policy"`
-	AssigneeScope          string `json:"assignee_scope"`
-	ReservationExpiryHours int    `json:"reservation_expiry_hours"`
+	Policy                 string `json:"policy,omitempty"`
+	AssigneeScope          string `json:"assignee_scope,omitempty"`
+	ReservationExpiryHours int    `json:"reservation_expiry_hours,omitempty"`
 }
 
 type submissionRequest struct {
 	ResponseJSON string              `json:"response_json"`
-	Attachments  []attachmentRequest `json:"attachments"`
+	Attachments  []attachmentRequest `json:"attachments,omitempty"`
 }
 
+// reservationRequest is optional in its entirety (an empty body reserves for
+// the acting user). assignee_kind organization_team requires organization_id
+// and team_id; assignee_kind team requires team_id.
 type reservationRequest struct {
-	AssigneeKind   string `json:"assignee_kind"`
-	OrganizationID string `json:"organization_id"`
-	TeamID         string `json:"team_id"`
+	AssigneeKind   string `json:"assignee_kind,omitempty"`
+	OrganizationID string `json:"organization_id,omitempty"`
+	TeamID         string `json:"team_id,omitempty"`
 }
 
 type organizationResponse struct {
@@ -541,18 +564,21 @@ type emptyResponse struct {
 type fundingRequest struct {
 	Amount         int64  `json:"amount"`
 	IdempotencyKey string `json:"idempotency_key"`
-	OrganizationID string `json:"organization_id"`
-}
-
-type idempotentRequest struct {
-	IdempotencyKey string `json:"idempotency_key"`
+	// OrganizationID is optional: present, it funds from the organization's
+	// balance (the caller needs its billing permission); absent, from the
+	// caller's own.
+	OrganizationID string `json:"organization_id,omitempty"`
 }
 
 type acceptSubmissionRequest struct {
-	IdempotencyKey   string `json:"idempotency_key"`
-	PayoutAmount     int64  `json:"payout_amount"`
-	TipAmount        int64  `json:"tip_amount"`
-	TipCollectibleID string `json:"tip_collectible_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+	// PayoutAmount is optional: absent (or 0) pays the full allocated
+	// reward; a positive value pays that partial amount.
+	PayoutAmount int64 `json:"payout_amount,omitempty"`
+	// TipAmount and TipCollectibleID are optional extras from the
+	// requester's own balance and collection.
+	TipAmount        int64  `json:"tip_amount,omitempty"`
+	TipCollectibleID string `json:"tip_collectible_id,omitempty"`
 }
 
 type requestChangesRequest struct {
@@ -561,13 +587,14 @@ type requestChangesRequest struct {
 }
 
 type rejectSubmissionRequest struct {
-	IdempotencyKey      string `json:"idempotency_key"`
-	ReviewNote          string `json:"review_note"`
-	PartialCreditAmount int64  `json:"partial_credit_amount"`
-	TipAmount           int64  `json:"tip_amount"`
+	IdempotencyKey string `json:"idempotency_key"`
+	ReviewNote     string `json:"review_note"`
+	// PartialCreditAmount is optional: absent (or 0) pays nothing.
+	PartialCreditAmount int64 `json:"partial_credit_amount,omitempty"`
+	TipAmount           int64 `json:"tip_amount,omitempty"`
 	// BanSelection is the BanSelection contract enum: "none" or
 	// "ban_implementor". Absent or empty means "none".
-	BanSelection string `json:"ban_selection"`
+	BanSelection string `json:"ban_selection,omitempty"`
 }
 
 type writableResponse interface {
@@ -630,6 +657,31 @@ type creditGrantResponse struct {
 }
 
 func (creditGrantResponse) writableResponse() {}
+
+// creditTransferRequest is a peer credit send. source_kind is "self" (the
+// caller's own balance) or "organization" (source_organization_id names the
+// paying organization; the caller needs its billing permission). target_kind
+// is "user" or "organization" and target_id the matching account owner id.
+// note is an optional message recorded on both ledger rows; idempotency_key
+// is the caller's replay guard.
+type creditTransferRequest struct {
+	SourceKind           string `json:"source_kind"`
+	SourceOrganizationID string `json:"source_organization_id,omitempty"`
+	TargetKind           string `json:"target_kind"`
+	TargetID             string `json:"target_id"`
+	Amount               int64  `json:"amount"`
+	Note                 string `json:"note,omitempty"`
+	IdempotencyKey       string `json:"idempotency_key"`
+}
+
+// creditTransferResponse reports the sender-side ledger entry of a completed
+// peer credit send (a replayed idempotency key returns the original entry).
+type creditTransferResponse struct {
+	EntryID string `json:"entry_id"`
+	Amount  int64  `json:"amount"`
+}
+
+func (creditTransferResponse) writableResponse() {}
 
 type reviewSubmissionResponse struct {
 	TaskID       string `json:"task_id"`

@@ -86,12 +86,16 @@ func (server Server) findSubmissionReceipt(w http.ResponseWriter, r *http.Reques
 
 	writeSubmissionResponse(w, http.StatusOK, submissionToResponse(found.Value))
 }
+
+// listTaskSubmissions lists a task's submissions for its reviewer: a user
+// session, or an org-wide credential holding submissions_read (the submission
+// service grants an org token review access to its own organization's tasks
+// only).
 func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actorResult := server.requireUserOrOrgSubject(r, agent.ScopeSubmissionsRead)
+	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
+		writeActorRejection(w, actorResult)
 		return
 	}
 
@@ -107,7 +111,7 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 	if !pageOK {
 		return
 	}
-	result := server.submissionService.ListForTask(r.Context(), actor.subject, taskIDAccepted.value, page.Probe())
+	result := server.submissionService.ListForTask(r.Context(), actor.actor, taskIDAccepted.value, page.Probe())
 	listed, matched := result.(submission.SubmissionsListed)
 	if !matched {
 		rejected := result.(submission.ListRejected)
@@ -116,7 +120,12 @@ func (server Server) listTaskSubmissions(w http.ResponseWriter, r *http.Request)
 	}
 
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
-	server.recordSensitiveFieldAccessForList(r.Context(), actor.subject.ID, listed.Values[:visible])
+	// The sensitive-field access audit names an accessing user; an org
+	// credential has none, so the org read is recorded against no user (the
+	// credential's own issuance and scope stand as its trail).
+	if userActor, isUser := actor.actor.(auth.UserSubject); isUser {
+		server.recordSensitiveFieldAccessForList(r.Context(), userActor.ID, listed.Values[:visible])
+	}
 	response := submissionsResponse{Submissions: make([]submissionResponse, 0, visible), NextOffset: nextOffset, Total: listed.Total}
 	for _, value := range listed.Values[:visible] {
 		response.Submissions = append(response.Submissions, submissionToResponse(value))

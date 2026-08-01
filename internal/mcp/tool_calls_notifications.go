@@ -14,12 +14,18 @@ type notificationSummary struct {
 	ID              string `json:"id"`
 	RecipientUserID string `json:"recipient_user_id"`
 	ActorUserID     string `json:"actor_user_id"`
-	Kind            string `json:"kind"`
-	SubjectKind     string `json:"subject_kind"`
-	SubjectID       string `json:"subject_id"`
-	State           string `json:"state"`
-	MetadataJSON    string `json:"metadata_json"`
-	CreatedAt       string `json:"created_at"`
+	// ActorDisplayName names the acting user, mirroring REST's notification
+	// row enrichment; empty for system actors.
+	ActorDisplayName string `json:"actor_display_name"`
+	Kind             string `json:"kind"`
+	SubjectKind      string `json:"subject_kind"`
+	SubjectID        string `json:"subject_id"`
+	// SubjectTitle is the referenced task's title when the subject is a
+	// task; empty otherwise, mirroring REST.
+	SubjectTitle string `json:"subject_title"`
+	State        string `json:"state"`
+	MetadataJSON string `json:"metadata_json"`
+	CreatedAt    string `json:"created_at"`
 }
 
 type notificationsPayload struct {
@@ -34,16 +40,22 @@ func (notificationSummary) payloadValue() {}
 func (notificationsPayload) payloadValue() {}
 
 func notificationToSummary(value notification.Notification) notificationSummary {
+	subjectTitle := ""
+	if titled, matched := value.SubjectTitle.(notification.TaskSubjectTitle); matched {
+		subjectTitle = titled.Title
+	}
 	return notificationSummary{
-		ID:              value.ID.String(),
-		RecipientUserID: value.RecipientID.String(),
-		ActorUserID:     value.ActorID.String(),
-		Kind:            value.Kind.String(),
-		SubjectKind:     value.Subject.Kind,
-		SubjectID:       value.Subject.ID,
-		State:           value.State.String(),
-		MetadataJSON:    value.Metadata.JSON,
-		CreatedAt:       value.CreatedAt.UTC().Format(time.RFC3339Nano),
+		ID:               value.ID.String(),
+		RecipientUserID:  value.RecipientID.String(),
+		ActorUserID:      value.ActorID.String(),
+		ActorDisplayName: value.ActorDisplayName.String(),
+		Kind:             value.Kind.String(),
+		SubjectKind:      value.Subject.Kind,
+		SubjectID:        value.Subject.ID,
+		SubjectTitle:     subjectTitle,
+		State:            value.State.String(),
+		MetadataJSON:     value.Metadata.JSON,
+		CreatedAt:        value.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
 }
 
@@ -104,7 +116,7 @@ func (server Server) callMarkNotificationRead(ctx context.Context, subject auth.
 	idResult := core.ParseNotificationID(args.NotificationID)
 	id, idMatched := idResult.(core.NotificationIDCreated)
 	if !idMatched {
-		return toolProtocolError{code: codeInvalidParams, message: idResult.(core.NotificationIDRejected).Reason.Description()}
+		return invalidIDArgument("notification_id")
 	}
 	result := server.services.MarkNotificationRead(ctx, subject.ID, id.Value)
 	read, matched := result.(notification.NotificationRead)

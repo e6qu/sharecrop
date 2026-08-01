@@ -195,7 +195,7 @@ func TestWebhookClaimExclusivity(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			result := store.ClaimDueDeliveries(context.Background(), 6)
+			result := store.ClaimDueDeliveries(context.Background(), 6, time.Minute)
 			claimed, matched := result.(db.ClaimDueDeliveriesListed)
 			if !matched {
 				t.Errorf("claim rejected: %#v", result)
@@ -286,7 +286,7 @@ func claimAllForSubscription(t *testing.T, store db.WebhookStore, pool *pgxpool.
 	values := make([]db.ClaimedWebhookDelivery, 0)
 	for range 10 {
 		forceDeliveriesDue(t, pool, subscriptionID)
-		result := store.ClaimDueDeliveries(context.Background(), 10)
+		result := store.ClaimDueDeliveries(context.Background(), 10, time.Minute)
 		claimed, matched := result.(db.ClaimDueDeliveriesListed)
 		if !matched {
 			t.Fatalf("claim rejected: %#v", result)

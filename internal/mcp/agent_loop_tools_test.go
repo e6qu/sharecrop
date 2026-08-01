@@ -198,10 +198,16 @@ func TestCreateWebhookSubscriptionMarketplaceAudience(t *testing.T) {
 		t.Fatalf("expected the marketplace kinds rule, got %s", wrongResult.Content[0].Text)
 	}
 
-	// Filters without the marketplace audience are rejected up front.
+	// Filters without the marketplace audience are refused as a domain rule:
+	// an isError tool result (like the kinds rule above), not a JSON-RPC
+	// protocol error.
 	recipientFilters := server.Handle(context.Background(), testSubject(t), CallerCredential{Scopes: scopes}, request(`3`, "tools/call", `{"name":"sharecrop.create_webhook_subscription","arguments":{"url":"https://receiver.example.com/hooks","kinds":["task_opened"],"filter_task_type":"code_review"}}`))
-	if recipientFilters.Error == nil || !strings.Contains(recipientFilters.Error.Message, "marketplace audience") {
-		t.Fatalf("expected a filters-require-marketplace rejection, got %+v", recipientFilters.Error)
+	var recipientResult toolCallResult
+	if err := json.Unmarshal(mustResult(t, recipientFilters), &recipientResult); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if !recipientResult.IsError || !strings.Contains(recipientResult.Content[0].Text, "marketplace audience") {
+		t.Fatalf("expected a filters-require-marketplace tool failure, got %+v", recipientResult)
 	}
 }
 

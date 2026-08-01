@@ -142,3 +142,14 @@ func TestBoundedStatusTruncates(t *testing.T) {
 		t.Fatalf("short status was altered: %q", got)
 	}
 }
+
+// TestClaimHoldCoversWorstCaseBatch pins the derivation of the claim hold:
+// it must cover a whole claimed batch timing out (claimBatchSize deliveries,
+// each burning the full requestTimeout) plus positive slack, so a slow batch
+// can never be re-claimed — and duplicate-POSTed — by another replica.
+func TestClaimHoldCoversWorstCaseBatch(t *testing.T) {
+	worstCase := time.Duration(claimBatchSize) * requestTimeout
+	if claimHold <= worstCase {
+		t.Fatalf("claimHold = %s, must exceed the worst-case batch time %s", claimHold, worstCase)
+	}
+}

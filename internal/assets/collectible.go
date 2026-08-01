@@ -3,6 +3,7 @@ package assets
 import (
 	"strings"
 
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 )
 
@@ -59,6 +60,10 @@ var (
 	CollectibleStateMinted   = CollectibleState{value: "minted"}
 	CollectibleStateEscrowed = CollectibleState{value: "escrowed"}
 	CollectibleStateAwarded  = CollectibleState{value: "awarded"}
+	// CollectibleStateWithdrawn: an admin removed the instance from its
+	// holder. Withdrawn instances are not transferable, tippable, awardable,
+	// or escrowable, and are the only instances an admin may hard-delete.
+	CollectibleStateWithdrawn = CollectibleState{value: "withdrawn"}
 )
 
 type CollectibleStateResult interface {
@@ -85,6 +90,8 @@ func ParseCollectibleState(raw string) CollectibleStateResult {
 		return CollectibleStateAccepted{Value: CollectibleStateEscrowed}
 	case CollectibleStateAwarded.value:
 		return CollectibleStateAccepted{Value: CollectibleStateAwarded}
+	case CollectibleStateWithdrawn.value:
+		return CollectibleStateAccepted{Value: CollectibleStateWithdrawn}
 	default:
 		return CollectibleStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "collectible state is invalid")}
 	}
@@ -142,7 +149,67 @@ type Collectible struct {
 	OwnerID        string
 	OrganizationID string
 	Art            string
+	// Catalog ties an awarded copy to its catalog entry; custom mints carry
+	// no catalog reference.
+	Catalog CatalogRef
+	// Edition is the mint sequence number for edition-kind instances.
+	Edition EditionRef
+	// Issuer is the acting user who minted or awarded the instance;
+	// pre-provenance rows carry no issuer.
+	Issuer IssuerRef
+	// IssuerDisplayName names the issuer for read models. It is resolved on
+	// the list read paths (the same convention as task creator names);
+	// mutation results and issuerless rows leave it zero.
+	IssuerDisplayName auth.DisplayName
 }
+
+// CatalogRef is a collectible instance's link to its catalog entry, or its
+// explicit absence (a custom mint).
+type CatalogRef interface {
+	catalogRef()
+}
+
+type NoCatalogRef struct{}
+
+type FromCatalog struct {
+	Slug CatalogSlug
+}
+
+func (NoCatalogRef) catalogRef() {}
+
+func (FromCatalog) catalogRef() {}
+
+// EditionRef is an edition instance's mint sequence number, or its explicit
+// absence (badges and uniques are not numbered).
+type EditionRef interface {
+	editionRef()
+}
+
+type NoEditionNumber struct{}
+
+type EditionNumbered struct {
+	Number int64
+}
+
+func (NoEditionNumber) editionRef() {}
+
+func (EditionNumbered) editionRef() {}
+
+// IssuerRef is the user who minted or awarded the instance, or its explicit
+// absence (rows created before issuer provenance existed).
+type IssuerRef interface {
+	issuerRef()
+}
+
+type NoIssuer struct{}
+
+type IssuedBy struct {
+	ID core.UserID
+}
+
+func (NoIssuer) issuerRef() {}
+
+func (IssuedBy) issuerRef() {}
 
 // CollectibleOwnerKindUser/Team/Organization are the owner-kind tags.
 const (

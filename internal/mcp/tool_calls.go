@@ -200,9 +200,12 @@ type reservationSummary struct {
 	AssigneeID   string `json:"assignee_id"`
 	State        string `json:"state"`
 	RequestedBy  string `json:"requested_by"`
+	// HolderDisplayName names the user who requested the reservation,
+	// mirroring REST's reservation row enrichment.
+	HolderDisplayName string `json:"holder_display_name"`
 	// IssuedWorkerCredential is a one-time plaintext secret for a new
 	// task-scoped agent credential, present only immediately after this
-	// reservation was created or approved into an active state.
+	// reservation was created into an active state.
 	IssuedWorkerCredential string `json:"issued_worker_credential"`
 }
 
@@ -576,33 +579,33 @@ func parseMCPTaskOwner(args mcpTaskOwnerArgs, subject auth.UserSubject) (task.Ow
 		userIDResult := core.ParseUserID(args.UserID)
 		userID, matched := userIDResult.(core.UserIDCreated)
 		if !matched {
-			return nil, toolProtocolError{code: codeInvalidParams, message: userIDResult.(core.UserIDRejected).Reason.Description()}
+			return nil, invalidIDArgument("owner.user_id")
 		}
 		return task.UserOwner{UserID: userID.Value}, nil
 	case task.OwnerKindTeam.String():
 		teamIDResult := core.ParseTeamID(args.TeamID)
 		teamID, matched := teamIDResult.(core.TeamIDCreated)
 		if !matched {
-			return nil, toolProtocolError{code: codeInvalidParams, message: teamIDResult.(core.TeamIDRejected).Reason.Description()}
+			return nil, invalidIDArgument("owner.team_id")
 		}
 		return task.TeamOwner{TeamID: teamID.Value}, nil
 	case task.OwnerKindOrganization.String():
 		organizationIDResult := core.ParseOrganizationID(args.OrganizationID)
 		organizationID, matched := organizationIDResult.(core.OrganizationIDCreated)
 		if !matched {
-			return nil, toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+			return nil, invalidIDArgument("owner.organization_id")
 		}
 		return task.OrganizationOwner{OrganizationID: organizationID.Value}, nil
 	case task.OwnerKindOrganizationTeam.String():
 		organizationIDResult := core.ParseOrganizationID(args.OrganizationID)
 		organizationID, organizationMatched := organizationIDResult.(core.OrganizationIDCreated)
 		if !organizationMatched {
-			return nil, toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+			return nil, invalidIDArgument("owner.organization_id")
 		}
 		teamIDResult := core.ParseTeamID(args.TeamID)
 		teamID, teamMatched := teamIDResult.(core.TeamIDCreated)
 		if !teamMatched {
-			return nil, toolProtocolError{code: codeInvalidParams, message: teamIDResult.(core.TeamIDRejected).Reason.Description()}
+			return nil, invalidIDArgument("owner.team_id")
 		}
 		return task.OrganizationTeamOwner{OrganizationID: organizationID.Value, TeamID: teamID.Value}, nil
 	default:
@@ -632,33 +635,33 @@ func parseMCPTaskVisibility(kind string, rawUserID string, rawTeamID string, raw
 		userIDResult := core.ParseUserID(rawUserID)
 		userID, matched := userIDResult.(core.UserIDCreated)
 		if !matched {
-			return nil, toolProtocolError{code: codeInvalidParams, message: userIDResult.(core.UserIDRejected).Reason.Description()}
+			return nil, invalidIDArgument("visibility_user_id")
 		}
 		return task.UserVisibility{UserID: userID.Value}, nil
 	case task.VisibilityKindTeam.String():
 		teamIDResult := core.ParseTeamID(rawTeamID)
 		teamID, matched := teamIDResult.(core.TeamIDCreated)
 		if !matched {
-			return nil, toolProtocolError{code: codeInvalidParams, message: teamIDResult.(core.TeamIDRejected).Reason.Description()}
+			return nil, invalidIDArgument("visibility_team_id")
 		}
 		return task.TeamVisibility{TeamID: teamID.Value}, nil
 	case task.VisibilityKindOrganization.String():
 		organizationIDResult := core.ParseOrganizationID(rawOrganizationID)
 		organizationID, matched := organizationIDResult.(core.OrganizationIDCreated)
 		if !matched {
-			return nil, toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+			return nil, invalidIDArgument("visibility_organization_id")
 		}
 		return task.OrganizationVisibility{OrganizationID: organizationID.Value}, nil
 	case task.VisibilityKindOrganizationTeam.String():
 		organizationIDResult := core.ParseOrganizationID(rawOrganizationID)
 		organizationID, organizationMatched := organizationIDResult.(core.OrganizationIDCreated)
 		if !organizationMatched {
-			return nil, toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}
+			return nil, invalidIDArgument("visibility_organization_id")
 		}
 		teamIDResult := core.ParseTeamID(rawTeamID)
 		teamID, teamMatched := teamIDResult.(core.TeamIDCreated)
 		if !teamMatched {
-			return nil, toolProtocolError{code: codeInvalidParams, message: teamIDResult.(core.TeamIDRejected).Reason.Description()}
+			return nil, invalidIDArgument("visibility_team_id")
 		}
 		return task.OrganizationTeamVisibility{OrganizationID: organizationID.Value, TeamID: teamID.Value}, nil
 	default:
@@ -677,7 +680,7 @@ func parseMCPPlacement(rawSeriesID string, rawPosition int) (task.SeriesPlacemen
 	seriesIDResult := core.ParseTaskSeriesID(rawSeriesID)
 	seriesID, seriesMatched := seriesIDResult.(core.TaskSeriesIDCreated)
 	if !seriesMatched {
-		return nil, toolProtocolError{code: codeInvalidParams, message: seriesIDResult.(core.TaskSeriesIDRejected).Reason.Description()}
+		return nil, invalidIDArgument("series_id")
 	}
 	position := rawPosition
 	if position == 0 {
@@ -764,7 +767,7 @@ func (server Server) callFundTask(ctx context.Context, subject auth.UserSubject,
 	taskIDResult := core.ParseTaskID(args.TaskID)
 	taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskMatched {
-		return toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}
+		return invalidIDArgument("task_id")
 	}
 	amountResult := ledger.NewCreditAmount(args.Amount)
 	amount, amountMatched := amountResult.(ledger.CreditAmountAccepted)
@@ -798,7 +801,7 @@ func (server Server) callRefundTask(ctx context.Context, subject auth.UserSubjec
 	taskIDResult := core.ParseTaskID(args.TaskID)
 	taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskMatched {
-		return toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}
+		return invalidIDArgument("task_id")
 	}
 	keyResult := ledger.NewIdempotencyKey(args.IdempotencyKey)
 	key, keyMatched := keyResult.(ledger.IdempotencyKeyAccepted)
@@ -905,7 +908,7 @@ func parseMCPRewardCollectibleIDs(rawIDs []string) ([]core.CollectibleID, string
 		idResult := core.ParseCollectibleID(rawID)
 		id, matched := idResult.(core.CollectibleIDCreated)
 		if !matched {
-			return nil, idResult.(core.CollectibleIDRejected).Reason.Description()
+			return nil, "reward_collectible_ids must contain valid collectible ids"
 		}
 		seen[rawID] = true
 		values = append(values, id.Value)
@@ -925,7 +928,7 @@ func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSu
 	taskIDResult := core.ParseTaskID(args.TaskID)
 	taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskMatched {
-		return toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}
+		return invalidIDArgument("task_id")
 	}
 	sourceResult := submission.NewResponseSource(args.ResponseJSON)
 	source, sourceMatched := sourceResult.(submission.ResponseSourceAccepted)
@@ -960,7 +963,7 @@ func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSu
 	return marshalPayload(payload)
 }
 
-func (server Server) callGetSubmission(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callGetSubmission(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
 	var args struct {
 		SubmissionID string `json:"submission_id"`
 	}
@@ -970,7 +973,7 @@ func (server Server) callGetSubmission(ctx context.Context, subject auth.UserSub
 	submissionIDResult := core.ParseSubmissionID(args.SubmissionID)
 	submissionID, submissionMatched := submissionIDResult.(core.SubmissionIDCreated)
 	if !submissionMatched {
-		return toolProtocolError{code: codeInvalidParams, message: submissionIDResult.(core.SubmissionIDRejected).Reason.Description()}
+		return invalidIDArgument("submission_id")
 	}
 	result := server.services.GetSubmission(ctx, subject, submissionID.Value)
 	got, matched := result.(submission.SubmissionGot)
@@ -1030,7 +1033,7 @@ func (server Server) callGetSubmissionStatus(ctx context.Context, arguments json
 	})
 }
 
-func (server Server) callListTaskSubmissions(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callListTaskSubmissions(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
 	taskID, problem := parseTaskID(arguments)
 	if problem != nil {
 		return problem
@@ -1052,7 +1055,7 @@ func (server Server) callListTaskSubmissions(ctx context.Context, subject auth.U
 	return marshalPayload(submissionsPayload{Submissions: summaries, NextOffset: nextOffset, Total: listed.Total})
 }
 
-func (server Server) callAcceptSubmission(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callAcceptSubmission(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
 	var args struct {
 		TaskID           string `json:"task_id"`
 		SubmissionID     string `json:"submission_id"`
@@ -1090,12 +1093,16 @@ func (server Server) callAcceptSubmission(ctx context.Context, subject auth.User
 		collectibleIDResult := core.ParseCollectibleID(args.TipCollectibleID)
 		collectibleIDAccepted, collectibleIDMatched := collectibleIDResult.(core.CollectibleIDCreated)
 		if !collectibleIDMatched {
-			return toolProtocolError{code: codeInvalidParams, message: collectibleIDResult.(core.CollectibleIDRejected).Reason.Description()}
+			return invalidIDArgument("tip_collectible_id")
 		}
 		collectibleTip = ledger.CollectibleTipSelected{ID: collectibleIDAccepted.Value}
 	}
 
-	result := server.services.ReviewAcceptSubmission(ctx, subject.ID, ids.taskID, ids.submissionID, key.Value, creditSelection.value, tipSelection.value, collectibleTip)
+	reviewer, reviewerProblem := reviewerForSubject(subject)
+	if reviewerProblem != nil {
+		return reviewerProblem
+	}
+	result := server.services.ReviewAcceptSubmission(ctx, reviewer, ids.taskID, ids.submissionID, key.Value, creditSelection.value, tipSelection.value, collectibleTip)
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
 		return toolFailed{code: result.(ledger.AcceptRejected).Reason.Code(), message: result.(ledger.AcceptRejected).Reason.Description()}
@@ -1175,6 +1182,24 @@ type keyedReviewArguments struct {
 	problem toolResult
 }
 
+// reviewerForSubject maps the authenticated MCP caller onto the ledger
+// reviewer it acts as, mirroring REST's reviewerForSubject
+// (internal/http/reviews.go): a personal agent credential reviews as its
+// user, an organization credential reviews as the organization — full parity
+// with an org-admin member on the organization's own tasks, except that tips
+// and bans move personal value and are refused by the ledger service with a
+// clear message.
+func reviewerForSubject(subject auth.Subject) (ledger.Reviewer, toolResult) {
+	switch typed := subject.(type) {
+	case auth.UserSubject:
+		return ledger.UserReviewer{ID: typed.ID}, nil
+	case auth.OrgSubject:
+		return ledger.OrganizationReviewer{ID: typed.ID}, nil
+	default:
+		return nil, toolFailed{code: core.ErrorCodePermissionDenied, message: "submission review requires a personal agent credential or an organization credential"}
+	}
+}
+
 func parseKeyedReviewArguments(taskID string, submissionID string, rawKey string, rawNote string) keyedReviewArguments {
 	ids := parseTaskSubmissionIDs(taskID, submissionID)
 	if ids.problem != nil {
@@ -1193,7 +1218,7 @@ func parseKeyedReviewArguments(taskID string, submissionID string, rawKey string
 	return keyedReviewArguments{ids: ids, key: key.Value, note: note.Value}
 }
 
-func (server Server) callRequestChanges(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callRequestChanges(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
 	var args struct {
 		TaskID         string `json:"task_id"`
 		SubmissionID   string `json:"submission_id"`
@@ -1207,7 +1232,11 @@ func (server Server) callRequestChanges(ctx context.Context, subject auth.UserSu
 	if parsed.problem != nil {
 		return parsed.problem
 	}
-	result := server.services.RequestChanges(ctx, subject.ID, parsed.ids.taskID, parsed.ids.submissionID, parsed.key, parsed.note)
+	reviewer, reviewerProblem := reviewerForSubject(subject)
+	if reviewerProblem != nil {
+		return reviewerProblem
+	}
+	result := server.services.RequestChanges(ctx, reviewer, parsed.ids.taskID, parsed.ids.submissionID, parsed.key, parsed.note)
 	changed, matched := result.(ledger.ChangesRequested)
 	if !matched {
 		return toolFailed{code: result.(ledger.RequestChangesRejected).Reason.Code(), message: result.(ledger.RequestChangesRejected).Reason.Description()}
@@ -1221,7 +1250,7 @@ func (server Server) callRequestChanges(ctx context.Context, subject auth.UserSu
 	})
 }
 
-func (server Server) callRejectSubmission(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callRejectSubmission(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
 	var args struct {
 		TaskID              string `json:"task_id"`
 		SubmissionID        string `json:"submission_id"`
@@ -1257,7 +1286,11 @@ func (server Server) callRejectSubmission(ctx context.Context, subject auth.User
 	default:
 		return toolProtocolError{code: codeInvalidParams, message: "ban_selection must be none or ban_implementor"}
 	}
-	result := server.services.RejectSubmission(ctx, subject.ID, parsed.ids.taskID, parsed.ids.submissionID, parsed.key, parsed.note, creditSelection.value, tipSelection.value, banSelection)
+	reviewer, reviewerProblem := reviewerForSubject(subject)
+	if reviewerProblem != nil {
+		return reviewerProblem
+	}
+	result := server.services.RejectSubmission(ctx, reviewer, parsed.ids.taskID, parsed.ids.submissionID, parsed.key, parsed.note, creditSelection.value, tipSelection.value, banSelection)
 	rejected, matched := result.(ledger.SubmissionRejected)
 	if !matched {
 		return toolFailed{code: result.(ledger.RejectRejected).Reason.Code(), message: result.(ledger.RejectRejected).Reason.Description()}
@@ -1355,7 +1388,7 @@ func (server Server) callGetTaskSeries(ctx context.Context, subject auth.UserSub
 	seriesIDResult := core.ParseTaskSeriesID(args.SeriesID)
 	seriesID, idMatched := seriesIDResult.(core.TaskSeriesIDCreated)
 	if !idMatched {
-		return toolProtocolError{code: codeInvalidParams, message: seriesIDResult.(core.TaskSeriesIDRejected).Reason.Description()}
+		return invalidIDArgument("series_id")
 	}
 	result := server.services.GetSeries(ctx, subject, seriesID.Value)
 	got, matched := result.(task.SeriesGot)
@@ -1409,7 +1442,7 @@ func parseReserveTaskArguments(arguments json.RawMessage) parsedReserveTaskArgum
 	taskIDResult := core.ParseTaskID(args.TaskID)
 	taskID, taskIDMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskIDMatched {
-		return parsedReserveTaskArguments{problem: toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}}
+		return parsedReserveTaskArguments{problem: invalidIDArgument("task_id")}
 	}
 
 	switch args.AssigneeKind {
@@ -1419,12 +1452,12 @@ func parseReserveTaskArguments(arguments json.RawMessage) parsedReserveTaskArgum
 		organizationIDResult := core.ParseOrganizationID(args.OrganizationID)
 		organizationID, organizationIDMatched := organizationIDResult.(core.OrganizationIDCreated)
 		if !organizationIDMatched {
-			return parsedReserveTaskArguments{problem: toolProtocolError{code: codeInvalidParams, message: organizationIDResult.(core.OrganizationIDRejected).Reason.Description()}}
+			return parsedReserveTaskArguments{problem: invalidIDArgument("organization_id")}
 		}
 		teamIDResult := core.ParseTeamID(args.TeamID)
 		teamID, teamIDMatched := teamIDResult.(core.TeamIDCreated)
 		if !teamIDMatched {
-			return parsedReserveTaskArguments{problem: toolProtocolError{code: codeInvalidParams, message: teamIDResult.(core.TeamIDRejected).Reason.Description()}}
+			return parsedReserveTaskArguments{problem: invalidIDArgument("team_id")}
 		}
 		return parsedReserveTaskArguments{taskID: taskID.Value, assigneeKind: args.AssigneeKind, organizationID: organizationID.Value, teamID: teamID.Value}
 	default:
@@ -1466,7 +1499,7 @@ func (server Server) callChangeReservation(ctx context.Context, subject auth.Sub
 	if !matched {
 		return toolFailed{code: result.(task.ReservationStateChangeRejected).Reason.Code(), message: result.(task.ReservationStateChangeRejected).Reason.Description()}
 	}
-	return marshalPayload(reservationPayload{Reservation: reservationToSummary(changed.Value, changed.IssuedWorkerCredentialSecret)})
+	return marshalPayload(reservationPayload{Reservation: reservationToSummary(changed.Value, "")})
 }
 
 func seriesToSummary(value task.Series) seriesSummary {
@@ -1505,12 +1538,12 @@ func parseTaskReservationIDs(arguments json.RawMessage) parsedTaskReservationIDs
 	taskIDResult := core.ParseTaskID(args.TaskID)
 	taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskMatched {
-		return parsedTaskReservationIDs{problem: toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}}
+		return parsedTaskReservationIDs{problem: invalidIDArgument("task_id")}
 	}
 	reservationIDResult := core.ParseTaskReservationID(args.ReservationID)
 	reservationID, reservationMatched := reservationIDResult.(core.TaskReservationIDCreated)
 	if !reservationMatched {
-		return parsedTaskReservationIDs{problem: toolProtocolError{code: codeInvalidParams, message: reservationIDResult.(core.TaskReservationIDRejected).Reason.Description()}}
+		return parsedTaskReservationIDs{problem: invalidIDArgument("reservation_id")}
 	}
 	return parsedTaskReservationIDs{taskID: taskID.Value, reservationID: reservationID.Value}
 }
@@ -1525,13 +1558,22 @@ func parseTaskID(arguments json.RawMessage) (core.TaskID, toolResult) {
 	result := core.ParseTaskID(args.TaskID)
 	taskID, matched := result.(core.TaskIDCreated)
 	if !matched {
-		return core.TaskID{}, toolProtocolError{code: codeInvalidParams, message: result.(core.TaskIDRejected).Reason.Description()}
+		return core.TaskID{}, invalidIDArgument("task_id")
 	}
 	return taskID.Value, nil
 }
 
 func invalidArguments() toolResult {
 	return toolProtocolError{code: codeInvalidParams, message: "tool arguments are invalid"}
+}
+
+// invalidIDArgument phrases a malformed id argument with the same
+// "<argument> must be ..." shape the other input-shape rejections use. The
+// domain id rejection carries the raw UUID library error (e.g. "invalid UUID
+// length: 4"), which is not an agent-facing message, so every tool routes
+// malformed ids through this instead.
+func invalidIDArgument(argument string) toolResult {
+	return toolProtocolError{code: codeInvalidParams, message: argument + " must be a valid id (a UUID)"}
 }
 
 func marshalPayload(value payloadValue) toolResult {
@@ -1615,7 +1657,7 @@ func (server Server) callUpdateSeries(ctx context.Context, subject auth.UserSubj
 	seriesResult := core.ParseTaskSeriesID(args.SeriesID)
 	seriesID, seriesMatched := seriesResult.(core.TaskSeriesIDCreated)
 	if !seriesMatched {
-		return toolProtocolError{code: codeInvalidParams, message: seriesResult.(core.TaskSeriesIDRejected).Reason.Description()}
+		return invalidIDArgument("series_id")
 	}
 	titleResult := task.NewSeriesTitle(args.Title)
 	title, titleMatched := titleResult.(task.SeriesTitleAccepted)
@@ -1641,14 +1683,14 @@ func (server Server) callReorderSeries(ctx context.Context, subject auth.UserSub
 	seriesResult := core.ParseTaskSeriesID(args.SeriesID)
 	seriesID, seriesMatched := seriesResult.(core.TaskSeriesIDCreated)
 	if !seriesMatched {
-		return toolProtocolError{code: codeInvalidParams, message: seriesResult.(core.TaskSeriesIDRejected).Reason.Description()}
+		return invalidIDArgument("series_id")
 	}
 	order := make([]core.TaskID, 0, len(args.TaskIDs))
 	for index := range args.TaskIDs {
 		taskIDResult := core.ParseTaskID(args.TaskIDs[index])
 		taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
 		if !taskMatched {
-			return toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}
+			return invalidIDArgument("task_id")
 		}
 		order = append(order, taskID.Value)
 	}
@@ -1690,7 +1732,7 @@ func (server Server) callAddSeriesComment(ctx context.Context, subject auth.User
 	seriesResult := core.ParseTaskSeriesID(args.SeriesID)
 	seriesID, seriesMatched := seriesResult.(core.TaskSeriesIDCreated)
 	if !seriesMatched {
-		return toolProtocolError{code: codeInvalidParams, message: seriesResult.(core.TaskSeriesIDRejected).Reason.Description()}
+		return invalidIDArgument("series_id")
 	}
 	bodyResult := task.NewCommentBody(args.Body)
 	body, bodyMatched := bodyResult.(task.CommentBodyAccepted)
@@ -1738,7 +1780,7 @@ func (server Server) callAddTaskComment(ctx context.Context, subject auth.UserSu
 	taskResult := core.ParseTaskID(args.TaskID)
 	taskID, taskMatched := taskResult.(core.TaskIDCreated)
 	if !taskMatched {
-		return toolProtocolError{code: codeInvalidParams, message: taskResult.(core.TaskIDRejected).Reason.Description()}
+		return invalidIDArgument("task_id")
 	}
 	bodyResult := task.NewCommentBody(args.Body)
 	body, bodyMatched := bodyResult.(task.CommentBodyAccepted)
@@ -1796,7 +1838,7 @@ func (server Server) callAddSubmissionComment(ctx context.Context, subject auth.
 	submissionResult := core.ParseSubmissionID(args.SubmissionID)
 	submissionID, submissionMatched := submissionResult.(core.SubmissionIDCreated)
 	if !submissionMatched {
-		return toolProtocolError{code: codeInvalidParams, message: submissionResult.(core.SubmissionIDRejected).Reason.Description()}
+		return invalidIDArgument("submission_id")
 	}
 	bodyResult := task.NewCommentBody(args.Body)
 	body, bodyMatched := bodyResult.(task.CommentBodyAccepted)
@@ -1821,7 +1863,7 @@ func (server Server) callListSubmissionComments(ctx context.Context, subject aut
 	submissionResult := core.ParseSubmissionID(args.SubmissionID)
 	submissionID, submissionMatched := submissionResult.(core.SubmissionIDCreated)
 	if !submissionMatched {
-		return toolProtocolError{code: codeInvalidParams, message: submissionResult.(core.SubmissionIDRejected).Reason.Description()}
+		return invalidIDArgument("submission_id")
 	}
 	page, pageProblem := parseMCPPageArguments(arguments)
 	if pageProblem != nil {
@@ -1890,7 +1932,7 @@ func parseSeriesID(arguments json.RawMessage) (core.TaskSeriesID, toolResult) {
 	result := core.ParseTaskSeriesID(args.SeriesID)
 	seriesID, matched := result.(core.TaskSeriesIDCreated)
 	if !matched {
-		return core.TaskSeriesID{}, toolProtocolError{code: codeInvalidParams, message: result.(core.TaskSeriesIDRejected).Reason.Description()}
+		return core.TaskSeriesID{}, invalidIDArgument("series_id")
 	}
 	return seriesID.Value, nil
 }
@@ -1906,12 +1948,12 @@ func parseSeriesAndTaskID(arguments json.RawMessage) (core.TaskSeriesID, core.Ta
 	seriesResult := core.ParseTaskSeriesID(args.SeriesID)
 	seriesID, seriesMatched := seriesResult.(core.TaskSeriesIDCreated)
 	if !seriesMatched {
-		return core.TaskSeriesID{}, core.TaskID{}, toolProtocolError{code: codeInvalidParams, message: seriesResult.(core.TaskSeriesIDRejected).Reason.Description()}
+		return core.TaskSeriesID{}, core.TaskID{}, invalidIDArgument("series_id")
 	}
 	taskResult := core.ParseTaskID(args.TaskID)
 	taskID, taskMatched := taskResult.(core.TaskIDCreated)
 	if !taskMatched {
-		return core.TaskSeriesID{}, core.TaskID{}, toolProtocolError{code: codeInvalidParams, message: taskResult.(core.TaskIDRejected).Reason.Description()}
+		return core.TaskSeriesID{}, core.TaskID{}, invalidIDArgument("task_id")
 	}
 	return seriesID.Value, taskID.Value, nil
 }
@@ -1926,12 +1968,12 @@ func parseTaskSubmissionIDs(rawTaskID string, rawSubmissionID string) parsedTask
 	taskIDResult := core.ParseTaskID(rawTaskID)
 	taskID, taskMatched := taskIDResult.(core.TaskIDCreated)
 	if !taskMatched {
-		return parsedTaskSubmissionIDs{problem: toolProtocolError{code: codeInvalidParams, message: taskIDResult.(core.TaskIDRejected).Reason.Description()}}
+		return parsedTaskSubmissionIDs{problem: invalidIDArgument("task_id")}
 	}
 	submissionIDResult := core.ParseSubmissionID(rawSubmissionID)
 	submissionID, submissionMatched := submissionIDResult.(core.SubmissionIDCreated)
 	if !submissionMatched {
-		return parsedTaskSubmissionIDs{problem: toolProtocolError{code: codeInvalidParams, message: submissionIDResult.(core.SubmissionIDRejected).Reason.Description()}}
+		return parsedTaskSubmissionIDs{problem: invalidIDArgument("submission_id")}
 	}
 	return parsedTaskSubmissionIDs{taskID: taskID.Value, submissionID: submissionID.Value}
 }
@@ -2024,6 +2066,7 @@ func reservationToSummary(value task.Reservation, issuedWorkerCredential string)
 		AssigneeID:             assigneeID,
 		State:                  value.State.String(),
 		RequestedBy:            value.RequestedBy.String(),
+		HolderDisplayName:      value.HolderDisplayName.String(),
 		IssuedWorkerCredential: issuedWorkerCredential,
 	}
 }

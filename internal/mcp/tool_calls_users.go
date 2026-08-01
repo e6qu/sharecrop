@@ -41,7 +41,7 @@ func parseUserID(arguments json.RawMessage) (core.UserID, toolResult) {
 	result := core.ParseUserID(args.UserID)
 	userID, matched := result.(core.UserIDCreated)
 	if !matched {
-		return core.UserID{}, toolProtocolError{code: codeInvalidParams, message: result.(core.UserIDRejected).Reason.Description()}
+		return core.UserID{}, invalidIDArgument("user_id")
 	}
 	return userID.Value, nil
 }

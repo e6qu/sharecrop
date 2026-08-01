@@ -2,113 +2,70 @@ package event
 
 import (
 	"context"
-	"time"
 
-	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/notification"
 )
 
-// Recorder is the emission and dispatch point for domain events.
+// Recorder is the dispatch point for domain events.
 //
-// Durable mutations record their event drafts inside the store transaction
-// that performs the mutation (the in-transaction outbox); the service then
-// calls Dispatch with the recorded drafts to run the post-commit side
-// effects inline: inbox fan-out, webhook delivery expansion, and marking the
-// event dispatched. A crash between commit and dispatch leaves the event in
-// the recorded state, and the lifecycle runner's dispatch sweep replays the
-// same idempotent step.
-//
-// Emit remains for background sweeps whose store mutations do not carry a
-// draft: it appends the event (recorded) and dispatches it inline.
+// Durable mutations — service commands and the lifecycle sweeps alike —
+// record their event drafts inside the store transaction that performs the
+// mutation (the in-transaction outbox); the caller then passes the recorded
+// drafts to Dispatch to run the post-commit side effects inline: inbox
+// fan-out, webhook delivery expansion, and marking the event dispatched. A
+// crash between commit and dispatch leaves the event in the recorded state,
+// and the lifecycle runner's dispatch sweep replays the same idempotent
+// step.
 type Recorder struct {
 	store         Store
 	notifications notification.Service
-	now           func() time.Time
 }
 
 func NewRecorder(store Store, notifications notification.Service) Recorder {
-	return Recorder{store: store, notifications: notifications, now: time.Now}
-}
-
-// EmitCommand describes one domain event. Recipients are computed by the
-// emitting service, which already holds the task/submission/reservation rows;
-// the actor should be included so their own feed reflects the action.
-type EmitCommand struct {
-	Kind       Kind
-	Actor      Actor
-	Subject    Subject
-	Metadata   Metadata
-	Recipients Recipients
-}
-
-type EmitResult interface {
-	emitResult()
-}
-
-type EventEmitted struct {
-	Value StoredEvent
-}
-
-type EmitRejected struct {
-	Reason core.DomainError
-}
-
-func (EventEmitted) emitResult() {}
-
-func (EmitRejected) emitResult() {}
-
-// Emit appends one event to the stream and dispatches it inline. It is used
-// by the lifecycle sweeps (reservation/task expiry), whose store mutations
-// commit before the event exists; service mutations record their drafts
-// in-transaction instead and call Dispatch.
-func (recorder Recorder) Emit(ctx context.Context, command EmitCommand) EmitResult {
-	draftResult := NewDraft(command.Kind, command.Actor, command.Subject, command.Metadata, command.Recipients)
-	created, matched := draftResult.(DraftCreated)
-	if !matched {
-		return EmitRejected{Reason: draftResult.(DraftRejected).Reason}
-	}
-	draft := created.Value
-
-	appendResult := recorder.store.Append(ctx, draft.Event(recorder.now()), draft.Recipients)
-	appended, appendMatched := appendResult.(AppendStoreAccepted)
-	if !appendMatched {
-		return EmitRejected{Reason: appendResult.(AppendStoreRejected).Reason}
-	}
-
-	recorder.Dispatch(ctx, draft)
-	return EventEmitted{Value: appended.Value}
+	return Recorder{store: store, notifications: notifications}
 }
 
 // Dispatch runs the post-commit dispatch step for events already recorded in
 // a mutation's transaction: inbox fan-out for the kinds that map to a
 // notification, then the store-side effects (webhook expansion, marking
 // dispatched). Every part is idempotent per event — notifications are keyed
-// by event id, webhook deliveries by (subscription, event), and the state
-// flip only touches recorded rows — so an inline dispatch racing the
-// recovery sweep produces no duplicates. Failures are deliberately not
-// surfaced: the event row is already durable, and the sweep retries.
+// by (event, recipient), webhook deliveries by (subscription, event), and
+// the state flip only touches recorded rows — so an inline dispatch racing
+// the recovery sweep produces no duplicates. The row is flipped to
+// dispatched only when every fan-out leg succeeded; on a failed leg it stays
+// recorded, so the recovery sweep retries the whole idempotent step instead
+// of losing the failed legs forever. Failures are not surfaced to the
+// caller: the event row is already durable.
 func (recorder Recorder) Dispatch(ctx context.Context, drafts ...Draft) {
 	for _, draft := range drafts {
-		recorder.fanOutNotifications(ctx, draft)
+		if !recorder.fanOutNotifications(ctx, draft) {
+			continue
+		}
 		_ = recorder.store.Dispatch(ctx, draft.ID)
 	}
 }
 
 // fanOutNotifications creates inbox rows for the recipients of kinds that map
-// to a notification. notification.Service itself skips the actor, so the
-// actor's own feed entry never becomes a self-notification.
-func (recorder Recorder) fanOutNotifications(ctx context.Context, draft Draft) {
+// to a notification, reporting whether every leg succeeded.
+// notification.Service itself skips the actor, so the actor's own feed entry
+// never becomes a self-notification.
+func (recorder Recorder) fanOutNotifications(ctx context.Context, draft Draft) bool {
 	rule := NotificationRuleFor(draft.Kind)
 	notify, matched := rule.(NotifyAs)
 	if !matched {
-		return
+		return true
 	}
 	actor := ActorUserID(draft.Actor)
 	subject := NotificationSubjectFor(draft.Subject)
 	metadata := notification.Metadata{JSON: draft.Metadata.JSON}
+	completed := true
 	for _, recipient := range draft.Recipients.Users {
-		_ = recorder.notifications.Notify(ctx, recipient, actor, notify.Kind, subject, metadata, notification.FromEvent{ID: draft.ID})
+		result := recorder.notifications.Notify(ctx, recipient, actor, notify.Kind, subject, metadata, notification.FromEvent{ID: draft.ID})
+		if _, rejected := result.(notification.NotifyRejected); rejected {
+			completed = false
+		}
 	}
+	return completed
 }
 
 // NotificationRule says whether an event kind produces an inbox notification.
@@ -174,6 +131,10 @@ func NotificationRuleFor(kind Kind) NotificationRule {
 		return NotifyAs{Kind: notification.KindTipReceived}
 	case KindCollectibleAwarded:
 		return NotifyAs{Kind: notification.KindCollectibleAwarded}
+	case KindCollectibleWithdrawn:
+		return NotifyAs{Kind: notification.KindCollectibleWithdrawn}
+	case KindCreditsSent:
+		return NotifyAs{Kind: notification.KindCreditsReceived}
 	default:
 		return NoNotification{}
 	}

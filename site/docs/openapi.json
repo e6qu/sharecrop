@@ -657,6 +657,48 @@
     "/api/admin/audit-events": {
       "get": {
         "operationId": "listAuditEvents",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "description": "Audit action filter (for example admin_credit_granted or submission_accepted); absent lists every action.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject_kind",
+            "in": "query",
+            "description": "Subject kind filter (for example user, organization, task, submission, collectible, moderation_report, privacy_request).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "description": "Subject id filter; combine with subject_kind to trace one record.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -710,6 +752,625 @@
                   "required": [
                     "events",
                     "next_offset"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/collectible-catalog": {
+      "post": {
+        "operationId": "addCatalogEntry",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "art": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "max_editions": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  },
+                  "transfer_policy": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "slug",
+                  "name",
+                  "kind",
+                  "transfer_policy",
+                  "art"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "art": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "max_editions": {
+                      "type": "integer"
+                    },
+                    "minted_count": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "transfer_policy": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "slug",
+                    "name",
+                    "kind",
+                    "transfer_policy",
+                    "art",
+                    "state",
+                    "max_editions",
+                    "minted_count"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/collectible-catalog/{slug}": {
+      "delete": {
+        "operationId": "deleteCatalogEntry",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/collectible-catalog/{slug}/withdraw": {
+      "post": {
+        "operationId": "withdrawCatalogEntry",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "art": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "max_editions": {
+                      "type": "integer"
+                    },
+                    "minted_count": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "transfer_policy": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "slug",
+                    "name",
+                    "kind",
+                    "transfer_policy",
+                    "art",
+                    "state",
+                    "max_editions",
+                    "minted_count"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/collectibles/{collectible_id}": {
+      "delete": {
+        "operationId": "deleteCollectible",
+        "parameters": [
+          {
+            "name": "collectible_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/collectibles/{collectible_id}/withdraw": {
+      "post": {
+        "operationId": "withdrawCollectible",
+        "parameters": [
+          {
+            "name": "collectible_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "art": {
+                      "type": "string"
+                    },
+                    "catalog_slug": {
+                      "type": "string"
+                    },
+                    "edition_number": {
+                      "type": "integer"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "issuer_display_name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "organization_id": {
+                      "type": "string"
+                    },
+                    "owner_id": {
+                      "type": "string"
+                    },
+                    "owner_kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "transfer_policy": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "kind",
+                    "state",
+                    "transfer_policy",
+                    "owner_id",
+                    "owner_kind",
+                    "organization_id",
+                    "art",
+                    "catalog_slug",
+                    "edition_number",
+                    "issuer_display_name"
                   ]
                 }
               }
@@ -930,7 +1591,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size (1-100). Defaults to the server page size.",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
             "schema": {
               "type": "integer"
             }
@@ -1116,8 +1777,7 @@
                   }
                 },
                 "required": [
-                  "state",
-                  "resolution_note"
+                  "state"
                 ]
               }
             }
@@ -1365,6 +2025,24 @@
     "/api/admin/platform-admins": {
       "get": {
         "operationId": "listPlatformAdmins",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -1693,6 +2371,24 @@
     "/api/admin/privacy-requests": {
       "get": {
         "operationId": "listAdminPrivacyRequests",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -1844,10 +2540,7 @@
                   "resolution_note": {
                     "type": "string"
                   }
-                },
-                "required": [
-                  "resolution_note"
-                ]
+                }
               }
             }
           }
@@ -2063,6 +2756,24 @@
     "/api/agent-credentials": {
       "get": {
         "operationId": "listAgentCredentials",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -2205,8 +2916,7 @@
                 },
                 "required": [
                   "label",
-                  "scopes",
-                  "expires_at"
+                  "scopes"
                 ]
               }
             }
@@ -3213,8 +3923,7 @@
                 },
                 "required": [
                   "email",
-                  "password",
-                  "display_name"
+                  "password"
                 ]
               }
             }
@@ -3504,6 +4213,24 @@
     "/api/collectibles": {
       "get": {
         "operationId": "listCollectibles",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -3520,7 +4247,16 @@
                           "art": {
                             "type": "string"
                           },
+                          "catalog_slug": {
+                            "type": "string"
+                          },
+                          "edition_number": {
+                            "type": "integer"
+                          },
                           "id": {
+                            "type": "string"
+                          },
+                          "issuer_display_name": {
                             "type": "string"
                           },
                           "kind": {
@@ -3554,7 +4290,10 @@
                           "owner_id",
                           "owner_kind",
                           "organization_id",
-                          "art"
+                          "art",
+                          "catalog_slug",
+                          "edition_number",
+                          "issuer_display_name"
                         ]
                       }
                     },
@@ -3655,9 +4394,7 @@
                 },
                 "required": [
                   "name",
-                  "kind",
-                  "transfer_policy",
-                  "art"
+                  "kind"
                 ]
               }
             }
@@ -3674,7 +4411,16 @@
                     "art": {
                       "type": "string"
                     },
+                    "catalog_slug": {
+                      "type": "string"
+                    },
+                    "edition_number": {
+                      "type": "integer"
+                    },
                     "id": {
+                      "type": "string"
+                    },
+                    "issuer_display_name": {
                       "type": "string"
                     },
                     "kind": {
@@ -3708,7 +4454,10 @@
                     "owner_id",
                     "owner_kind",
                     "organization_id",
-                    "art"
+                    "art",
+                    "catalog_slug",
+                    "edition_number",
+                    "issuer_display_name"
                   ]
                 }
               }
@@ -3801,9 +4550,7 @@
                 },
                 "required": [
                   "slug",
-                  "recipient_kind",
-                  "recipient_id",
-                  "organization_id"
+                  "recipient_id"
                 ]
               }
             }
@@ -3820,7 +4567,16 @@
                     "art": {
                       "type": "string"
                     },
+                    "catalog_slug": {
+                      "type": "string"
+                    },
+                    "edition_number": {
+                      "type": "integer"
+                    },
                     "id": {
+                      "type": "string"
+                    },
+                    "issuer_display_name": {
                       "type": "string"
                     },
                     "kind": {
@@ -3854,7 +4610,10 @@
                     "owner_id",
                     "owner_kind",
                     "organization_id",
-                    "art"
+                    "art",
+                    "catalog_slug",
+                    "edition_number",
+                    "issuer_display_name"
                   ]
                 }
               }
@@ -3945,10 +4704,19 @@
                           "kind": {
                             "type": "string"
                           },
+                          "max_editions": {
+                            "type": "integer"
+                          },
+                          "minted_count": {
+                            "type": "integer"
+                          },
                           "name": {
                             "type": "string"
                           },
                           "slug": {
+                            "type": "string"
+                          },
+                          "state": {
                             "type": "string"
                           },
                           "transfer_policy": {
@@ -3960,7 +4728,10 @@
                           "name",
                           "kind",
                           "transfer_policy",
-                          "art"
+                          "art",
+                          "state",
+                          "max_editions",
+                          "minted_count"
                         ]
                       }
                     }
@@ -3972,7 +4743,47 @@
               }
             }
           },
+          "400": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "401": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
             "description": "error",
             "content": {
               "application/json": {
@@ -4016,6 +4827,9 @@
                 "properties": {
                   "recipient_id": {
                     "type": "string"
+                  },
+                  "target_kind": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -4036,7 +4850,16 @@
                     "art": {
                       "type": "string"
                     },
+                    "catalog_slug": {
+                      "type": "string"
+                    },
+                    "edition_number": {
+                      "type": "integer"
+                    },
                     "id": {
+                      "type": "string"
+                    },
+                    "issuer_display_name": {
                       "type": "string"
                     },
                     "kind": {
@@ -4070,7 +4893,10 @@
                     "owner_id",
                     "owner_kind",
                     "organization_id",
-                    "art"
+                    "art",
+                    "catalog_slug",
+                    "edition_number",
+                    "issuer_display_name"
                   ]
                 }
               }
@@ -4235,7 +5061,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size (1-100). Defaults to the server page size.",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
             "schema": {
               "type": "integer"
             }
@@ -4344,6 +5170,144 @@
             }
           },
           "409": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/credits/transfers": {
+      "post": {
+        "operationId": "sendCredits",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "integer"
+                  },
+                  "idempotency_key": {
+                    "type": "string"
+                  },
+                  "note": {
+                    "type": "string"
+                  },
+                  "source_kind": {
+                    "type": "string"
+                  },
+                  "source_organization_id": {
+                    "type": "string"
+                  },
+                  "target_id": {
+                    "type": "string"
+                  },
+                  "target_kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source_kind",
+                  "target_kind",
+                  "target_id",
+                  "amount",
+                  "idempotency_key"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "integer"
+                    },
+                    "entry_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "entry_id",
+                    "amount"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
             "description": "error",
             "content": {
               "application/json": {
@@ -4572,8 +5536,7 @@
                 "required": [
                   "subject_kind",
                   "subject_id",
-                  "reason",
-                  "details"
+                  "reason"
                 ]
               }
             }
@@ -4733,7 +5696,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size (1-100). Defaults to the server page size.",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
             "schema": {
               "type": "integer"
             }
@@ -5120,6 +6083,32 @@
     "/api/organizations": {
       "get": {
         "operationId": "listOrganizations",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Substring match on organization names.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -5344,6 +6333,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -5478,6 +6483,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -5496,7 +6517,16 @@
                           "art": {
                             "type": "string"
                           },
+                          "catalog_slug": {
+                            "type": "string"
+                          },
+                          "edition_number": {
+                            "type": "integer"
+                          },
                           "id": {
+                            "type": "string"
+                          },
+                          "issuer_display_name": {
                             "type": "string"
                           },
                           "kind": {
@@ -5530,7 +6560,10 @@
                           "owner_id",
                           "owner_kind",
                           "organization_id",
-                          "art"
+                          "art",
+                          "catalog_slug",
+                          "edition_number",
+                          "issuer_display_name"
                         ]
                       }
                     },
@@ -5658,7 +6691,16 @@
                     "art": {
                       "type": "string"
                     },
+                    "catalog_slug": {
+                      "type": "string"
+                    },
+                    "edition_number": {
+                      "type": "integer"
+                    },
                     "id": {
+                      "type": "string"
+                    },
+                    "issuer_display_name": {
                       "type": "string"
                     },
                     "kind": {
@@ -5692,7 +6734,174 @@
                     "owner_id",
                     "owner_kind",
                     "organization_id",
-                    "art"
+                    "art",
+                    "catalog_slug",
+                    "edition_number",
+                    "issuer_display_name"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/organizations/{organization_id}/collectibles/{collectible_id}/transfer": {
+      "post": {
+        "operationId": "transferOrganizationCollectible",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "collectible_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "recipient_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "recipient_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "art": {
+                      "type": "string"
+                    },
+                    "catalog_slug": {
+                      "type": "string"
+                    },
+                    "edition_number": {
+                      "type": "integer"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "issuer_display_name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "organization_id": {
+                      "type": "string"
+                    },
+                    "owner_id": {
+                      "type": "string"
+                    },
+                    "owner_kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "transfer_policy": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "kind",
+                    "state",
+                    "transfer_policy",
+                    "owner_id",
+                    "owner_kind",
+                    "organization_id",
+                    "art",
+                    "catalog_slug",
+                    "edition_number",
+                    "issuer_display_name"
                   ]
                 }
               }
@@ -5771,6 +6980,22 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
             }
           }
         ],
@@ -5926,8 +7151,7 @@
                 },
                 "required": [
                   "label",
-                  "scopes",
-                  "expires_at"
+                  "scopes"
                 ]
               }
             }
@@ -6309,7 +7533,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size (1-100). Defaults to the server page size.",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
             "schema": {
               "type": "integer"
             }
@@ -6450,6 +7674,22 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
             }
           }
         ],
@@ -6970,6 +8210,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Substring match on team names.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -7222,6 +8486,24 @@
     "/api/privacy-requests": {
       "get": {
         "operationId": "listPrivacyRequests",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -7486,6 +8768,36 @@
     "/api/saved-queue-views": {
       "get": {
         "operationId": "listSavedQueueViews",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "Scope filter; absent lists every saved view.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "team_work",
+                "organization_tasks"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -7635,11 +8947,7 @@
                 },
                 "required": [
                   "scope",
-                  "name",
-                  "query",
-                  "state_filter",
-                  "type_filter",
-                  "sort"
+                  "name"
                 ]
               }
             }
@@ -7963,6 +9271,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -8225,6 +9549,24 @@
     "/api/task-series": {
       "get": {
         "operationId": "listTaskSeries",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -8357,8 +9699,7 @@
                   }
                 },
                 "required": [
-                  "title",
-                  "description"
+                  "title"
                 ]
               }
             }
@@ -9014,8 +10355,7 @@
                   }
                 },
                 "required": [
-                  "title",
-                  "description"
+                  "title"
                 ]
               }
             }
@@ -9665,6 +11005,22 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
             }
           }
         ],
@@ -11969,8 +13325,7 @@
               "type": "string",
               "enum": [
                 "open",
-                "reservation_required",
-                "approval_required"
+                "reservation_required"
               ]
             }
           },
@@ -12047,7 +13402,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size (1-100). Defaults to the server page size.",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
             "schema": {
               "type": "integer"
             }
@@ -12294,10 +13649,7 @@
                       }
                     },
                     "required": [
-                      "kind",
-                      "user_id",
-                      "team_id",
-                      "organization_id"
+                      "kind"
                     ]
                   },
                   "participation": {
@@ -12312,12 +13664,7 @@
                       "reservation_expiry_hours": {
                         "type": "integer"
                       }
-                    },
-                    "required": [
-                      "policy",
-                      "assignee_scope",
-                      "reservation_expiry_hours"
-                    ]
+                    }
                   },
                   "payload": {
                     "type": "object",
@@ -12330,8 +13677,7 @@
                       }
                     },
                     "required": [
-                      "kind",
-                      "json"
+                      "kind"
                     ]
                   },
                   "placement": {
@@ -12351,10 +13697,7 @@
                       }
                     },
                     "required": [
-                      "kind",
-                      "series_id",
-                      "series_title",
-                      "series_position"
+                      "kind"
                     ]
                   },
                   "reference_url": {
@@ -12380,9 +13723,7 @@
                       }
                     },
                     "required": [
-                      "kind",
-                      "credit_amount",
-                      "collectible_ids"
+                      "kind"
                     ]
                   },
                   "task_type": {
@@ -12408,10 +13749,7 @@
                       }
                     },
                     "required": [
-                      "kind",
-                      "user_id",
-                      "team_id",
-                      "organization_id"
+                      "kind"
                     ]
                   }
                 },
@@ -12419,16 +13757,11 @@
                   "owner",
                   "title",
                   "description",
-                  "task_type",
-                  "reference_url",
                   "reward",
-                  "participation",
                   "visibility",
                   "placement",
                   "response_schema_json",
-                  "payload",
-                  "attachments",
-                  "expires_at"
+                  "payload"
                 ]
               }
             }
@@ -13201,7 +14534,16 @@
                           "art": {
                             "type": "string"
                           },
+                          "catalog_slug": {
+                            "type": "string"
+                          },
+                          "edition_number": {
+                            "type": "integer"
+                          },
                           "id": {
+                            "type": "string"
+                          },
+                          "issuer_display_name": {
                             "type": "string"
                           },
                           "kind": {
@@ -13235,7 +14577,10 @@
                           "owner_id",
                           "owner_kind",
                           "organization_id",
-                          "art"
+                          "art",
+                          "catalog_slug",
+                          "edition_number",
+                          "issuer_display_name"
                         ]
                       }
                     },
@@ -13355,7 +14700,16 @@
                     "art": {
                       "type": "string"
                     },
+                    "catalog_slug": {
+                      "type": "string"
+                    },
+                    "edition_number": {
+                      "type": "integer"
+                    },
                     "id": {
+                      "type": "string"
+                    },
+                    "issuer_display_name": {
                       "type": "string"
                     },
                     "kind": {
@@ -13389,7 +14743,10 @@
                     "owner_id",
                     "owner_kind",
                     "organization_id",
-                    "art"
+                    "art",
+                    "catalog_slug",
+                    "edition_number",
+                    "issuer_display_name"
                   ]
                 }
               }
@@ -13478,6 +14835,22 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
             }
           }
         ],
@@ -13769,8 +15142,7 @@
                 },
                 "required": [
                   "amount",
-                  "idempotency_key",
-                  "organization_id"
+                  "idempotency_key"
                 ]
               }
             }
@@ -14155,10 +15527,7 @@
                   }
                 },
                 "required": [
-                  "idempotency_key",
-                  "payout_amount",
-                  "tip_amount",
-                  "tip_collectible_id"
+                  "idempotency_key"
                 ]
               }
             }
@@ -14270,6 +15639,22 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
             }
           }
         ],
@@ -14424,158 +15809,13 @@
                   "team_id": {
                     "type": "string"
                   }
-                },
-                "required": [
-                  "assignee_kind",
-                  "organization_id",
-                  "team_id"
-                ]
+                }
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "assignee_id": {
-                      "type": "string"
-                    },
-                    "assignee_kind": {
-                      "type": "string"
-                    },
-                    "holder_display_name": {
-                      "type": "string"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "issued_worker_credential": {
-                      "type": "string"
-                    },
-                    "requested_by": {
-                      "type": "string"
-                    },
-                    "state": {
-                      "type": "string"
-                    },
-                    "task_id": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "task_id",
-                    "assignee_kind",
-                    "assignee_id",
-                    "state",
-                    "requested_by",
-                    "issued_worker_credential",
-                    "holder_display_name"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/tasks/{task_id}/reservations/{reservation_id}/approve": {
-      "post": {
-        "operationId": "approveTaskReservation",
-        "parameters": [
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "reservation_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
             "description": "response",
             "content": {
               "application/json": {
@@ -14824,146 +16064,6 @@
         }
       }
     },
-    "/api/tasks/{task_id}/reservations/{reservation_id}/decline": {
-      "post": {
-        "operationId": "declineTaskReservation",
-        "parameters": [
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "reservation_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "assignee_id": {
-                      "type": "string"
-                    },
-                    "assignee_kind": {
-                      "type": "string"
-                    },
-                    "holder_display_name": {
-                      "type": "string"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "issued_worker_credential": {
-                      "type": "string"
-                    },
-                    "requested_by": {
-                      "type": "string"
-                    },
-                    "state": {
-                      "type": "string"
-                    },
-                    "task_id": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "task_id",
-                    "assignee_kind",
-                    "assignee_id",
-                    "state",
-                    "requested_by",
-                    "issued_worker_credential",
-                    "holder_display_name"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/tasks/{task_id}/submissions": {
       "get": {
         "operationId": "listTaskSubmissions",
@@ -14979,7 +16079,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size (1-100). Defaults to the server page size.",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
             "schema": {
               "type": "integer"
             }
@@ -15243,8 +16343,7 @@
                   }
                 },
                 "required": [
-                  "response_json",
-                  "attachments"
+                  "response_json"
                 ]
               }
             }
@@ -15490,10 +16589,7 @@
                   }
                 },
                 "required": [
-                  "idempotency_key",
-                  "payout_amount",
-                  "tip_amount",
-                  "tip_collectible_id"
+                  "idempotency_key"
                 ]
               }
             }
@@ -15663,10 +16759,7 @@
                 },
                 "required": [
                   "idempotency_key",
-                  "review_note",
-                  "partial_credit_amount",
-                  "tip_amount",
-                  "ban_selection"
+                  "review_note"
                 ]
               }
             }
@@ -16197,6 +17290,32 @@
     "/api/teams": {
       "get": {
         "operationId": "listStandaloneTeams",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Substring match on team names.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -16575,6 +17694,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -16593,7 +17728,16 @@
                           "art": {
                             "type": "string"
                           },
+                          "catalog_slug": {
+                            "type": "string"
+                          },
+                          "edition_number": {
+                            "type": "integer"
+                          },
                           "id": {
+                            "type": "string"
+                          },
+                          "issuer_display_name": {
                             "type": "string"
                           },
                           "kind": {
@@ -16627,7 +17771,10 @@
                           "owner_id",
                           "owner_kind",
                           "organization_id",
-                          "art"
+                          "art",
+                          "catalog_slug",
+                          "edition_number",
+                          "issuer_display_name"
                         ]
                       }
                     },
@@ -16864,6 +18011,111 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Task state filter; repeatable to match several states.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "open",
+                "closed",
+                "cancelled",
+                "expired"
+              ]
+            }
+          },
+          {
+            "name": "participation_policy",
+            "in": "query",
+            "description": "Participation policy filter.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "reservation_required"
+              ]
+            }
+          },
+          {
+            "name": "task_type",
+            "in": "query",
+            "description": "Task type filter.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "general",
+                "code_review",
+                "security_review",
+                "product_review",
+                "ui_ux_review",
+                "qa_testing"
+              ]
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Substring match on title and description.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Sort order. Defaults to newest.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "newest",
+                "oldest",
+                "title_asc",
+                "title_desc",
+                "reward_desc",
+                "reward_asc"
+              ],
+              "default": "newest"
+            }
+          },
+          {
+            "name": "created_after",
+            "in": "query",
+            "description": "RFC3339 instant; only tasks created strictly after it are listed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "funded",
+            "in": "query",
+            "description": "Funded-state filter; absent lists tasks regardless of reward funding.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "reward_funded",
+                "reward_unfunded",
+                "no_credit_reward"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -17050,6 +18302,32 @@
     "/api/users": {
       "get": {
         "operationId": "listUsers",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Substring match over the user directory (display name and email); at most 160 characters.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "response",
@@ -17368,7 +18646,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size (1-100). Defaults to the server page size.",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
             "schema": {
               "type": "integer"
             }
@@ -17599,6 +18877,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of rows to skip. Defaults to 0.",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -17797,7 +19091,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size (1-100). Defaults to the server page size.",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
             "schema": {
               "type": "integer"
             }
@@ -17982,11 +19276,7 @@
                 },
                 "required": [
                   "url",
-                  "kinds",
-                  "organization_id",
-                  "audience",
-                  "filter_task_type",
-                  "filter_min_credit_reward"
+                  "kinds"
                 ]
               }
             }
@@ -18300,7 +19590,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size (1-100). Defaults to the server page size.",
+            "description": "Page size (minimum 1; values above 200 are clamped to 200). Defaults to 100.",
             "schema": {
               "type": "integer"
             }

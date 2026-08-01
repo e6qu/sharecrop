@@ -469,11 +469,17 @@ func (ClaimDueDeliveriesRejected) claimDueDeliveriesResult() {}
 
 // ClaimDueDeliveries locks up to limit due pending deliveries with
 // FOR UPDATE SKIP LOCKED so concurrent dispatchers never claim the same row,
-// and pushes their next_attempt_at forward past the dispatch timeout so a
-// crashed dispatcher's rows become claimable again shortly. The due
+// and pushes their next_attempt_at forward by the caller-supplied hold so
+// another replica cannot re-claim a row while a slow batch is still working
+// through it. The hold must cover the dispatcher's worst-case batch time
+// (the dispatcher derives it from its own constants); after a crash the
+// stranded rows become claimable again once the hold lapses. Delivery is
+// therefore at-least-once: a dispatcher that crashes after a successful POST
+// but before MarkDelivered leaves the row pending, and a later claim POSTs
+// it again — receivers must dedupe on the delivery id header. The due
 // predicate uses SQL now(): the claim horizon is database time, while the
 // dispatcher computes retry backoff from its own injected clock.
-func (store WebhookStore) ClaimDueDeliveries(ctx context.Context, limit int) ClaimDueDeliveriesResult {
+func (store WebhookStore) ClaimDueDeliveries(ctx context.Context, limit int, hold time.Duration) ClaimDueDeliveriesResult {
 	tx, err := store.db.Begin(ctx)
 	if err != nil {
 		return ClaimDueDeliveriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin webhook claim transaction failed")}
@@ -518,14 +524,15 @@ func (store WebhookStore) ClaimDueDeliveries(ctx context.Context, limit int) Cla
 		return ClaimDueDeliveriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "iterate claimed webhook deliveries failed")}
 	}
 
-	// Push the claimed rows out of the due window so they are not reclaimed
-	// the moment this transaction commits; the dispatcher immediately marks
-	// each one delivered or failed with a real backoff.
+	// Push the claimed rows out of the due window for the full hold so they
+	// are not reclaimed while this dispatcher is still working through the
+	// batch; the dispatcher marks each one delivered or failed with a real
+	// backoff long before the hold lapses.
 	for _, claimed := range values {
 		if _, err := tx.Exec(ctx, `
-			update webhook_deliveries set next_attempt_at = now() + interval '1 minute'
+			update webhook_deliveries set next_attempt_at = now() + make_interval(secs => $2)
 			where id = $1
-		`, claimed.ID.String()); err != nil {
+		`, claimed.ID.String(), hold.Seconds()); err != nil {
 			return ClaimDueDeliveriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "hold claimed webhook delivery failed")}
 		}
 	}

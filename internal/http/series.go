@@ -46,8 +46,9 @@ type seriesCommentsResponse struct {
 }
 
 type createSeriesRequest struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
+	Title string `json:"title"`
+	// Description is optional (length-bounded only).
+	Description string `json:"description,omitempty"`
 }
 
 type addTaskToSeriesRequest struct {

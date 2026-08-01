@@ -44,6 +44,14 @@ const (
 	maxClaimBatchesPerRun = 50
 	// requestTimeout bounds each delivery POST.
 	requestTimeout = 10 * time.Second
+	// claimHold is how long a claim keeps its rows out of the due window.
+	// It is derived from the batch worst case — every delivery in a claimed
+	// batch timing out (claimBatchSize * requestTimeout) — plus one extra
+	// requestTimeout of slack, so another replica can never re-claim (and
+	// duplicate-POST) a row that a slow batch is still working through. A
+	// crashed dispatcher's rows become claimable again once the hold lapses;
+	// delivery stays at-least-once (see db.WebhookStore.ClaimDueDeliveries).
+	claimHold = claimBatchSize*requestTimeout + requestTimeout
 	// responseBodyReadLimit caps how much of a receiver's response body is
 	// read (and discarded) before the connection is released.
 	responseBodyReadLimit = 4 * 1024
@@ -127,7 +135,7 @@ func (dispatcher Dispatcher) RunOnce(ctx context.Context) RunResult {
 	attempted := 0
 	delivered := 0
 	for batch := 0; batch < maxClaimBatchesPerRun; batch++ {
-		claimResult := dispatcher.store.ClaimDueDeliveries(ctx, claimBatchSize)
+		claimResult := dispatcher.store.ClaimDueDeliveries(ctx, claimBatchSize, claimHold)
 		claimed, claimMatched := claimResult.(db.ClaimDueDeliveriesListed)
 		if !claimMatched {
 			return RunRejected{Reason: claimResult.(db.ClaimDueDeliveriesRejected).Reason}

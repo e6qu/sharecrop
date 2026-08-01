@@ -459,7 +459,7 @@ type acceptCommandWire struct {
 	RefundEntryID    string                `json:"refund_entry_id"`
 	TipDebitEntryID  string                `json:"tip_debit_entry_id"`
 	TipCreditEntryID string                `json:"tip_credit_entry_id"`
-	RequesterUserID  string                `json:"requester_user_id"`
+	Reviewer         reviewerWire          `json:"reviewer"`
 	TaskID           string                `json:"task_id"`
 	SubmissionID     string                `json:"submission_id"`
 	IdempotencyKey   string                `json:"idempotency_key"`
@@ -475,7 +475,7 @@ func encodeAcceptCommand(command ledger.AcceptStoreCommand) acceptCommandWire {
 		RefundEntryID:    corewire.EncodeLedgerEntryID(command.RefundEntryID),
 		TipDebitEntryID:  corewire.EncodeLedgerEntryID(command.TipDebitEntryID),
 		TipCreditEntryID: corewire.EncodeLedgerEntryID(command.TipCreditEntryID),
-		RequesterUserID:  corewire.EncodeUserID(command.RequesterUserID),
+		Reviewer:         encodeReviewer(command.Reviewer),
 		TaskID:           corewire.EncodeTaskID(command.TaskID),
 		SubmissionID:     corewire.EncodeSubmissionID(command.SubmissionID),
 		IdempotencyKey:   encodeIdempotencyKey(command.IdempotencyKey),
@@ -491,7 +491,7 @@ func decodeAcceptCommand(wire acceptCommandWire) (ledger.AcceptStoreCommand, err
 	if err != nil {
 		return ledger.AcceptStoreCommand{}, err
 	}
-	shared, err := decodeReviewCommon(wire.RequesterUserID, wire.TaskID, wire.SubmissionID, wire.IdempotencyKey)
+	shared, err := decodeReviewCommon(wire.Reviewer, wire.TaskID, wire.SubmissionID, wire.IdempotencyKey)
 	if err != nil {
 		return ledger.AcceptStoreCommand{}, err
 	}
@@ -516,7 +516,7 @@ func decodeAcceptCommand(wire acceptCommandWire) (ledger.AcceptStoreCommand, err
 		RefundEntryID:    ids.refund,
 		TipDebitEntryID:  ids.tipDebit,
 		TipCreditEntryID: ids.tipCredit,
-		RequesterUserID:  shared.requester,
+		Reviewer:         shared.reviewer,
 		TaskID:           shared.taskID,
 		SubmissionID:     shared.submissionID,
 		IdempotencyKey:   shared.key,
@@ -528,43 +528,31 @@ func decodeAcceptCommand(wire acceptCommandWire) (ledger.AcceptStoreCommand, err
 }
 
 type requestChangesCommandWire struct {
-	RequesterUserID string                `json:"requester_user_id"`
-	TaskID          string                `json:"task_id"`
-	SubmissionID    string                `json:"submission_id"`
-	IdempotencyKey  string                `json:"idempotency_key"`
-	ReviewNote      string                `json:"review_note"`
-	Draft           eventbridge.DraftWire `json:"draft"`
+	Reviewer       reviewerWire          `json:"reviewer"`
+	TaskID         string                `json:"task_id"`
+	SubmissionID   string                `json:"submission_id"`
+	IdempotencyKey string                `json:"idempotency_key"`
+	ReviewNote     string                `json:"review_note"`
+	Draft          eventbridge.DraftWire `json:"draft"`
 }
 
 func encodeRequestChangesCommand(command ledger.RequestChangesStoreCommand) requestChangesCommandWire {
 	return requestChangesCommandWire{
-		RequesterUserID: corewire.EncodeUserID(command.RequesterUserID),
-		TaskID:          corewire.EncodeTaskID(command.TaskID),
-		SubmissionID:    corewire.EncodeSubmissionID(command.SubmissionID),
-		IdempotencyKey:  encodeIdempotencyKey(command.IdempotencyKey),
-		ReviewNote:      encodeReviewNote(command.ReviewNote),
-		Draft:           eventbridge.EncodeDraft(command.Draft),
+		Reviewer:       encodeReviewer(command.Reviewer),
+		TaskID:         corewire.EncodeTaskID(command.TaskID),
+		SubmissionID:   corewire.EncodeSubmissionID(command.SubmissionID),
+		IdempotencyKey: encodeIdempotencyKey(command.IdempotencyKey),
+		ReviewNote:     encodeReviewNote(command.ReviewNote),
+		Draft:          eventbridge.EncodeDraft(command.Draft),
 	}
 }
 
 func decodeRequestChangesCommand(wire requestChangesCommandWire) (ledger.RequestChangesStoreCommand, error) {
-	requesterUserID, err := corewire.DecodeUserID(wire.RequesterUserID)
-	if err != nil {
-		return ledger.RequestChangesStoreCommand{}, err
-	}
-	taskID, err := corewire.DecodeTaskID(wire.TaskID)
-	if err != nil {
-		return ledger.RequestChangesStoreCommand{}, err
-	}
-	submissionID, err := corewire.DecodeSubmissionID(wire.SubmissionID)
+	shared, err := decodeReviewCommon(wire.Reviewer, wire.TaskID, wire.SubmissionID, wire.IdempotencyKey)
 	if err != nil {
 		return ledger.RequestChangesStoreCommand{}, err
 	}
 	reviewNote, err := decodeReviewNote(wire.ReviewNote)
-	if err != nil {
-		return ledger.RequestChangesStoreCommand{}, err
-	}
-	idempotencyKey, err := decodeIdempotencyKey(wire.IdempotencyKey)
 	if err != nil {
 		return ledger.RequestChangesStoreCommand{}, err
 	}
@@ -573,12 +561,12 @@ func decodeRequestChangesCommand(wire requestChangesCommandWire) (ledger.Request
 		return ledger.RequestChangesStoreCommand{}, err
 	}
 	return ledger.RequestChangesStoreCommand{
-		RequesterUserID: requesterUserID,
-		TaskID:          taskID,
-		SubmissionID:    submissionID,
-		IdempotencyKey:  idempotencyKey,
-		ReviewNote:      reviewNote,
-		Draft:           draft,
+		Reviewer:       shared.reviewer,
+		TaskID:         shared.taskID,
+		SubmissionID:   shared.submissionID,
+		IdempotencyKey: shared.key,
+		ReviewNote:     reviewNote,
+		Draft:          draft,
 	}, nil
 }
 
@@ -586,7 +574,7 @@ type rejectCommandWire struct {
 	PayoutEntryID    string                `json:"payout_entry_id"`
 	TipDebitEntryID  string                `json:"tip_debit_entry_id"`
 	TipCreditEntryID string                `json:"tip_credit_entry_id"`
-	RequesterUserID  string                `json:"requester_user_id"`
+	Reviewer         reviewerWire          `json:"reviewer"`
 	TaskID           string                `json:"task_id"`
 	SubmissionID     string                `json:"submission_id"`
 	IdempotencyKey   string                `json:"idempotency_key"`
@@ -602,7 +590,7 @@ func encodeRejectCommand(command ledger.RejectStoreCommand) rejectCommandWire {
 		PayoutEntryID:    corewire.EncodeLedgerEntryID(command.PayoutEntryID),
 		TipDebitEntryID:  corewire.EncodeLedgerEntryID(command.TipDebitEntryID),
 		TipCreditEntryID: corewire.EncodeLedgerEntryID(command.TipCreditEntryID),
-		RequesterUserID:  corewire.EncodeUserID(command.RequesterUserID),
+		Reviewer:         encodeReviewer(command.Reviewer),
 		TaskID:           corewire.EncodeTaskID(command.TaskID),
 		SubmissionID:     corewire.EncodeSubmissionID(command.SubmissionID),
 		IdempotencyKey:   encodeIdempotencyKey(command.IdempotencyKey),
@@ -627,7 +615,7 @@ func decodeRejectCommand(wire rejectCommandWire) (ledger.RejectStoreCommand, err
 	if err != nil {
 		return ledger.RejectStoreCommand{}, err
 	}
-	shared, err := decodeReviewCommon(wire.RequesterUserID, wire.TaskID, wire.SubmissionID, wire.IdempotencyKey)
+	shared, err := decodeReviewCommon(wire.Reviewer, wire.TaskID, wire.SubmissionID, wire.IdempotencyKey)
 	if err != nil {
 		return ledger.RejectStoreCommand{}, err
 	}
@@ -655,7 +643,7 @@ func decodeRejectCommand(wire rejectCommandWire) (ledger.RejectStoreCommand, err
 		PayoutEntryID:    payoutEntryID,
 		TipDebitEntryID:  tipDebitEntryID,
 		TipCreditEntryID: tipCreditEntryID,
-		RequesterUserID:  shared.requester,
+		Reviewer:         shared.reviewer,
 		TaskID:           shared.taskID,
 		SubmissionID:     shared.submissionID,
 		IdempotencyKey:   shared.key,
@@ -745,14 +733,51 @@ func decodeReviewEntryIDs(payoutRaw, refundRaw, tipDebitRaw, tipCreditRaw string
 }
 
 type reviewCommon struct {
-	requester    core.UserID
+	reviewer     ledger.Reviewer
 	taskID       core.TaskID
 	submissionID core.SubmissionID
 	key          ledger.IdempotencyKey
 }
 
-func decodeReviewCommon(requesterRaw, taskRaw, submissionRaw, keyRaw string) (reviewCommon, error) {
-	requester, err := corewire.DecodeUserID(requesterRaw)
+// reviewerWire flattens the reviewer union: kind is "user" or "organization";
+// id carries the matching identifier.
+type reviewerWire struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
+
+func encodeReviewer(reviewer ledger.Reviewer) reviewerWire {
+	switch typed := reviewer.(type) {
+	case ledger.UserReviewer:
+		return reviewerWire{Kind: "user", ID: corewire.EncodeUserID(typed.ID)}
+	case ledger.OrganizationReviewer:
+		return reviewerWire{Kind: "organization", ID: corewire.EncodeOrganizationID(typed.ID)}
+	default:
+		return reviewerWire{}
+	}
+}
+
+func decodeReviewer(wire reviewerWire) (ledger.Reviewer, error) {
+	switch wire.Kind {
+	case "user":
+		userID, err := corewire.DecodeUserID(wire.ID)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.UserReviewer{ID: userID}, nil
+	case "organization":
+		organizationID, err := corewire.DecodeOrganizationID(wire.ID)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.OrganizationReviewer{ID: organizationID}, nil
+	default:
+		return nil, fmt.Errorf("unknown reviewer kind %q", wire.Kind)
+	}
+}
+
+func decodeReviewCommon(reviewerRaw reviewerWire, taskRaw, submissionRaw, keyRaw string) (reviewCommon, error) {
+	reviewer, err := decodeReviewer(reviewerRaw)
 	if err != nil {
 		return reviewCommon{}, err
 	}
@@ -768,7 +793,7 @@ func decodeReviewCommon(requesterRaw, taskRaw, submissionRaw, keyRaw string) (re
 	if err != nil {
 		return reviewCommon{}, err
 	}
-	return reviewCommon{requester: requester, taskID: taskID, submissionID: submissionID, key: key}, nil
+	return reviewCommon{reviewer: reviewer, taskID: taskID, submissionID: submissionID, key: key}, nil
 }
 
 // ---- nested outcome unions (result side) ----
@@ -1443,5 +1468,229 @@ func decodeGrantResult(wire grantResultWire) (ledger.GrantResult, error) {
 		return ledger.GrantRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
 		return nil, fmt.Errorf("unknown grant result variant %q", wire.Variant)
+	}
+}
+
+// transferSourceWire flattens the transfer source union: kind is "self" or
+// "organization"; id carries the organization id for the latter.
+type transferSourceWire struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id,omitempty"`
+}
+
+func encodeTransferSource(source ledger.TransferSource) transferSourceWire {
+	switch typed := source.(type) {
+	case ledger.TransferFromSelf:
+		return transferSourceWire{Kind: "self"}
+	case ledger.TransferFromOrganization:
+		return transferSourceWire{Kind: "organization", ID: corewire.EncodeOrganizationID(typed.ID)}
+	default:
+		return transferSourceWire{}
+	}
+}
+
+func decodeTransferSource(wire transferSourceWire) (ledger.TransferSource, error) {
+	switch wire.Kind {
+	case "self":
+		return ledger.TransferFromSelf{}, nil
+	case "organization":
+		organizationID, err := corewire.DecodeOrganizationID(wire.ID)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.TransferFromOrganization{ID: organizationID}, nil
+	default:
+		return nil, fmt.Errorf("unknown transfer source kind %q", wire.Kind)
+	}
+}
+
+// transferTargetWire flattens the transfer target union: kind is "user" or
+// "organization"; id carries the matching identifier.
+type transferTargetWire struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
+
+func encodeTransferTarget(target ledger.TransferTarget) transferTargetWire {
+	switch typed := target.(type) {
+	case ledger.TransferToUser:
+		return transferTargetWire{Kind: "user", ID: corewire.EncodeUserID(typed.ID)}
+	case ledger.TransferToOrganization:
+		return transferTargetWire{Kind: "organization", ID: corewire.EncodeOrganizationID(typed.ID)}
+	default:
+		return transferTargetWire{}
+	}
+}
+
+func decodeTransferTarget(wire transferTargetWire) (ledger.TransferTarget, error) {
+	switch wire.Kind {
+	case "user":
+		userID, err := corewire.DecodeUserID(wire.ID)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.TransferToUser{ID: userID}, nil
+	case "organization":
+		organizationID, err := corewire.DecodeOrganizationID(wire.ID)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.TransferToOrganization{ID: organizationID}, nil
+	default:
+		return nil, fmt.Errorf("unknown transfer target kind %q", wire.Kind)
+	}
+}
+
+type peerTransferCommandWire struct {
+	DebitEntryID  string             `json:"debit_entry_id"`
+	CreditEntryID string             `json:"credit_entry_id"`
+	ActingUserID  string             `json:"acting_user_id"`
+	Source        transferSourceWire `json:"source"`
+	Target        transferTargetWire `json:"target"`
+	Amount        int64              `json:"amount"`
+	// Note is the optional transfer note; an empty string encodes explicit
+	// absence (a validated note is never empty).
+	Note           string                `json:"note"`
+	IdempotencyKey string                `json:"idempotency_key"`
+	Draft          eventbridge.DraftWire `json:"draft"`
+}
+
+func encodePeerTransferCommand(command ledger.PeerTransferStoreCommand) peerTransferCommandWire {
+	note := ""
+	if provided, matched := command.Note.(ledger.TransferNoteProvided); matched {
+		note = provided.Note.String()
+	}
+	return peerTransferCommandWire{
+		DebitEntryID:   corewire.EncodeLedgerEntryID(command.DebitEntryID),
+		CreditEntryID:  corewire.EncodeLedgerEntryID(command.CreditEntryID),
+		ActingUserID:   corewire.EncodeUserID(command.ActingUserID),
+		Source:         encodeTransferSource(command.Source),
+		Target:         encodeTransferTarget(command.Target),
+		Amount:         encodeCreditAmount(command.Amount),
+		Note:           note,
+		IdempotencyKey: encodeIdempotencyKey(command.IdempotencyKey),
+		Draft:          eventbridge.EncodeDraft(command.Draft),
+	}
+}
+
+func decodePeerTransferCommand(wire peerTransferCommandWire) (ledger.PeerTransferStoreCommand, error) {
+	debitEntryID, err := corewire.DecodeLedgerEntryID(wire.DebitEntryID)
+	if err != nil {
+		return ledger.PeerTransferStoreCommand{}, err
+	}
+	creditEntryID, err := corewire.DecodeLedgerEntryID(wire.CreditEntryID)
+	if err != nil {
+		return ledger.PeerTransferStoreCommand{}, err
+	}
+	actingUserID, err := corewire.DecodeUserID(wire.ActingUserID)
+	if err != nil {
+		return ledger.PeerTransferStoreCommand{}, err
+	}
+	source, err := decodeTransferSource(wire.Source)
+	if err != nil {
+		return ledger.PeerTransferStoreCommand{}, err
+	}
+	target, err := decodeTransferTarget(wire.Target)
+	if err != nil {
+		return ledger.PeerTransferStoreCommand{}, err
+	}
+	amount, err := decodeCreditAmount(wire.Amount)
+	if err != nil {
+		return ledger.PeerTransferStoreCommand{}, err
+	}
+	var note ledger.TransferNote = ledger.NoTransferNote{}
+	if wire.Note != "" {
+		noteResult, noteMatched := ledger.NewGrantNote(wire.Note).(ledger.GrantNoteAccepted)
+		if !noteMatched {
+			return ledger.PeerTransferStoreCommand{}, fmt.Errorf("transfer note is invalid")
+		}
+		note = ledger.TransferNoteProvided{Note: noteResult.Value}
+	}
+	key, err := decodeIdempotencyKey(wire.IdempotencyKey)
+	if err != nil {
+		return ledger.PeerTransferStoreCommand{}, err
+	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return ledger.PeerTransferStoreCommand{}, err
+	}
+	return ledger.PeerTransferStoreCommand{
+		DebitEntryID:   debitEntryID,
+		CreditEntryID:  creditEntryID,
+		ActingUserID:   actingUserID,
+		Source:         source,
+		Target:         target,
+		Amount:         amount,
+		Note:           note,
+		IdempotencyKey: key,
+		Draft:          draft,
+	}, nil
+}
+
+type sendResultWire struct {
+	Variant        string                  `json:"variant"`
+	DebitEntryID   string                  `json:"debit_entry_id,omitempty"`
+	Amount         int64                   `json:"amount,omitempty"`
+	Receivers      []string                `json:"receivers,omitempty"`
+	Execution      string                  `json:"execution,omitempty"`
+	RecordedEvents []eventbridge.DraftWire `json:"recorded_events,omitempty"`
+	Error          *domainwire.DomainError `json:"error,omitempty"`
+}
+
+func encodeSendResult(result ledger.SendResult) sendResultWire {
+	switch typed := result.(type) {
+	case ledger.CreditsSent:
+		receivers := make([]string, 0, len(typed.ReceiverUserIDs))
+		for _, receiver := range typed.ReceiverUserIDs {
+			receivers = append(receivers, corewire.EncodeUserID(receiver))
+		}
+		return sendResultWire{
+			Variant:        "sent",
+			DebitEntryID:   corewire.EncodeLedgerEntryID(typed.DebitEntryID),
+			Amount:         encodeCreditAmount(typed.Amount),
+			Receivers:      receivers,
+			Execution:      encodeExecution(typed.Execution),
+			RecordedEvents: eventbridge.EncodeDrafts(typed.RecordedEvents),
+		}
+	case ledger.SendRejected:
+		reason := domainwire.EncodeDomainError(typed.Reason)
+		return sendResultWire{Variant: "rejected", Error: &reason}
+	default:
+		return sendResultWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown ledger result %T", result))}
+	}
+}
+
+func decodeSendResult(wire sendResultWire) (ledger.SendResult, error) {
+	switch wire.Variant {
+	case "sent":
+		debitEntryID, err := corewire.DecodeLedgerEntryID(wire.DebitEntryID)
+		if err != nil {
+			return nil, err
+		}
+		amount, err := decodeCreditAmount(wire.Amount)
+		if err != nil {
+			return nil, err
+		}
+		receivers := make([]core.UserID, 0, len(wire.Receivers))
+		for _, raw := range wire.Receivers {
+			receiver, err := corewire.DecodeUserID(raw)
+			if err != nil {
+				return nil, err
+			}
+			receivers = append(receivers, receiver)
+		}
+		execution, err := decodeExecution(wire.Execution)
+		if err != nil {
+			return nil, err
+		}
+		recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.CreditsSent{DebitEntryID: debitEntryID, Amount: amount, ReceiverUserIDs: receivers, Execution: execution, RecordedEvents: recorded}, nil
+	case "rejected":
+		return ledger.SendRejected{Reason: decodeReason(wire.Error)}, nil
+	default:
+		return nil, fmt.Errorf("unknown send result variant %q", wire.Variant)
 	}
 }

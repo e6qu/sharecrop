@@ -209,14 +209,14 @@ func TestReplayedCommandsRecordNoNewEvents(t *testing.T) {
 	}
 	setTaskState(t, pool, acceptTask, "open")
 	acceptSubmission := insertSubmission(t, pool, acceptTask, worker)
-	accepted, acceptedMatched := service.AcceptSubmission(context.Background(), owner, acceptTask, acceptSubmission, idempotencyKey(t, acceptKey)).(ledger.SubmissionAccepted)
+	accepted, acceptedMatched := service.AcceptSubmission(context.Background(), ledger.UserReviewer{ID: owner}, acceptTask, acceptSubmission, idempotencyKey(t, acceptKey)).(ledger.SubmissionAccepted)
 	if !acceptedMatched {
 		t.Fatalf("accept rejected")
 	}
 	if _, first := accepted.Execution.(ledger.FirstExecution); !first {
 		t.Fatalf("first accept execution = %T", accepted.Execution)
 	}
-	replayedAccept, replayedMatched := service.AcceptSubmission(context.Background(), owner, acceptTask, acceptSubmission, idempotencyKey(t, acceptKey)).(ledger.SubmissionAccepted)
+	replayedAccept, replayedMatched := service.AcceptSubmission(context.Background(), ledger.UserReviewer{ID: owner}, acceptTask, acceptSubmission, idempotencyKey(t, acceptKey)).(ledger.SubmissionAccepted)
 	if !replayedMatched {
 		t.Fatalf("replayed accept rejected")
 	}
@@ -238,12 +238,12 @@ func TestReplayedCommandsRecordNoNewEvents(t *testing.T) {
 	changesSubmission := insertSubmission(t, pool, changesTask, worker)
 	changesKey := idempotencyKey(t, "replay-changes-"+changesTask.String())
 	note := reviewNote(t, "Refresh the numbers, please.")
-	if changed, matched := service.RequestChanges(context.Background(), owner, changesTask, changesSubmission, changesKey, note).(ledger.ChangesRequested); !matched {
+	if changed, matched := service.RequestChanges(context.Background(), ledger.UserReviewer{ID: owner}, changesTask, changesSubmission, changesKey, note).(ledger.ChangesRequested); !matched {
 		t.Fatalf("request changes rejected")
 	} else if _, first := changed.Execution.(ledger.FirstExecution); !first {
 		t.Fatalf("first request-changes execution = %T", changed.Execution)
 	}
-	rechanged, rechangedMatched := service.RequestChanges(context.Background(), owner, changesTask, changesSubmission, changesKey, note).(ledger.ChangesRequested)
+	rechanged, rechangedMatched := service.RequestChanges(context.Background(), ledger.UserReviewer{ID: owner}, changesTask, changesSubmission, changesKey, note).(ledger.ChangesRequested)
 	if !rechangedMatched {
 		t.Fatalf("replayed request changes rejected")
 	}
@@ -258,10 +258,10 @@ func TestReplayedCommandsRecordNoNewEvents(t *testing.T) {
 	rejectTask := insertTask(t, pool, owner, "open", 10)
 	rejectSubmission := insertSubmission(t, pool, rejectTask, worker)
 	rejectKey := idempotencyKey(t, "replay-reject-"+rejectTask.String())
-	if _, matched := service.RejectSubmission(context.Background(), owner, rejectTask, rejectSubmission, rejectKey, note, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{}).(ledger.SubmissionRejected); !matched {
+	if _, matched := service.RejectSubmission(context.Background(), ledger.UserReviewer{ID: owner}, rejectTask, rejectSubmission, rejectKey, note, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{}).(ledger.SubmissionRejected); !matched {
 		t.Fatalf("reject rejected")
 	}
-	rerejected, rerejectedMatched := service.RejectSubmission(context.Background(), owner, rejectTask, rejectSubmission, rejectKey, note, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{}).(ledger.SubmissionRejected)
+	rerejected, rerejectedMatched := service.RejectSubmission(context.Background(), ledger.UserReviewer{ID: owner}, rejectTask, rejectSubmission, rejectKey, note, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{}).(ledger.SubmissionRejected)
 	if !rerejectedMatched {
 		t.Fatalf("replayed reject rejected")
 	}
@@ -343,7 +343,7 @@ func TestAcceptSupersedesCompetingSubmissions(t *testing.T) {
 	}
 
 	acceptKey := idempotencyKey(t, "supersede-accept-"+taskID.String())
-	accepted, matched := service.AcceptSubmission(context.Background(), owner, taskID, winningSubmission, acceptKey).(ledger.SubmissionAccepted)
+	accepted, matched := service.AcceptSubmission(context.Background(), ledger.UserReviewer{ID: owner}, taskID, winningSubmission, acceptKey).(ledger.SubmissionAccepted)
 	if !matched {
 		t.Fatalf("accept rejected")
 	}
@@ -392,7 +392,7 @@ func TestAcceptSupersedesCompetingSubmissions(t *testing.T) {
 	}
 
 	// Replaying the accept re-supersedes nothing.
-	if _, matched := service.AcceptSubmission(context.Background(), owner, taskID, winningSubmission, acceptKey).(ledger.SubmissionAccepted); !matched {
+	if _, matched := service.AcceptSubmission(context.Background(), ledger.UserReviewer{ID: owner}, taskID, winningSubmission, acceptKey).(ledger.SubmissionAccepted); !matched {
 		t.Fatalf("replayed accept rejected")
 	}
 	if got := countEventsByKindForTask(t, pool, taskID, event.KindSubmissionSuperseded); got != 1 {
@@ -650,7 +650,7 @@ func TestClaimedDeliveryCarriesEnrichment(t *testing.T) {
 	dispatchStoredEvent(t, pool, appendTaskOpenedEvent(t, pool, taskID, actor))
 
 	forceDeliveriesDue(t, pool, subscription.ID)
-	claimed, matched := store.ClaimDueDeliveries(context.Background(), 10).(db.ClaimDueDeliveriesListed)
+	claimed, matched := store.ClaimDueDeliveries(context.Background(), 10, time.Minute).(db.ClaimDueDeliveriesListed)
 	if !matched {
 		t.Fatalf("claim rejected")
 	}

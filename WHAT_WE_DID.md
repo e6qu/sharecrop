@@ -6873,3 +6873,48 @@ sessions), a verified reference webhook receiver
 (`tools/webhook_receiver_sample.ts`), and a migration rehearsal script
 (`tools/rehearse_migrations.sh`; 000046 measured ~1 s against 20k users /
 100k events).
+
+# Economy and outbox seams (sweep fixes, direct reservations, P2P economy, catalog control)
+
+A four-reviewer sweep of the hardened platform (adversarial outbox review,
+agent-experience walkthrough, UI walkthrough, contract/docs audit) plus a set
+of product directives landed as one branch in five tested stages.
+
+Outbox seams: event seq allocation became commit-ordered through a
+single-row fence lock (closing a live-reproduced race where cursor feeds
+permanently skipped late-committing events); reservation-expiry events are
+recorded by whichever transaction performs the release; expiry sweeps moved
+onto the outbox (post-commit `Recorder.Emit` deleted); dispatch only marks
+events dispatched after every fan-out leg succeeds; malformed outbox rows
+are skipped and capped at 20 attempts into a terminal `dispatch_failed`
+state; webhook claim holds now cover worst-case batch time; cancel events
+resolve released holders in-transaction.
+
+Product: the reservation approval gate was removed (participation is open or
+reservation_required; reserving yields an active reservation immediately;
+pending requests were migrated). Peer-to-peer credit sends
+(user↔user/user↔org, billing-gated org sources, `peer_transfer` double
+entries, `ledger_write` scope over MCP) and collectible transfers
+(user↔user/user↔org via the new `manage_collectibles` org permission). The
+collectible catalog moved into the database with admin add/withdraw/delete,
+per-instance withdraw/delete, engine-enforced uniqueness (unique = one live
+instance, numbered editions with caps, per-issuer custom-mint uniqueness),
+transferable-by-default new mints, and serialized provenance. Org
+credentials review submissions on their own org's tasks via a typed
+reviewer union (no tips or bans).
+
+Contracts/docs: openapi request-body `required` lists are honest (omitempty
+audit), 20 more operations declare query parameters, the org-credential
+coverage claim became true instead of being deleted, MCP id errors are
+uniform, error-layer conventions aligned, and the reference docs were
+corrected (webhook enrichment, kind enums, required list_tasks scope,
+https-only URLs).
+
+UI: golden-coins sprite beside credit amounts, send-credits and
+send-collectible flows, admin catalog management with explained disabled
+states and visible mint feedback, API failures render as load-error states
+instead of empty lists, session-ended notice moved to the top of the auth
+card, humanized expiry display, per-page document titles, the gnome mark
+replaced the unreadable docs/landing roundel, owner-appropriate task copy,
+and demo seeds showcasing catalog states, provenance, and a received
+transfer. App and demo bundles now build with --optimize.

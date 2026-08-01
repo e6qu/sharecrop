@@ -158,6 +158,11 @@ func translateSQLiteDDL(ddl string) string {
 	ddl = sqliteLineComment.ReplaceAllString(ddl, "")
 	ddl = sqliteSplitPartLocal.ReplaceAllString(ddl, "substr($1, 1, instr($1, '@') - 1)")
 	ddl = sqliteDefaultNowPattern.ReplaceAllString(ddl, "default ("+sqliteNowExpr+")")
+	// Data-migration DML inside migrations may call now() outside a DEFAULT
+	// clause (e.g. "set state_recorded_at = now()"); rewrite it the same way
+	// runtime statements are rewritten. Runs after the DEFAULT rewrite, whose
+	// output no longer matches the bare pattern.
+	ddl = sqliteNowPattern.ReplaceAllString(ddl, sqliteNowExpr)
 	ddl = sqliteAddColumnGuard.ReplaceAllString(ddl, "add column")
 	ddl = sqliteDropColumnGuard.ReplaceAllString(ddl, "drop column")
 	ddl = sqliteCastPattern.ReplaceAllString(ddl, "")

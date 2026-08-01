@@ -248,14 +248,13 @@ func (service Service) Open(ctx context.Context, actor auth.Subject, taskID core
 }
 
 func (service Service) Cancel(ctx context.Context, actor auth.Subject, taskID core.TaskID) ChangeStateResult {
-	// The reservation holders are read before the cancel commits: cancelling
-	// releases active reservations, after which a just-released holder is
-	// indistinguishable from a long-gone one. The store merges the task
-	// creator into the recipients inside the transition transaction.
-	holders := service.activeReservationHolders(ctx, taskID)
-	recipients := append([]core.UserID{event.ActorUserID(eventActor(actor))}, holders...)
+	// The store resolves the reservation holders the cancel releases inside
+	// the transition transaction (under the task row lock) and merges them —
+	// with the task creator — into the draft's recipients. Resolving them
+	// here, before the transaction, would race a reservation activated in
+	// between and silently drop that holder from the notification.
 	draft, draftProblem := taskEventDraft(event.KindTaskCancelled, eventActor(actor), taskID, event.TaskMetadata(taskID),
-		event.NewRecipients(recipients...))
+		event.NewRecipients(event.ActorUserID(eventActor(actor))))
 	if draftProblem != nil {
 		return ChangeStateRejected{Reason: *draftProblem}
 	}
@@ -668,9 +667,10 @@ type ReservationResult interface {
 type ReservationCreated struct {
 	Value Reservation
 	// IssuedWorkerCredentialSecret is a one-time plaintext secret for a new
-	// task-scoped agent credential, populated only when this reservation was
-	// created already active (no approval step required) so it can be
-	// revealed to the reserving worker exactly once. Empty otherwise.
+	// task-scoped agent credential. Reserving always yields an active
+	// reservation, so it is issued on every successful reserve and revealed
+	// to the reserving worker exactly once (empty only when best-effort
+	// issuance failed or no issuer is configured).
 	IssuedWorkerCredentialSecret string
 }
 
@@ -747,10 +747,9 @@ func (service Service) reserve(ctx context.Context, actor auth.UserSubject, task
 		return ReservationRejected{Reason: rejected.Reason}
 	}
 
-	var secret string
-	if created.Value.State == ReservationStateActive {
-		secret = service.issueWorkerCredential(ctx, created.Value.RequestedBy, taskID)
-	}
+	// Reserving always yields an active reservation now that the approval
+	// gate is gone, so the task-scoped worker credential is issued directly.
+	secret := service.issueWorkerCredential(ctx, created.Value.RequestedBy, taskID)
 	service.recorder.Dispatch(ctx, draft)
 	return ReservationCreated{Value: created.Value, IssuedWorkerCredentialSecret: secret}
 }
@@ -761,11 +760,6 @@ type ReservationStateChangeResult interface {
 
 type ReservationStateChanged struct {
 	Value Reservation
-	// IssuedWorkerCredentialSecret is a one-time plaintext secret for a new
-	// task-scoped agent credential, populated only by ApproveReservation
-	// (never by Decline/Cancel, which share this result type). Empty
-	// otherwise.
-	IssuedWorkerCredentialSecret string
 }
 
 type ReservationStateChangeRejected struct {
@@ -776,31 +770,7 @@ func (ReservationStateChanged) reservationStateChangeResult() {}
 
 func (ReservationStateChangeRejected) reservationStateChangeResult() {}
 
-func (service Service) ApproveReservation(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
-	draft, draftProblem := reservationEventDraft(event.KindReservationApproved, eventActor(actor), taskID, reservationID,
-		event.NewRecipients(event.ActorUserID(eventActor(actor))))
-	if draftProblem != nil {
-		return ReservationStateChangeRejected{Reason: *draftProblem}
-	}
-	result := service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateActive, event.Record{Draft: draft})
-	changed, matched := result.(ReservationStateChanged)
-	if !matched {
-		return result
-	}
-	changed.IssuedWorkerCredentialSecret = service.issueWorkerCredential(ctx, changed.Value.RequestedBy, taskID)
-	return changed
-}
-
-func (service Service) DeclineReservation(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
-	draft, draftProblem := reservationEventDraft(event.KindReservationDeclined, eventActor(actor), taskID, reservationID,
-		event.NewRecipients(event.ActorUserID(eventActor(actor))))
-	if draftProblem != nil {
-		return ReservationStateChangeRejected{Reason: *draftProblem}
-	}
-	return service.changeReservationByRequester(ctx, actor, taskID, reservationID, ReservationStateDeclined, event.Record{Draft: draft})
-}
-
-// CancelReservation, unlike Approve/Decline, isn't owner-only: the worker who
+// CancelReservation isn't owner-only: the worker who
 // holds the reservation needs to be able to release it themselves, not just
 // have the task's owner force-cancel it on their behalf.
 func (service Service) CancelReservation(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) ReservationStateChangeResult {
@@ -845,34 +815,6 @@ func (service Service) CancelReservation(ctx context.Context, actor auth.Subject
 		return ReservationStateChangeRejected{Reason: *draftProblem}
 	}
 	storeResult := service.store.ChangeReservationState(ctx, taskID, reservationID, cancelledState, event.Record{Draft: draft})
-	changed, matched := storeResult.(ChangeReservationStateStoreAccepted)
-	if !matched {
-		rejected := storeResult.(ChangeReservationStateStoreRejected)
-		return ReservationStateChangeRejected{Reason: rejected.Reason}
-	}
-	if changed.Value.TaskID != taskID {
-		return ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "reservation was not found for the task")}
-	}
-	service.recorder.Dispatch(ctx, changed.RecordedEvents...)
-	return ReservationStateChanged{Value: changed.Value}
-}
-
-func (service Service) changeReservationByRequester(ctx context.Context, actor auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID, state ReservationState, plan event.Plan) ReservationStateChangeResult {
-	taskResult := service.store.FindTask(ctx, taskID)
-	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
-	if !taskMatched {
-		rejected := taskResult.(FindTaskStoreRejected)
-		return ReservationStateChangeRejected{Reason: rejected.Reason}
-	}
-	ownerPermission := service.requireOwnerPermission(ctx, actor, taskFound.Value.Owner)
-	if rejected, matched := ownerPermission.(ownerPermissionRejected); matched {
-		return ReservationStateChangeRejected{Reason: rejected.reason}
-	}
-
-	// The mutation is bound to taskID in the store query, so a reservation that
-	// belongs to a different task is never touched (the post-check below is then
-	// only defense-in-depth, not the load-bearing authorization).
-	storeResult := service.store.ChangeReservationState(ctx, taskID, reservationID, state, plan)
 	changed, matched := storeResult.(ChangeReservationStateStoreAccepted)
 	if !matched {
 		rejected := storeResult.(ChangeReservationStateStoreRejected)

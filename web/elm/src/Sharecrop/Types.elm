@@ -118,6 +118,26 @@ type alias Wallet =
     }
 
 
+{-| A fetched list that remembers whether its last load failed. An API
+outage must not render as "No tasks yet": views branch on `failure` and
+show a visible load-error state instead of the genuine-emptiness state.
+`failure` carries the user-facing error text; the items are whatever the
+last successful load returned (cleared on failure so stale rows are not
+presented as current).
+-}
+type alias Loaded a =
+    { items : List a
+    , failure : Maybe String
+    }
+
+
+{-| The state every list starts in: nothing loaded, nothing failed.
+-}
+loadedNone : Loaded a
+loadedNone =
+    { items = [], failure = Nothing }
+
+
 type alias LoggedInModel =
     { accessToken : String
     , subjectId : String
@@ -128,7 +148,7 @@ type alias LoggedInModel =
     , page : Page
     , openNavMenu : Maybe String
     , balance : Maybe Wallet
-    , entries : List Ledger.LedgerEntryResponse
+    , entries : Loaded Ledger.LedgerEntryResponse
     , ledgerOffset : Int
     , ledgerNextOffset : Int
     , ledgerTotal : Int
@@ -172,7 +192,13 @@ type alias LoggedInModel =
     , fundOrganizationId : String
     , fundMessage : Maybe Note
     , fundNonce : Int
-    , tasks : List Task.TaskListItemResponse
+    , sendRecipientKind : String
+    , sendRecipientId : String
+    , sendAmount : String
+    , sendNote : String
+    , sendKey : String
+    , sendMessage : Maybe Note
+    , tasks : Loaded Task.TaskListItemResponse
     , taskStateFilter : List String
     , taskListOffset : Int
     , taskListNextOffset : Int
@@ -183,10 +209,10 @@ type alias LoggedInModel =
     , agentLabel : String
     , agentScopes : List Agent.AgentScope
     , agentExpiresHours : String
-    , credentials : List Agent.AgentCredentialResponse
+    , credentials : Loaded Agent.AgentCredentialResponse
     , newCredential : Maybe Agent.AgentCredentialCreatedResponse
     , agentMessage : Maybe Note
-    , discoveryTasks : List Task.TaskListItemResponse
+    , discoveryTasks : Loaded Task.TaskListItemResponse
     , discoveryIncludeReserved : Bool
     , discoveryFundedOnly : Bool
     , discoveryOffset : Int
@@ -216,7 +242,7 @@ type alias LoggedInModel =
     , reviewTipCollectibleId : String
     , reviewBan : Ledger.BanSelection
     , reviewMessage : Maybe Note
-    , collectibles : List Collectible.CollectibleResponse
+    , collectibles : Loaded Collectible.CollectibleResponse
     , collectibleName : String
     , collectibleKind : Collectible.CollectibleKind
     , collectiblePolicy : Collectible.CollectibleTransferPolicy
@@ -224,27 +250,37 @@ type alias LoggedInModel =
     , awardTaskId : String
     , awardMessage : Maybe Note
     , awardDefaultMessage : Maybe Note
-    , collectibleCatalog : List Collectible.CollectibleCatalogEntry
+    , collectibleCatalog : Loaded Collectible.CollectibleCatalogEntry
     , awardRecipientKind : String
     , awardRecipientId : String
     , transferRecipientId : String
     , transferMessage : Maybe Note
-    , organizations : List Organization.OrganizationResponse
+    , openSendCollectibleID : Maybe String
+    , sendCollectibleTargetKind : String
+    , withdrawMessage : Maybe Note
+    , catalogSlug : String
+    , catalogName : String
+    , catalogKind : Collectible.CollectibleKind
+    , catalogPolicy : Collectible.CollectibleTransferPolicy
+    , catalogArt : String
+    , catalogMaxEditions : String
+    , catalogMessage : Maybe Note
+    , organizations : Loaded Organization.OrganizationResponse
     , createOrgName : String
     , orgMessage : Maybe Note
     , activeOrgId : String
     , orgBalance : Maybe Wallet
-    , orgLedger : List Ledger.LedgerEntryResponse
+    , orgLedger : Loaded Ledger.LedgerEntryResponse
     , orgLedgerOffset : Int
     , orgLedgerNextOffset : Int
     , orgLedgerTotal : Int
     , orgAuditEvents : List Admin.AuditEventResponse
     , orgAuditMessage : Maybe Note
-    , orgTeams : List Team.TeamResponse
-    , standaloneTeams : List Team.TeamResponse
+    , orgTeams : Loaded Team.TeamResponse
+    , standaloneTeams : Loaded Team.TeamResponse
     , createTeamName : String
     , createTeamMessage : Maybe Note
-    , orgMembers : List Organization.OrganizationMemberResponse
+    , orgMembers : Loaded Organization.OrganizationMemberResponse
     , orgTasks : List Task.TaskListItemResponse
     , orgTaskQuery : String
     , orgTaskFilter : String
@@ -260,7 +296,9 @@ type alias LoggedInModel =
     , orgCollectiblesMessage : Maybe Note
     , awardOrgCollectibleRecipientId : String
     , awardOrgCollectibleMessage : Maybe Note
-    , orgCredentials : List Agent.OrgCredentialResponse
+    , orgSendCollectibleRecipientId : String
+    , orgSendCollectibleMessage : Maybe Note
+    , orgCredentials : Loaded Agent.OrgCredentialResponse
     , orgCredentialLabel : String
     , orgCredentialScopes : List Agent.AgentScope
     , orgCredentialExpiresHours : String
@@ -270,8 +308,8 @@ type alias LoggedInModel =
     , teamCollectiblesMessage : Maybe Note
     , userProfile : Maybe Task.UserProfileResponse
     , userProfileError : Maybe String
-    , userWork : List Task.TaskListItemResponse
-    , userSubmissions : List Submission.SubmissionResponse
+    , userWork : Loaded Task.TaskListItemResponse
+    , userSubmissions : Loaded Submission.SubmissionResponse
     , userSubmissionsOffset : Int
     , userSubmissionsNextOffset : Int
     , userSubmissionsTotal : Int
@@ -279,7 +317,7 @@ type alias LoggedInModel =
     , pendingRevisionResponse : String
     , seriesDetail : Maybe SeriesDetailData
     , seriesDetailError : Maybe String
-    , seriesList : List TaskSeries.TaskSeriesResponse
+    , seriesList : Loaded TaskSeries.TaskSeriesResponse
     , createSeriesTitle : String
     , createSeriesDescription : String
     , seriesMessage : Maybe Note
@@ -452,6 +490,13 @@ type Msg
     | PasswordResetConfirmed (Result Http.Error ())
     | BalanceReceived (Result Http.Error Ledger.BalanceResponse)
     | LedgerReceived (Result Http.Error Ledger.LedgerResponse)
+    | SendRecipientKindChanged String
+    | SendRecipientIdChanged String
+    | SendAmountChanged String
+    | SendNoteChanged String
+    | SendCreditsClicked
+    | OrgSendCreditsClicked
+    | CreditsSentReceived String (Result Http.Error Ledger.CreditTransferResponse)
     | PreviousLedgerPageClicked
     | NextLedgerPageClicked
     | TasksReceived (Result Http.Error Task.TasksResponse)
@@ -544,8 +589,6 @@ type Msg
     | ReservationTeamIdChanged String
     | ReservationReceived (Result Http.Error Task.TaskReservationResponse)
     | ReservationsReceived (Result Http.Error Task.TaskReservationsResponse)
-    | ApproveReservationClicked String
-    | DeclineReservationClicked String
     | CancelReservationClicked String
     | ReservationChangeReceived (Result Http.Error Task.TaskReservationResponse)
     | SubmissionsReceived (Result Http.Error Submission.SubmissionsResponse)
@@ -592,6 +635,27 @@ type Msg
     | TransferRecipientIdChanged String
     | TransferCollectibleClicked String
     | TransferCollectibleReceived (Result Http.Error Collectible.CollectibleResponse)
+    | ToggleSendCollectible String
+    | SendCollectibleTargetKindChanged String
+    | SendCollectibleClicked String
+    | OrgSendCollectibleRecipientIdChanged String
+    | OrgSendCollectibleClicked String
+    | OrgSendCollectibleReceived (Result Http.Error Collectible.CollectibleResponse)
+    | CatalogSlugChanged String
+    | CatalogNameChanged String
+    | CatalogKindChosen Collectible.CollectibleKind
+    | CatalogPolicyChosen Collectible.CollectibleTransferPolicy
+    | CatalogArtChosen String
+    | CatalogMaxEditionsChanged String
+    | AddCatalogEntryClicked
+    | CatalogEntryMutated (Result Http.Error Collectible.CollectibleCatalogEntry)
+    | WithdrawCatalogEntryClicked String
+    | DeleteCatalogEntryClicked String
+    | CatalogEntryDeleted (Result Http.Error ())
+    | WithdrawCollectibleClicked String
+    | CollectibleWithdrawnReceived (Result Http.Error Collectible.CollectibleResponse)
+    | DeleteCollectibleClicked String
+    | CollectibleDeleted (Result Http.Error ())
     | OrganizationsReceived (Result Http.Error Organization.OrganizationsResponse)
     | CreateOrgNameChanged String
     | CreateOrgClicked

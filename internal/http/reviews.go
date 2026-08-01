@@ -1,39 +1,26 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
+	"github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/audit"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/ledger"
 	"github.com/e6qu/sharecrop/internal/submission"
 )
 
 func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
-	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
-		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
+	pathResult := server.parseReviewPath(w, r)
+	path, pathMatched := pathResult.(reviewPathAccepted)
+	if !pathMatched {
 		return
 	}
 
-	if !server.allowBySubject(w, actor.subject.ID.String()) {
-		return
-	}
-
-	taskIDResult := parseTaskPathValue(r)
-	taskIDAccepted, taskIDMatched := taskIDResult.(taskIDAccepted)
-	if !taskIDMatched {
-		writeError(w, http.StatusBadRequest, core.ErrorCodeInvalidArgument, taskIDResult.(taskIDRejected).reason)
-		return
-	}
-
-	submissionIDResult := core.ParseSubmissionID(r.PathValue("submission_id"))
-	submissionIDAccepted, submissionIDMatched := submissionIDResult.(core.SubmissionIDCreated)
-	if !submissionIDMatched {
-		writeDomainError(w, submissionIDResult.(core.SubmissionIDRejected).Reason)
+	if !server.allowBySubject(w, reviewSubjectRateKey(path.reviewer)) {
 		return
 	}
 
@@ -77,20 +64,20 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 	// The Get gates review access before the ledger mutation (and 404s an
 	// unknown submission); the review notification itself is fanned out by the
 	// ledger service's event emission.
-	submissionResult := server.submissionService.Get(r.Context(), actor.subject, submissionIDAccepted.Value)
+	submissionResult := server.submissionService.Get(r.Context(), path.actor, path.submissionID)
 	if _, submissionMatched := submissionResult.(submission.SubmissionGot); !submissionMatched {
 		writeDomainError(w, submissionResult.(submission.GetRejected).Reason)
 		return
 	}
 
-	result := server.ledgerService.ReviewAcceptSubmission(r.Context(), actor.subject.ID, taskIDAccepted.value, submissionIDAccepted.Value, key.Value, creditSelection.value, tipSelection.value, collectibleTip)
+	result := server.ledgerService.ReviewAcceptSubmission(r.Context(), path.reviewer, path.taskID, path.submissionID, key.Value, creditSelection.value, tipSelection.value, collectibleTip)
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
 		writeDomainError(w, result.(ledger.AcceptRejected).Reason)
 		return
 	}
 
-	server.recordAuditBestEffort(r.Context(), actor.subject.ID, audit.ActionSubmissionAccepted, audit.Subject{Kind: "submission", ID: accepted.SubmissionID.String()}, audit.EmptyMetadata())
+	server.recordReviewAuditBestEffort(r.Context(), path.reviewer, audit.ActionSubmissionAccepted, accepted.SubmissionID)
 	writeJSON(w, http.StatusOK, acceptToResponse(accepted))
 }
 func (server Server) requestSubmissionChanges(w http.ResponseWriter, r *http.Request) {
@@ -126,13 +113,13 @@ func (server Server) requestSubmissionChanges(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	result := server.ledgerService.RequestChanges(r.Context(), path.actor.ID, path.taskID, path.submissionID, key.Value, note.Value)
+	result := server.ledgerService.RequestChanges(r.Context(), path.reviewer, path.taskID, path.submissionID, key.Value, note.Value)
 	changed, matched := result.(ledger.ChangesRequested)
 	if !matched {
 		writeDomainError(w, result.(ledger.RequestChangesRejected).Reason)
 		return
 	}
-	server.recordAuditBestEffort(r.Context(), path.actor.ID, audit.ActionSubmissionChangesRequested, audit.Subject{Kind: "submission", ID: changed.SubmissionID.String()}, audit.EmptyMetadata())
+	server.recordReviewAuditBestEffort(r.Context(), path.reviewer, audit.ActionSubmissionChangesRequested, changed.SubmissionID)
 	writeJSON(w, http.StatusOK, reviewSubmissionResponse{
 		TaskID:       changed.TaskID.String(),
 		SubmissionID: changed.SubmissionID.String(),
@@ -147,7 +134,7 @@ func (server Server) rejectSubmission(w http.ResponseWriter, r *http.Request) {
 	if !pathMatched {
 		return
 	}
-	if !server.allowBySubject(w, path.actor.ID.String()) {
+	if !server.allowBySubject(w, reviewSubjectRateKey(path.reviewer)) {
 		return
 	}
 
@@ -196,7 +183,7 @@ func (server Server) rejectSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.ledgerService.RejectSubmission(r.Context(), path.actor.ID, path.taskID, path.submissionID, key.Value, note.Value, creditSelection.value, tipSelection.value, banSelection)
+	result := server.ledgerService.RejectSubmission(r.Context(), path.reviewer, path.taskID, path.submissionID, key.Value, note.Value, creditSelection.value, tipSelection.value, banSelection)
 	rejected, matched := result.(ledger.SubmissionRejected)
 	if !matched {
 		writeDomainError(w, result.(ledger.RejectRejected).Reason)
@@ -207,14 +194,24 @@ func (server Server) rejectSubmission(w http.ResponseWriter, r *http.Request) {
 	response.SubmissionID = rejected.SubmissionID.String()
 	response.State = "rejected"
 	response.ReviewNote = note.Value.String()
-	server.recordAuditBestEffort(r.Context(), path.actor.ID, audit.ActionSubmissionRejected, audit.Subject{Kind: "submission", ID: rejected.SubmissionID.String()}, audit.EmptyMetadata())
+	server.recordReviewAuditBestEffort(r.Context(), path.reviewer, audit.ActionSubmissionRejected, rejected.SubmissionID)
 	writeJSON(w, http.StatusOK, response)
 }
+
+// parseReviewPath resolves the review actor (a user session, or an org-wide
+// credential holding submissions_review — full parity with an org-admin
+// member on the organization's own tasks) plus the task and submission ids.
 func (server Server) parseReviewPath(w http.ResponseWriter, r *http.Request) reviewPathResult {
-	actorResult := server.requireUserSubject(r)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actorResult := server.requireUserOrOrgSubject(r, agent.ScopeSubmissionsReview)
+	actor, actorMatched := actorResult.(actorAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
+		writeActorRejection(w, actorResult)
+		return reviewPathRejected{}
+	}
+	reviewerResult := reviewerForSubject(actor.actor)
+	reviewer, reviewerMatched := reviewerResult.(reviewerAccepted)
+	if !reviewerMatched {
+		writeError(w, http.StatusForbidden, core.ErrorCodePermissionDenied, "submission review requires a user session or an organization credential")
 		return reviewPathRejected{}
 	}
 	taskIDResult := parseTaskPathValue(r)
@@ -229,7 +226,59 @@ func (server Server) parseReviewPath(w http.ResponseWriter, r *http.Request) rev
 		writeDomainError(w, submissionIDResult.(core.SubmissionIDRejected).Reason)
 		return reviewPathRejected{}
 	}
-	return reviewPathAccepted{actor: actor.subject, taskID: taskIDAccepted.value, submissionID: submissionIDAccepted.Value}
+	return reviewPathAccepted{actor: actor.actor, reviewer: reviewer.value, taskID: taskIDAccepted.value, submissionID: submissionIDAccepted.Value}
+}
+
+type reviewerResult interface {
+	reviewerResult()
+}
+
+type reviewerAccepted struct {
+	value ledger.Reviewer
+}
+
+type reviewerRejected struct{}
+
+func (reviewerAccepted) reviewerResult() {}
+
+func (reviewerRejected) reviewerResult() {}
+
+// reviewerForSubject maps an authenticated subject to the ledger reviewer it
+// acts as; guest subjects cannot review.
+func reviewerForSubject(subject auth.Subject) reviewerResult {
+	switch typed := subject.(type) {
+	case auth.UserSubject:
+		return reviewerAccepted{value: ledger.UserReviewer{ID: typed.ID}}
+	case auth.OrgSubject:
+		return reviewerAccepted{value: ledger.OrganizationReviewer{ID: typed.ID}}
+	default:
+		return reviewerRejected{}
+	}
+}
+
+// reviewSubjectRateKey keys the per-subject rate limiter for a review action:
+// the reviewing user's id, or the reviewing organization's id.
+func reviewSubjectRateKey(reviewer ledger.Reviewer) string {
+	switch typed := reviewer.(type) {
+	case ledger.UserReviewer:
+		return typed.ID.String()
+	case ledger.OrganizationReviewer:
+		return typed.ID.String()
+	default:
+		return ""
+	}
+}
+
+// recordReviewAuditBestEffort records the review's admin-audit entry for a
+// user reviewer. Organization-credential reviews record no audit entry: the
+// audit trail names an acting user and an org credential has none (matching
+// the other org-token mutations, which also skip the user audit trail).
+func (server Server) recordReviewAuditBestEffort(ctx context.Context, reviewer ledger.Reviewer, action audit.Action, submissionID core.SubmissionID) {
+	user, matched := reviewer.(ledger.UserReviewer)
+	if !matched {
+		return
+	}
+	server.recordAuditBestEffort(ctx, user.ID, action, audit.Subject{Kind: "submission", ID: submissionID.String()}, audit.EmptyMetadata())
 }
 func acceptToResponse(accepted ledger.SubmissionAccepted) acceptSubmissionResponse {
 	response := acceptSubmissionResponse{

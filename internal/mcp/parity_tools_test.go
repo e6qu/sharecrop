@@ -24,6 +24,22 @@ type capturingServices struct {
 	listFilters    *task.ListFilters
 	listPage       *core.Page
 	collectibleTip *ledger.CollectibleTipSelection
+	reviewer       *ledger.Reviewer
+	sendCommand    *capturedSendCommand
+}
+
+// capturedSendCommand records what callSendCredits passed to the service.
+type capturedSendCommand struct {
+	source ledger.TransferSource
+	target ledger.TransferTarget
+	amount int64
+	note   ledger.TransferNote
+	key    string
+}
+
+func (services *capturingServices) SendCredits(ctx context.Context, actor core.UserID, source ledger.TransferSource, target ledger.TransferTarget, amount ledger.CreditAmount, note ledger.TransferNote, key ledger.IdempotencyKey) ledger.SendResult {
+	*services.sendCommand = capturedSendCommand{source: source, target: target, amount: amount.Int64(), note: note, key: key.String()}
+	return services.fakeServices.SendCredits(ctx, actor, source, target, amount, note, key)
 }
 
 func (services *capturingServices) CreateTask(ctx context.Context, command task.CreateCommand) task.CreateResult {
@@ -38,9 +54,10 @@ func (services *capturingServices) ListTasks(ctx context.Context, subject auth.S
 	return services.fakeServices.ListTasks(ctx, subject, scope, filters, page)
 }
 
-func (services *capturingServices) ReviewAcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, collectibleTip ledger.CollectibleTipSelection) ledger.AcceptResult {
+func (services *capturingServices) ReviewAcceptSubmission(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, collectibleTip ledger.CollectibleTipSelection) ledger.AcceptResult {
 	*services.collectibleTip = collectibleTip
-	return services.fakeServices.ReviewAcceptSubmission(ctx, requester, taskID, submissionID, key, creditSelection, tipSelection, collectibleTip)
+	*services.reviewer = reviewer
+	return services.fakeServices.ReviewAcceptSubmission(ctx, reviewer, taskID, submissionID, key, creditSelection, tipSelection, collectibleTip)
 }
 
 func newCapturingServices() *capturingServices {
@@ -50,6 +67,8 @@ func newCapturingServices() *capturingServices {
 		listFilters:    &task.ListFilters{},
 		listPage:       &core.Page{},
 		collectibleTip: new(ledger.CollectibleTipSelection),
+		reviewer:       new(ledger.Reviewer),
+		sendCommand:    &capturedSendCommand{},
 	}
 }
 
@@ -101,7 +120,7 @@ func TestCreateTaskFullParityArguments(t *testing.T) {
 		"reward_kind": "bundle",
 		"reward_credit_amount": 25,
 		"reward_collectible_ids": ["` + collectibleA.String() + `", "` + collectibleB.String() + `"],
-		"participation_policy": "approval_required",
+		"participation_policy": "reservation_required",
 		"assignee_scope": "organization_team",
 		"reservation_expiry_hours": 72,
 		"task_type": "code_review",
@@ -133,7 +152,7 @@ func TestCreateTaskFullParityArguments(t *testing.T) {
 	if len(command.FundCollectibleIDs) != 2 || command.FundCollectibleIDs[0] != collectibleA || command.FundCollectibleIDs[1] != collectibleB {
 		t.Fatalf("fund collectible ids = %#v", command.FundCollectibleIDs)
 	}
-	if command.Participation != task.ParticipationPolicyApprovalRequired {
+	if command.Participation != task.ParticipationPolicyReservationRequired {
 		t.Fatalf("participation = %s", command.Participation.String())
 	}
 	if command.AssigneeScope != task.AssigneeScopeOrganizationTeam {

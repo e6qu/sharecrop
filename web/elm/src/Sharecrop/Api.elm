@@ -18,7 +18,7 @@ import Sharecrop.Generated.Submission as Submission
 import Sharecrop.Generated.Task as Task
 import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
-import Sharecrop.Labels exposing (assigneeScopeTag, domainEventKindTag, participationUsesReservation)
+import Sharecrop.Labels exposing (assigneeScopeTag, collectibleKindTag, collectiblePolicyTag, domainEventKindTag, httpErrorLabel, participationUsesReservation)
 import Sharecrop.ResponseSchema as ResponseSchema
 import Sharecrop.Types exposing (..)
 import Task as ElmTask
@@ -56,44 +56,20 @@ balanceFromResult result =
             Nothing
 
 
-entriesFromResult : Result Http.Error Ledger.LedgerResponse -> List Ledger.LedgerEntryResponse
-entriesFromResult result =
+{-| The one place a fetched list's outcome is mapped into model state: a
+success carries its rows, a failure carries the user-facing error text so
+views can render a visible load-error state instead of a fake "nothing
+here yet" empty state (`unauthenticated` never reaches this — it is routed
+to SessionEnded by the expect helpers below).
+-}
+loadedFromResult : (response -> List a) -> Result Http.Error response -> Loaded a
+loadedFromResult toItems result =
     case result of
         Ok response ->
-            response.entries
+            { items = toItems response, failure = Nothing }
 
-        Err _ ->
-            []
-
-
-tasksFromResult : Result Http.Error Task.TasksResponse -> List Task.TaskListItemResponse
-tasksFromResult result =
-    case result of
-        Ok response ->
-            response.tasks
-
-        Err _ ->
-            []
-
-
-credentialsFromResult : Result Http.Error Agent.AgentCredentialsResponse -> List Agent.AgentCredentialResponse
-credentialsFromResult result =
-    case result of
-        Ok response ->
-            response.credentials
-
-        Err _ ->
-            []
-
-
-collectiblesFromResult : Result Http.Error Collectible.CollectiblesResponse -> List Collectible.CollectibleResponse
-collectiblesFromResult result =
-    case result of
-        Ok response ->
-            response.collectibles
-
-        Err _ ->
-            []
+        Err error ->
+            { items = [], failure = Just (httpErrorLabel error) }
 
 
 boolQuery : Bool -> String
@@ -1109,13 +1085,31 @@ awardDefaultCollectible token slug recipientKind recipientId =
         (expectJsonWithServerError AwardDefaultReceived Collectible.collectibleResponseDecoder)
 
 
-transferCollectible : String -> String -> String -> Cmd Msg
-transferCollectible token collectibleId recipientId =
+transferCollectible : String -> String -> String -> String -> Cmd Msg
+transferCollectible token collectibleId targetKind recipientId =
     authorizedRequest "POST"
         token
         ("/api/collectibles/" ++ collectibleId ++ "/transfer")
-        (Http.jsonBody (Encode.object [ ( "recipient_id", Encode.string recipientId ) ]))
+        (Http.jsonBody
+            (Encode.object
+                [ ( "target_kind", Encode.string targetKind )
+                , ( "recipient_id", Encode.string recipientId )
+                ]
+            )
+        )
         (expectJsonWithServerError TransferCollectibleReceived Collectible.collectibleResponseDecoder)
+
+
+{-| Moves an organization-owned collectible to a user; the server checks the
+acting member's manage_collectibles permission.
+-}
+postOrgSendCollectible : String -> String -> String -> String -> Cmd Msg
+postOrgSendCollectible token organizationId collectibleId recipientId =
+    authorizedRequest "POST"
+        token
+        ("/api/organizations/" ++ organizationId ++ "/collectibles/" ++ collectibleId ++ "/transfer")
+        (Http.jsonBody (Encode.object [ ( "recipient_id", Encode.string recipientId ) ]))
+        (expectJsonWithServerError OrgSendCollectibleReceived Collectible.collectibleResponseDecoder)
 
 
 fetchOrganizations : String -> Cmd Msg
@@ -1352,6 +1346,200 @@ postCreditGrant token targetKind targetId amount note key =
         (expectJsonWithServerError CreditsGranted Ledger.creditGrantResponseDecoder)
 
 
+{-| Validates and posts a peer credit send from the caller's own balance.
+Mirrors the grant form's idempotency approach: the key identifies one send
+intent (minted on first submit, cleared when any field changes), so a
+retried click after a network timeout dedupes server-side.
+-}
+sendCreditsCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+sendCreditsCommand model state key =
+    sendCreditsFrom model state key "self" ""
+
+
+{-| The organization-side send: the active organization pays. The server
+checks the caller's billing permission on it.
+-}
+orgSendCreditsCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+orgSendCreditsCommand model state key =
+    if state.activeOrgId == "" then
+        ( updateLoggedIn model (\current -> { current | sendMessage = Just (FailureNote "Open an organization first.") }), Cmd.none )
+
+    else
+        sendCreditsFrom model state key "organization" state.activeOrgId
+
+
+sendCreditsFrom : Model -> LoggedInModel -> String -> String -> String -> ( Model, Cmd Msg )
+sendCreditsFrom model state key sourceKind sourceOrganizationId =
+    if String.trim state.sendRecipientId == "" then
+        ( updateLoggedIn model (\current -> { current | sendMessage = Just (FailureNote "Choose a recipient first.") }), Cmd.none )
+
+    else if Maybe.withDefault 0 (String.toInt (String.trim state.sendAmount)) < 1 then
+        ( updateLoggedIn model (\current -> { current | sendMessage = Just (FailureNote "Amount must be a positive whole number of credits.") }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | sendMessage = Nothing, sendKey = key })
+        , postCreditTransfer state.accessToken
+            { sourceKind = sourceKind
+            , sourceOrganizationId = sourceOrganizationId
+            , targetKind = state.sendRecipientKind
+            , targetId = String.trim state.sendRecipientId
+            , amount = Maybe.withDefault 0 (String.toInt (String.trim state.sendAmount))
+            , note = String.trim state.sendNote
+            , key = key
+            , recipientLabel = sendRecipientLabel state
+            }
+        )
+
+
+{-| The human name of the chosen send recipient, for the confirmation
+sentence ("Sent 25 credits to Ren Okafor."): the organization's name, or
+the user row's email from the directory picker. Falls back to the raw id
+for recipients no longer in the loaded page.
+-}
+sendRecipientLabel : LoggedInModel -> String
+sendRecipientLabel state =
+    let
+        chosen =
+            String.trim state.sendRecipientId
+    in
+    if state.sendRecipientKind == "organization" then
+        state.organizations.items
+            |> List.filter (\organization -> organization.id == chosen)
+            |> List.head
+            |> Maybe.map .name
+            |> Maybe.withDefault chosen
+
+    else
+        state.userDirectory
+            |> List.filter (\user -> user.id == chosen)
+            |> List.head
+            |> Maybe.map .email
+            |> Maybe.withDefault chosen
+
+
+postCreditTransfer :
+    String
+    ->
+        { sourceKind : String
+        , sourceOrganizationId : String
+        , targetKind : String
+        , targetId : String
+        , amount : Int
+        , note : String
+        , key : String
+        , recipientLabel : String
+        }
+    -> Cmd Msg
+postCreditTransfer token transfer =
+    authorizedRequest "POST"
+        token
+        "/api/credits/transfers"
+        (Http.jsonBody
+            (Encode.object
+                [ ( "source_kind", Encode.string transfer.sourceKind )
+                , ( "source_organization_id", Encode.string transfer.sourceOrganizationId )
+                , ( "target_kind", Encode.string transfer.targetKind )
+                , ( "target_id", Encode.string transfer.targetId )
+                , ( "amount", Encode.int transfer.amount )
+                , ( "note", Encode.string transfer.note )
+                , ( "idempotency_key", Encode.string transfer.key )
+                ]
+            )
+        )
+        (expectJsonWithServerError (CreditsSentReceived transfer.recipientLabel) Ledger.creditTransferResponseDecoder)
+
+
+{-| Validates and posts the admin catalog-entry form. Unique entries are
+always a run of exactly 1 (sent implicitly); editions need an explicit
+positive run size; badges are uncapped.
+-}
+addCatalogEntryCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
+addCatalogEntryCommand model state =
+    let
+        editionSize =
+            Maybe.withDefault 0 (String.toInt (String.trim state.catalogMaxEditions))
+
+        maxEditions =
+            case state.catalogKind of
+                Collectible.CollectibleKindUnique ->
+                    1
+
+                Collectible.CollectibleKindEdition ->
+                    editionSize
+
+                Collectible.CollectibleKindBadge ->
+                    0
+    in
+    if String.trim state.catalogSlug == "" || String.trim state.catalogName == "" then
+        ( updateLoggedIn model (\current -> { current | catalogMessage = Just (FailureNote "A slug and a name are required.") }), Cmd.none )
+
+    else if state.catalogArt == "" then
+        ( updateLoggedIn model (\current -> { current | catalogMessage = Just (FailureNote "Pick the entry's art below.") }), Cmd.none )
+
+    else if state.catalogKind == Collectible.CollectibleKindEdition && editionSize < 1 then
+        ( updateLoggedIn model (\current -> { current | catalogMessage = Just (FailureNote "An edition needs a run size of at least 1.") }), Cmd.none )
+
+    else
+        ( updateLoggedIn model (\current -> { current | catalogMessage = Nothing })
+        , postCatalogEntry state.accessToken (String.trim state.catalogSlug) (String.trim state.catalogName) state.catalogKind state.catalogPolicy state.catalogArt maxEditions
+        )
+
+
+postCatalogEntry : String -> String -> String -> Collectible.CollectibleKind -> Collectible.CollectibleTransferPolicy -> String -> Int -> Cmd Msg
+postCatalogEntry token slug name kind policy art maxEditions =
+    authorizedRequest "POST"
+        token
+        "/api/admin/collectible-catalog"
+        (Http.jsonBody
+            (Encode.object
+                [ ( "slug", Encode.string slug )
+                , ( "name", Encode.string name )
+                , ( "kind", Encode.string (collectibleKindTag kind) )
+                , ( "transfer_policy", Encode.string (collectiblePolicyTag policy) )
+                , ( "art", Encode.string art )
+                , ( "max_editions", Encode.int maxEditions )
+                ]
+            )
+        )
+        (expectJsonWithServerError CatalogEntryMutated Collectible.collectibleCatalogEntryDecoder)
+
+
+postWithdrawCatalogEntry : String -> String -> Cmd Msg
+postWithdrawCatalogEntry token slug =
+    authorizedRequest "POST"
+        token
+        ("/api/admin/collectible-catalog/" ++ slug ++ "/withdraw")
+        (Http.jsonBody (Encode.object []))
+        (expectJsonWithServerError CatalogEntryMutated Collectible.collectibleCatalogEntryDecoder)
+
+
+deleteCatalogEntryCmd : String -> String -> Cmd Msg
+deleteCatalogEntryCmd token slug =
+    authorizedRequest "DELETE"
+        token
+        ("/api/admin/collectible-catalog/" ++ slug)
+        Http.emptyBody
+        (expectWhateverWithServerError CatalogEntryDeleted)
+
+
+postWithdrawCollectible : String -> String -> Cmd Msg
+postWithdrawCollectible token collectibleId =
+    authorizedRequest "POST"
+        token
+        ("/api/admin/collectibles/" ++ collectibleId ++ "/withdraw")
+        (Http.jsonBody (Encode.object []))
+        (expectJsonWithServerError CollectibleWithdrawnReceived Collectible.collectibleResponseDecoder)
+
+
+deleteCollectibleCmd : String -> String -> Cmd Msg
+deleteCollectibleCmd token collectibleId =
+    authorizedRequest "DELETE"
+        token
+        ("/api/admin/collectibles/" ++ collectibleId)
+        Http.emptyBody
+        (expectWhateverWithServerError CollectibleDeleted)
+
+
 runPrivacyRetention : String -> Cmd Msg
 runPrivacyRetention token =
     authorizedRequest "POST"
@@ -1553,46 +1741,6 @@ deactivateMemberCommand model state userId =
         )
 
 
-teamsFromResult : Result Http.Error Team.TeamsResponse -> List Team.TeamResponse
-teamsFromResult result =
-    case result of
-        Ok response ->
-            response.teams
-
-        Err _ ->
-            []
-
-
-orgCredentialsFromResult : Result Http.Error Agent.OrgCredentialsResponse -> List Agent.OrgCredentialResponse
-orgCredentialsFromResult result =
-    case result of
-        Ok response ->
-            response.credentials
-
-        Err _ ->
-            []
-
-
-membersFromResult : Result Http.Error Organization.OrganizationMembersResponse -> List Organization.OrganizationMemberResponse
-membersFromResult result =
-    case result of
-        Ok response ->
-            response.members
-
-        Err _ ->
-            []
-
-
-submissionsFromResult : Result Http.Error Submission.SubmissionsResponse -> List Submission.SubmissionResponse
-submissionsFromResult result =
-    case result of
-        Ok response ->
-            response.submissions
-
-        Err _ ->
-            []
-
-
 createOrgCommand : Model -> LoggedInModel -> ( Model, Cmd Msg )
 createOrgCommand model state =
     if String.isEmpty (String.trim state.createOrgName) then
@@ -1606,16 +1754,6 @@ createOrgCommand model state =
             (Http.jsonBody (Encode.object [ ( "name", Encode.string (String.trim state.createOrgName) ) ]))
             (expectJsonWithServerError CreateOrgReceived Organization.organizationResponseDecoder)
         )
-
-
-organizationsFromResult : Result Http.Error Organization.OrganizationsResponse -> List Organization.OrganizationResponse
-organizationsFromResult result =
-    case result of
-        Ok response ->
-            response.organizations
-
-        Err _ ->
-            []
 
 
 postCollectible : String -> String -> Collectible.CollectibleKind -> Collectible.CollectibleTransferPolicy -> Cmd Msg
@@ -2042,16 +2180,6 @@ seriesDetailDecoder =
         (Decode.field "series" TaskSeries.taskSeriesResponseDecoder)
         (Decode.field "tasks" (Decode.list seriesTaskEntryDecoder))
         (Decode.field "comments" (Decode.list TaskSeries.seriesCommentResponseDecoder))
-
-
-seriesFromResult : Result Http.Error TaskSeries.TaskSeriesListResponse -> List TaskSeries.TaskSeriesResponse
-seriesFromResult result =
-    case result of
-        Ok response ->
-            response.series
-
-        Err _ ->
-            []
 
 
 fetchSeriesList : String -> Cmd Msg

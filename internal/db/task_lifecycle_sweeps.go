@@ -5,29 +5,26 @@ import (
 	"errors"
 
 	"github.com/e6qu/sharecrop/internal/core"
+	"github.com/e6qu/sharecrop/internal/event"
 	"github.com/e6qu/sharecrop/internal/task"
 )
 
 // This file holds the lifecycle-runner sweep queries. They are struct-only
 // methods on TaskStore (not part of task.Store), so they are never bridged
-// into the WASI guest: the sweeps run host-side only.
-
-// ExpiredTaskRow reports one task the expiry sweep transitioned to expired,
-// with the recipients the runner needs for the task_expired event.
-type ExpiredTaskRow struct {
-	TaskID  core.TaskID
-	OwnerID core.UserID
-	// ReleasedHolders are the users whose non-terminal reservations on the
-	// task were released by the expiration.
-	ReleasedHolders []core.UserID
-}
+// into the WASI guest: the sweeps run host-side only. Both sweeps record
+// their event drafts inside the same transaction as the transitions (the
+// in-transaction outbox) and return them, so the runner dispatches inline
+// and a crash between commit and dispatch is recovered by the event dispatch
+// sweep — never by re-emitting.
 
 type ExpireDueTasksResult interface {
 	expireDueTasksResult()
 }
 
 type ExpireDueTasksCompleted struct {
-	Values []ExpiredTaskRow
+	// RecordedEvents are the task_expired drafts recorded inside the expire
+	// transactions, one per expired task, for the runner's inline dispatch.
+	RecordedEvents []event.Draft
 }
 
 type ExpireDueTasksRejected struct {
@@ -43,9 +40,10 @@ func (ExpireDueTasksRejected) expireDueTasksResult() {}
 // re-checks the state under FOR UPDATE with an expected-state predicate
 // (mirroring ChangeTaskState's discipline), refunds escrowed credits to the
 // funder under the derived idempotency key "expire:<task_id>", returns held
-// collectibles, and releases non-terminal reservations. A concurrent state
-// change or a repeated run leaves the task untouched (the sweep is
-// idempotent).
+// collectibles, releases non-terminal reservations, and records the
+// task_expired event draft (recipients: owner and released holders). A
+// concurrent state change or a repeated run leaves the task untouched (the
+// sweep is idempotent).
 func (store TaskStore) ExpireDueTasks(ctx context.Context) ExpireDueTasksResult {
 	// The candidate scan uses the partial index on open tasks with a non-null
 	// expires_at (migration 000041).
@@ -73,19 +71,19 @@ func (store TaskStore) ExpireDueTasks(ctx context.Context) ExpireDueTasksResult 
 		return ExpireDueTasksRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read due tasks failed")}
 	}
 
-	expired := make([]ExpiredTaskRow, 0, len(rawIDs))
+	recorded := make([]event.Draft, 0, len(rawIDs))
 	for _, rawID := range rawIDs {
 		rowResult := store.expireOneTask(ctx, rawID)
 		switch typed := rowResult.(type) {
 		case expireOneTaskExpired:
-			expired = append(expired, typed.value)
+			recorded = append(recorded, typed.draft)
 		case expireOneTaskSkipped:
 			// A concurrent transition beat the sweep; nothing to report.
 		case expireOneTaskRejected:
 			return ExpireDueTasksRejected{Reason: typed.reason}
 		}
 	}
-	return ExpireDueTasksCompleted{Values: expired}
+	return ExpireDueTasksCompleted{RecordedEvents: recorded}
 }
 
 type expireOneTaskResult interface {
@@ -93,7 +91,7 @@ type expireOneTaskResult interface {
 }
 
 type expireOneTaskExpired struct {
-	value ExpiredTaskRow
+	draft event.Draft
 }
 
 type expireOneTaskSkipped struct{}
@@ -170,20 +168,37 @@ func (store TaskStore) expireOneTask(ctx context.Context, rawTaskID string) expi
 	if commandTag != 1 {
 		return expireOneTaskSkipped{}
 	}
+
+	// The task_expired event draft is recorded in the same transaction as
+	// the transition, so a crash after commit can lose only the dispatch —
+	// which the event dispatch sweep replays — never the event itself.
+	subject := event.NoSubjectRefs()
+	subject.Task = event.TaskSubject{ID: taskID}
+	recipients := append([]core.UserID{ownerIDCreated.Value}, holders...)
+	draftResult := event.NewDraft(event.KindTaskExpired, event.ActorSystem{}, subject,
+		event.TaskMetadata(taskID), event.NewRecipients(recipients...))
+	draftCreated, draftMatched := draftResult.(event.DraftCreated)
+	if !draftMatched {
+		return expireOneTaskRejected{reason: draftResult.(event.DraftRejected).Reason}
+	}
+	if err := recordEventDraftInTx(ctx, tx, draftCreated.Value); err != nil {
+		return expireOneTaskRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "record task expired event failed")}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return expireOneTaskRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit expire task transaction failed")}
 	}
-	return expireOneTaskExpired{value: ExpiredTaskRow{TaskID: taskID, OwnerID: ownerIDCreated.Value, ReleasedHolders: holders}}
+	return expireOneTaskExpired{draft: draftCreated.Value}
 }
 
 // lockedReservationHolders lists the distinct users holding a non-terminal
-// reservation on the task, read inside the expire transaction before the
-// reservations are released.
+// reservation on the task, read inside the expire/cancel transaction before
+// the reservations are released.
 func lockedReservationHolders(ctx context.Context, tx Tx, rawTaskID string) ([]core.UserID, *core.DomainError) {
 	rows, err := tx.Query(ctx, `
 		select distinct requested_by_user_id::text
 		from task_reservations
-		where task_id = $1 and state in ('requested', 'active', 'submitted')
+		where task_id = $1 and state in ('active', 'submitted')
 	`, rawTaskID)
 	if err != nil {
 		reason := core.NewDomainError(core.ErrorCodeInvalidState, "list reservation holders failed")
@@ -228,24 +243,14 @@ func refundExpiredTaskFunding(ctx context.Context, tx Tx, taskID core.TaskID) *c
 	return nil
 }
 
-// ExpiredReservationRow reports one reservation the expiry sweep released,
-// with the recipients the runner needs for the reservation_expired event.
-type ExpiredReservationRow struct {
-	TaskID        core.TaskID
-	ReservationID core.TaskReservationID
-	// HolderID is the user who requested (and for an active reservation,
-	// held) the reservation.
-	HolderID core.UserID
-	// TaskOwnerID is the task creator, notified alongside the holder.
-	TaskOwnerID core.UserID
-}
-
 type ExpireDueReservationsResult interface {
 	expireDueReservationsResult()
 }
 
 type ExpireDueReservationsCompleted struct {
-	Values []ExpiredReservationRow
+	// RecordedEvents are the reservation_expired drafts recorded inside the
+	// release transaction, for the runner's inline dispatch.
+	RecordedEvents []event.Draft
 }
 
 type ExpireDueReservationsRejected struct {
@@ -256,77 +261,23 @@ func (ExpireDueReservationsCompleted) expireDueReservationsResult() {}
 
 func (ExpireDueReservationsRejected) expireDueReservationsResult() {}
 
-// ExpireDueReservations releases every requested/active reservation whose
-// expires_at instant has passed — the same statement the request-path
-// housekeeping runs (expireReservationsSQL) — and returns the released rows
-// so the runner can emit reservation_expired events with correct recipients.
+// ExpireDueReservations releases every lapsed reservation and records the
+// reservation_expired event drafts in the same transaction — the exact
+// helper the request-path housekeeping runs (releaseExpiredReservations), so
+// whichever runs first records the events exactly once. The recorded drafts
+// are returned for inline dispatch.
 func (store TaskStore) ExpireDueReservations(ctx context.Context) ExpireDueReservationsResult {
-	rows, err := store.db.Query(ctx, `
-		with released as (
-			update task_reservations
-			set state = 'expired', state_recorded_at = now()
-			where state in ('requested', 'active') and expires_at <= now()
-			returning id, task_id, requested_by_user_id
-		)
-		select released.id::text, released.task_id::text, released.requested_by_user_id::text, tasks.created_by_user_id::text
-		from released
-		join tasks on tasks.id = released.task_id
-	`)
+	tx, err := store.db.Begin(ctx)
 	if err != nil {
+		return ExpireDueReservationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "begin release due reservations failed")}
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	drafts, releaseErr := releaseExpiredReservationsInTx(ctx, tx)
+	if releaseErr != nil {
 		return ExpireDueReservationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "release due reservations failed")}
 	}
-	defer rows.Close()
-
-	values := make([]ExpiredReservationRow, 0)
-	for rows.Next() {
-		var rawReservationID string
-		var rawTaskID string
-		var rawHolderID string
-		var rawOwnerID string
-		if err := rows.Scan(&rawReservationID, &rawTaskID, &rawHolderID, &rawOwnerID); err != nil {
-			return ExpireDueReservationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan released reservation failed")}
-		}
-		row, reason := parseExpiredReservationRow(rawReservationID, rawTaskID, rawHolderID, rawOwnerID)
-		if reason != nil {
-			return ExpireDueReservationsRejected{Reason: *reason}
-		}
-		values = append(values, row)
+	if err := tx.Commit(ctx); err != nil {
+		return ExpireDueReservationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "commit release due reservations failed")}
 	}
-	if err := rows.Err(); err != nil {
-		return ExpireDueReservationsRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read released reservations failed")}
-	}
-	return ExpireDueReservationsCompleted{Values: values}
-}
-
-func parseExpiredReservationRow(rawReservationID string, rawTaskID string, rawHolderID string, rawOwnerID string) (ExpiredReservationRow, *core.DomainError) {
-	reservationIDResult := core.ParseTaskReservationID(rawReservationID)
-	reservationIDCreated, reservationIDMatched := reservationIDResult.(core.TaskReservationIDCreated)
-	if !reservationIDMatched {
-		reason := reservationIDResult.(core.TaskReservationIDRejected).Reason
-		return ExpiredReservationRow{}, &reason
-	}
-	taskIDResult := core.ParseTaskID(rawTaskID)
-	taskIDCreated, taskIDMatched := taskIDResult.(core.TaskIDCreated)
-	if !taskIDMatched {
-		reason := taskIDResult.(core.TaskIDRejected).Reason
-		return ExpiredReservationRow{}, &reason
-	}
-	holderIDResult := core.ParseUserID(rawHolderID)
-	holderIDCreated, holderIDMatched := holderIDResult.(core.UserIDCreated)
-	if !holderIDMatched {
-		reason := holderIDResult.(core.UserIDRejected).Reason
-		return ExpiredReservationRow{}, &reason
-	}
-	ownerIDResult := core.ParseUserID(rawOwnerID)
-	ownerIDCreated, ownerIDMatched := ownerIDResult.(core.UserIDCreated)
-	if !ownerIDMatched {
-		reason := ownerIDResult.(core.UserIDRejected).Reason
-		return ExpiredReservationRow{}, &reason
-	}
-	return ExpiredReservationRow{
-		TaskID:        taskIDCreated.Value,
-		ReservationID: reservationIDCreated.Value,
-		HolderID:      holderIDCreated.Value,
-		TaskOwnerID:   ownerIDCreated.Value,
-	}, nil
+	return ExpireDueReservationsCompleted{RecordedEvents: drafts}
 }

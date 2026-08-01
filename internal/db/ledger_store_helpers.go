@@ -166,13 +166,14 @@ func lockTaskOwnedBy(ctx context.Context, tx Tx, taskID core.TaskID, requester c
 	return taskLocked{state: state, rawCreatedBy: rawCreatedBy, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
 }
 
-// lockTaskForReview locks a task for a review action. The direct task creator is
-// always authorized. For organization-owned tasks, a member with the
-// review-submissions permission is also authorized. This mirrors the
-// submission service's review-permission check, but resolves authorization in
-// the same transaction as the review write so authorization cannot drift
-// between the check and the mutation.
-func lockTaskForReview(ctx context.Context, tx Tx, taskID core.TaskID, requester core.UserID, action string) taskLockResult {
+// lockTaskForReview locks a task for a review action. A user reviewer is
+// authorized as the direct task creator or, for organization-owned tasks, as
+// a member with the review-submissions permission. An organization reviewer
+// (an org-wide credential) is authorized on its own organization's tasks
+// only. This mirrors the submission service's review-permission check, but
+// resolves authorization in the same transaction as the review write so
+// authorization cannot drift between the check and the mutation.
+func lockTaskForReview(ctx context.Context, tx Tx, taskID core.TaskID, reviewer ledger.Reviewer, action string) taskLockResult {
 	var state string
 	var rawCreatedBy string
 	var rawOrganizationID string
@@ -185,21 +186,47 @@ func lockTaskForReview(ctx context.Context, tx Tx, taskID core.TaskID, requester
 	if scanErr != nil {
 		return taskLockRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "lock task failed")}
 	}
-	if rawCreatedBy == requester.String() {
-		return taskLocked{state: state, rawCreatedBy: rawCreatedBy, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
-	}
-	if rawOrganizationID != "" {
-		check := reviewerOrganizationPermission(ctx, tx, rawOrganizationID, requester)
-		if _, granted := check.(org.PermissionGranted); granted {
-			return taskLocked{state: state, rawCreatedBy: rawCreatedBy, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
+	locked := taskLocked{state: state, rawCreatedBy: rawCreatedBy, rewardKind: rewardKind, rewardCreditAmount: rewardCreditAmount}
+	switch typed := reviewer.(type) {
+	case ledger.UserReviewer:
+		if rawCreatedBy == typed.ID.String() {
+			return locked
+		}
+		if rawOrganizationID != "" {
+			check := reviewerOrganizationPermission(ctx, tx, rawOrganizationID, typed.ID)
+			if _, granted := check.(org.PermissionGranted); granted {
+				return locked
+			}
+		}
+	case ledger.OrganizationReviewer:
+		if rawOrganizationID != "" && rawOrganizationID == typed.ID.String() {
+			return locked
 		}
 	}
 	return taskLockRejected{reason: core.NewDomainError(core.ErrorCodePermissionDenied, "only the task owner or an organization reviewer can "+action+" the task")}
 }
 
+// reviewerUserColumn maps a reviewer to the nullable reviewed_by_user_id /
+// banned_by_user_id column value: the reviewing user's id, or NULL for an
+// organization reviewer (an org credential names no user).
+func reviewerUserColumn(reviewer ledger.Reviewer) *string {
+	if user, matched := reviewer.(ledger.UserReviewer); matched {
+		id := user.ID.String()
+		return &id
+	}
+	return nil
+}
+
 // reviewerOrganizationPermission resolves whether the requester holds the
 // review-submissions permission in the given organization, evaluated in-tx.
 func reviewerOrganizationPermission(ctx context.Context, tx Tx, rawOrganizationID string, requester core.UserID) org.PermissionCheck {
+	return organizationMemberPermission(ctx, tx, rawOrganizationID, requester, org.PermissionReviewSubmissions)
+}
+
+// organizationMemberPermission checks an organization permission for a user
+// inside the caller's transaction (reading the member's active roles), so an
+// authorization and the mutation it guards cannot drift apart.
+func organizationMemberPermission(ctx context.Context, tx Tx, rawOrganizationID string, member core.UserID, permission org.Permission) org.PermissionCheck {
 	rows, err := tx.Query(ctx, `
 		select organization_membership_roles.role
 		from organization_memberships
@@ -207,9 +234,9 @@ func reviewerOrganizationPermission(ctx context.Context, tx Tx, rawOrganizationI
 		where organization_memberships.organization_id = $1
 			and organization_memberships.user_id = $2
 			and organization_memberships.status = $3
-	`, rawOrganizationID, requester.String(), org.MembershipStatusActive.String())
+	`, rawOrganizationID, member.String(), org.MembershipStatusActive.String())
 	if err != nil {
-		return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read reviewer roles failed")}
+		return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read member roles failed")}
 	}
 	defer rows.Close()
 
@@ -217,7 +244,7 @@ func reviewerOrganizationPermission(ctx context.Context, tx Tx, rawOrganizationI
 	for rows.Next() {
 		var rawRole string
 		if err := rows.Scan(&rawRole); err != nil {
-			return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan reviewer role failed")}
+			return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan member role failed")}
 		}
 		roleResult := org.ParseRole(rawRole)
 		roleAccepted, matched := roleResult.(org.RoleAccepted)
@@ -227,9 +254,9 @@ func reviewerOrganizationPermission(ctx context.Context, tx Tx, rawOrganizationI
 		roles = append(roles, roleAccepted.Value)
 	}
 	if err := rows.Err(); err != nil {
-		return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read reviewer roles failed")}
+		return org.PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read member roles failed")}
 	}
-	return org.CheckPermission(roles, org.PermissionReviewSubmissions)
+	return org.CheckPermission(roles, permission)
 }
 
 type fundingRewardResult interface {
@@ -450,11 +477,19 @@ func payReviewFund(ctx context.Context, tx Tx, command reviewFundCommand) payout
 	return payoutResolved{outcome: ledger.CreditPayout{WorkerUserID: worker.Value, Amount: amountAccepted.Value}}
 }
 
-func payCreditTip(ctx context.Context, tx Tx, taskID core.TaskID, requester core.UserID, rawWorkerID string, debitEntryID core.LedgerEntryID, creditEntryID core.LedgerEntryID, idempotencyKey ledger.IdempotencyKey, selection ledger.TipSelection) tipResult {
+func payCreditTip(ctx context.Context, tx Tx, taskID core.TaskID, reviewer ledger.Reviewer, rawWorkerID string, debitEntryID core.LedgerEntryID, creditEntryID core.LedgerEntryID, idempotencyKey ledger.IdempotencyKey, selection ledger.TipSelection) tipResult {
 	tip, matched := selection.(ledger.CreditTipSelection)
 	if !matched {
 		return tipResolved{outcome: ledger.NoTip{}}
 	}
+	// Tips debit a personal balance; the service already refuses tip
+	// selections from an organization reviewer, and this guard keeps the
+	// invariant local to the money movement.
+	userReviewer, isUser := reviewer.(ledger.UserReviewer)
+	if !isUser {
+		return tipRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "an organization credential cannot pay a credit tip")}
+	}
+	requester := userReviewer.ID
 
 	requesterAccount := lockUserAccount(ctx, tx, requester)
 	requesterLocked, requesterMatched := requesterAccount.(accountLocked)
@@ -500,11 +535,17 @@ func payCreditTip(ctx context.Context, tx Tx, taskID core.TaskID, requester core
 	return tipResolved{outcome: ledger.CreditTip{WorkerUserID: worker.Value, Amount: tip.Amount}}
 }
 
-func payCollectibleTip(ctx context.Context, tx Tx, requester core.UserID, rawWorkerID string, selection ledger.CollectibleTipSelection) tipResult {
+func payCollectibleTip(ctx context.Context, tx Tx, reviewer ledger.Reviewer, rawWorkerID string, selection ledger.CollectibleTipSelection) tipResult {
 	selected, matched := selection.(ledger.CollectibleTipSelected)
 	if !matched {
 		return tipResolved{outcome: ledger.NoTip{}}
 	}
+	// Collectible tips move a personally owned collectible; see payCreditTip.
+	userReviewer, isUser := reviewer.(ledger.UserReviewer)
+	if !isUser {
+		return tipRejected{reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "an organization credential cannot tip a collectible")}
+	}
+	requester := userReviewer.ID
 
 	workerResult := core.ParseUserID(rawWorkerID)
 	worker, workerMatched := workerResult.(core.UserIDCreated)
@@ -816,7 +857,7 @@ func parseTaskReference(rawTaskID string) taskReferenceResult {
 // submission_superseded draft per superseded row, addressed to its
 // submitter. Rejected and changes_requested submissions are untouched. It
 // runs only on a fresh accept, so a replayed accept never re-supersedes.
-func supersedeCompetingSubmissions(ctx context.Context, tx Tx, taskID core.TaskID, acceptedSubmissionID core.SubmissionID, requester core.UserID) ([]event.Draft, *core.DomainError) {
+func supersedeCompetingSubmissions(ctx context.Context, tx Tx, taskID core.TaskID, acceptedSubmissionID core.SubmissionID, actor event.Actor) ([]event.Draft, *core.DomainError) {
 	rows, err := tx.Query(ctx, `
 		update submissions
 		set state = 'superseded', state_recorded_at = now()
@@ -862,7 +903,7 @@ func supersedeCompetingSubmissions(ctx context.Context, tx Tx, taskID core.TaskI
 		subject := event.NoSubjectRefs()
 		subject.Task = event.TaskSubject{ID: taskID}
 		subject.Submission = event.SubmissionSubject{ID: submissionIDResult.Value}
-		draftResult := event.NewDraft(event.KindSubmissionSuperseded, event.ActorUser{ID: requester}, subject,
+		draftResult := event.NewDraft(event.KindSubmissionSuperseded, actor, subject,
 			event.TaskMetadata(taskID), event.NewRecipients(submitterID))
 		created, matched := draftResult.(event.DraftCreated)
 		if !matched {

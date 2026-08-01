@@ -17,21 +17,23 @@ import (
 )
 
 type webhookSubscriptionRequest struct {
-	URL            string   `json:"url"`
-	Kinds          []string `json:"kinds"`
-	OrganizationID string   `json:"organization_id"`
+	URL   string   `json:"url"`
+	Kinds []string `json:"kinds"`
+	// OrganizationID is optional: present, the subscription belongs to the
+	// organization; absent, to the caller.
+	OrganizationID string `json:"organization_id,omitempty"`
 	// Audience is "recipient" (the default when absent) or "marketplace".
 	// A marketplace subscription receives every public open task_opened
 	// event rather than only events addressed to the owner, and requires
 	// kinds to be exactly ["task_opened"].
-	Audience string `json:"audience"`
+	Audience string `json:"audience,omitempty"`
 	// FilterTaskType optionally narrows a marketplace subscription to one
 	// task type. Valid only with audience "marketplace".
-	FilterTaskType string `json:"filter_task_type"`
+	FilterTaskType string `json:"filter_task_type,omitempty"`
 	// FilterMinCreditReward optionally narrows a marketplace subscription
 	// to tasks declaring at least this credit reward (a positive integer).
 	// Valid only with audience "marketplace".
-	FilterMinCreditReward int64 `json:"filter_min_credit_reward"`
+	FilterMinCreditReward int64 `json:"filter_min_credit_reward,omitempty"`
 }
 
 type webhookSubscriptionResponse struct {

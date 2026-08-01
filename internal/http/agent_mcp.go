@@ -99,24 +99,23 @@ func (services mcpServices) GetSubmission(ctx context.Context, subject auth.Subj
 	return services.submissionService.Get(ctx, subject, submissionID)
 }
 
-func (services mcpServices) ListTaskSubmissions(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, page core.Page) submission.ListResult {
+func (services mcpServices) ListTaskSubmissions(ctx context.Context, subject auth.Subject, taskID core.TaskID, page core.Page) submission.ListResult {
 	return services.submissionService.ListForTask(ctx, subject, taskID, page)
 }
 
-func (services mcpServices) AcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey) ledger.AcceptResult {
-	return services.ledgerService.AcceptSubmission(ctx, requester, taskID, submissionID, key)
+// The MCP review tools pass the ledger.Reviewer union straight through, so
+// an organization credential reviews its own organization's tasks with the
+// same authorization REST's review routes grant it.
+func (services mcpServices) ReviewAcceptSubmission(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, collectibleTip ledger.CollectibleTipSelection) ledger.AcceptResult {
+	return services.ledgerService.ReviewAcceptSubmission(ctx, reviewer, taskID, submissionID, key, creditSelection, tipSelection, collectibleTip)
 }
 
-func (services mcpServices) ReviewAcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, collectibleTip ledger.CollectibleTipSelection) ledger.AcceptResult {
-	return services.ledgerService.ReviewAcceptSubmission(ctx, requester, taskID, submissionID, key, creditSelection, tipSelection, collectibleTip)
+func (services mcpServices) RequestChanges(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, note submission.ReviewNote) ledger.RequestChangesResult {
+	return services.ledgerService.RequestChanges(ctx, reviewer, taskID, submissionID, key, note)
 }
 
-func (services mcpServices) RequestChanges(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, note submission.ReviewNote) ledger.RequestChangesResult {
-	return services.ledgerService.RequestChanges(ctx, requester, taskID, submissionID, key, note)
-}
-
-func (services mcpServices) RejectSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, note submission.ReviewNote, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, banSelection ledger.BanSelection) ledger.RejectResult {
-	return services.ledgerService.RejectSubmission(ctx, requester, taskID, submissionID, key, note, creditSelection, tipSelection, banSelection)
+func (services mcpServices) RejectSubmission(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, note submission.ReviewNote, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, banSelection ledger.BanSelection) ledger.RejectResult {
+	return services.ledgerService.RejectSubmission(ctx, reviewer, taskID, submissionID, key, note, creditSelection, tipSelection, banSelection)
 }
 
 func (services mcpServices) ListSeries(ctx context.Context, subject auth.UserSubject, page core.Page) task.ListSeriesResult {
@@ -189,14 +188,6 @@ func (services mcpServices) ReserveTaskForOrganizationTeam(ctx context.Context, 
 
 func (services mcpServices) ListReservations(ctx context.Context, subject auth.Subject, taskID core.TaskID, page core.Page) task.ReservationsListResult {
 	return services.taskService.ListReservations(ctx, subject, taskID, page)
-}
-
-func (services mcpServices) ApproveReservation(ctx context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
-	return services.taskService.ApproveReservation(ctx, subject, taskID, reservationID)
-}
-
-func (services mcpServices) DeclineReservation(ctx context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
-	return services.taskService.DeclineReservation(ctx, subject, taskID, reservationID)
 }
 
 func (services mcpServices) CancelReservation(ctx context.Context, subject auth.Subject, taskID core.TaskID, reservationID core.TaskReservationID) task.ReservationStateChangeResult {
@@ -275,8 +266,12 @@ func (services mcpServices) RevokeOrgCredential(ctx context.Context, organizatio
 	return services.orgCredentialService.Revoke(ctx, organizationID, credentialID)
 }
 
-func (services mcpServices) MintCollectible(ctx context.Context, ownerKind string, ownerID string, organizationID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
-	return services.assetService.Mint(ctx, ownerKind, ownerID, organizationID, name, kind, policy, art)
+func (services mcpServices) MintCollectible(ctx context.Context, issuer core.UserID, ownerKind string, ownerID string, organizationID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
+	return services.assetService.Mint(ctx, issuer, ownerKind, ownerID, organizationID, name, kind, policy, art)
+}
+
+func (services mcpServices) ListCollectibleCatalog(ctx context.Context) assets.CatalogListResult {
+	return services.assetService.ListCatalog(ctx)
 }
 
 func (services mcpServices) ListCollectibles(ctx context.Context, owner core.UserID, page core.Page) assets.ListResult {
@@ -289,6 +284,38 @@ func (services mcpServices) ListCollectiblesByOwner(ctx context.Context, ownerKi
 
 func (services mcpServices) TransferCollectible(ctx context.Context, from core.UserID, to core.UserID, collectibleID core.CollectibleID) assets.GiftResult {
 	return services.assetService.GiftCollectible(ctx, from, to, collectibleID)
+}
+
+func (services mcpServices) TransferCollectibleToOrganization(ctx context.Context, from core.UserID, organizationID core.OrganizationID, collectibleID core.CollectibleID) assets.GiftResult {
+	return services.assetService.TransferCollectibleToOrganization(ctx, from, organizationID, collectibleID)
+}
+
+func (services mcpServices) TransferCollectibleFromOrganization(ctx context.Context, actor core.UserID, organizationID core.OrganizationID, to core.UserID, collectibleID core.CollectibleID) assets.GiftResult {
+	return services.assetService.TransferCollectibleFromOrganization(ctx, actor, organizationID, to, collectibleID)
+}
+
+func (services mcpServices) AwardOrganizationCollectible(ctx context.Context, organizationID core.OrganizationID, collectibleID core.CollectibleID, recipient core.UserID) assets.GiftResult {
+	return services.assetService.AwardOrganizationCollectible(ctx, organizationID, collectibleID, recipient)
+}
+
+func (services mcpServices) AddCatalogEntry(ctx context.Context, entry assets.CatalogEntry) assets.CatalogMutationResult {
+	return services.assetService.AddCatalogEntry(ctx, entry)
+}
+
+func (services mcpServices) WithdrawCatalogEntry(ctx context.Context, slug assets.CatalogSlug) assets.CatalogMutationResult {
+	return services.assetService.WithdrawCatalogEntry(ctx, slug)
+}
+
+func (services mcpServices) DeleteCatalogEntry(ctx context.Context, slug assets.CatalogSlug) assets.CatalogMutationResult {
+	return services.assetService.DeleteCatalogEntry(ctx, slug)
+}
+
+func (services mcpServices) WithdrawCollectible(ctx context.Context, actor core.UserID, collectibleID core.CollectibleID) assets.WithdrawResult {
+	return services.assetService.WithdrawCollectible(ctx, actor, collectibleID)
+}
+
+func (services mcpServices) DeleteWithdrawnCollectible(ctx context.Context, collectibleID core.CollectibleID) assets.DeleteCollectibleResult {
+	return services.assetService.DeleteWithdrawnCollectible(ctx, collectibleID)
 }
 
 func (services mcpServices) FundCollectibleReward(ctx context.Context, funder core.UserID, taskID core.TaskID, collectibleID core.CollectibleID) assets.FundRewardResult {
@@ -340,6 +367,10 @@ func (services mcpServices) GrantCredits(ctx context.Context, actingAdmin core.U
 	return services.ledgerService.GrantCredits(ctx, actingAdmin, target, amount, note, key)
 }
 
+func (services mcpServices) SendCredits(ctx context.Context, actor core.UserID, source ledger.TransferSource, target ledger.TransferTarget, amount ledger.CreditAmount, note ledger.TransferNote, key ledger.IdempotencyKey) ledger.SendResult {
+	return services.ledgerService.SendCredits(ctx, actor, source, target, amount, note, key)
+}
+
 func (services mcpServices) ListUsers(ctx context.Context, query string, page core.Page) auth.UserDirectoryResult {
 	return services.authService.ListUsers(ctx, query, page)
 }
@@ -357,9 +388,11 @@ func (services mcpServices) GetUserSubmissions(ctx context.Context, subject auth
 }
 
 type agentCredentialRequest struct {
-	Label     string   `json:"label"`
-	Scopes    []string `json:"scopes"`
-	ExpiresAt string   `json:"expires_at"`
+	Label  string   `json:"label"`
+	Scopes []string `json:"scopes"`
+	// ExpiresAt is an optional RFC3339 expiry; absent mints a non-expiring
+	// credential.
+	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
 type agentCredentialResponse struct {

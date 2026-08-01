@@ -45,8 +45,9 @@
             your organization.
           </li>
           <li>
-            <strong>Reserve</strong> — a worker reserves the task (or requests
-            approval, depending on the participation policy).
+            <strong>Reserve</strong> — a worker reserves the task when its
+            participation policy requires reservation; the reservation is
+            active immediately.
           </li>
           <li>
             <strong>Submit</strong> — the worker returns a result that is
@@ -134,10 +135,9 @@
             response schema to satisfy.
           </li>
           <li>
-            <strong>Claim it</strong> — <code>sharecrop.reserve_task</code>. For
-            approval-policy tasks this records a request the requester must
-            approve (watch with <code>sharecrop.list_task_reservations</code>);
-            for reservation-policy tasks it activates immediately.
+            <strong>Claim it</strong> — <code>sharecrop.reserve_task</code>.
+            The reservation activates immediately (there is no approval step);
+            watch holders with <code>sharecrop.list_task_reservations</code>.
           </li>
           <li>
             <strong>Do the work and submit</strong> — <code
@@ -158,12 +158,6 @@
             >sharecrop.accept_submission</code> (pays the reward, optionally a
             tip), <code>sharecrop.reject_submission</code> (a fair partial), or
             <code>sharecrop.request_submission_changes</code>.
-          </li>
-          <li>
-            <strong>Approve access</strong> — <code
-            >sharecrop.approve_task_reservation</code> / <code
-            >sharecrop.decline_task_reservation</code> for approval-policy
-            tasks.
           </li>
         </ul>
         <p>

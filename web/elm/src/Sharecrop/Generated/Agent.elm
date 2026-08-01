@@ -19,6 +19,7 @@ type AgentScope
     | AgentScopeNotificationsManage
     | AgentScopeUsersRead
     | AgentScopeLedgerRead
+    | AgentScopeLedgerWrite
     | AgentScopeModerationRead
     | AgentScopeModerationManage
     | AgentScopePrivacyRead
@@ -72,6 +73,9 @@ agentScopeDecoder =
 
                     "ledger_read" ->
                         Decode.succeed AgentScopeLedgerRead
+
+                    "ledger_write" ->
+                        Decode.succeed AgentScopeLedgerWrite
 
                     "moderation_read" ->
                         Decode.succeed AgentScopeModerationRead
@@ -142,6 +146,9 @@ agentScopeEncoder agentScope =
 
         AgentScopeLedgerRead ->
             Encode.string "ledger_read"
+
+        AgentScopeLedgerWrite ->
+            Encode.string "ledger_write"
 
         AgentScopeModerationRead ->
             Encode.string "moderation_read"

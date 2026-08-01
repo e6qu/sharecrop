@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/e6qu/sharecrop/internal/assets"
+	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/wasibridge/corewire"
 	"github.com/e6qu/sharecrop/internal/wasibridge/domainwire"
@@ -68,9 +69,30 @@ type collectibleWire struct {
 	OwnerID        string `json:"owner_id"`
 	OrganizationID string `json:"organization_id"`
 	Art            string `json:"art"`
+	// CatalogSlug is empty for custom mints; EditionNumber is nil for
+	// non-edition instances; Issuer is empty for pre-provenance rows.
+	CatalogSlug   string `json:"catalog_slug"`
+	EditionNumber *int64 `json:"edition_number,omitempty"`
+	Issuer        string `json:"issuer"`
+	// IssuerName is the resolved issuer display name on list reads; empty
+	// everywhere else.
+	IssuerName string `json:"issuer_name,omitempty"`
 }
 
 func encodeCollectible(collectible assets.Collectible) collectibleWire {
+	catalogSlug := ""
+	if fromCatalog, matched := collectible.Catalog.(assets.FromCatalog); matched {
+		catalogSlug = fromCatalog.Slug.String()
+	}
+	var editionNumber *int64
+	if numbered, matched := collectible.Edition.(assets.EditionNumbered); matched {
+		number := numbered.Number
+		editionNumber = &number
+	}
+	issuer := ""
+	if issuedBy, matched := collectible.Issuer.(assets.IssuedBy); matched {
+		issuer = issuedBy.ID.String()
+	}
 	return collectibleWire{
 		ID:             corewire.EncodeCollectibleID(collectible.ID),
 		Name:           encodeName(collectible.Name),
@@ -81,6 +103,10 @@ func encodeCollectible(collectible assets.Collectible) collectibleWire {
 		OwnerID:        collectible.OwnerID,
 		OrganizationID: collectible.OrganizationID,
 		Art:            collectible.Art,
+		CatalogSlug:    catalogSlug,
+		EditionNumber:  editionNumber,
+		Issuer:         issuer,
+		IssuerName:     collectible.IssuerDisplayName.String(),
 	}
 }
 
@@ -105,16 +131,48 @@ func decodeCollectible(wire collectibleWire) (assets.Collectible, error) {
 	if err != nil {
 		return assets.Collectible{}, err
 	}
+	var catalogRef assets.CatalogRef = assets.NoCatalogRef{}
+	if wire.CatalogSlug != "" {
+		slug, err := decodeCatalogSlug(wire.CatalogSlug)
+		if err != nil {
+			return assets.Collectible{}, err
+		}
+		catalogRef = assets.FromCatalog{Slug: slug}
+	}
+	var editionRef assets.EditionRef = assets.NoEditionNumber{}
+	if wire.EditionNumber != nil {
+		editionRef = assets.EditionNumbered{Number: *wire.EditionNumber}
+	}
+	var issuerRef assets.IssuerRef = assets.NoIssuer{}
+	if wire.Issuer != "" {
+		issuer, err := corewire.DecodeUserID(wire.Issuer)
+		if err != nil {
+			return assets.Collectible{}, err
+		}
+		issuerRef = assets.IssuedBy{ID: issuer}
+	}
+	var issuerName auth.DisplayName
+	if wire.IssuerName != "" {
+		nameResult, nameMatched := auth.NewDisplayName(wire.IssuerName).(auth.DisplayNameAccepted)
+		if !nameMatched {
+			return assets.Collectible{}, fmt.Errorf("collectible issuer display name is invalid")
+		}
+		issuerName = nameResult.Value
+	}
 	return assets.Collectible{
-		ID:             id,
-		Name:           name,
-		Kind:           kind,
-		State:          state,
-		Policy:         policy,
-		OwnerKind:      wire.OwnerKind,
-		OwnerID:        wire.OwnerID,
-		OrganizationID: wire.OrganizationID,
-		Art:            wire.Art,
+		ID:                id,
+		Name:              name,
+		Kind:              kind,
+		State:             state,
+		Policy:            policy,
+		OwnerKind:         wire.OwnerKind,
+		OwnerID:           wire.OwnerID,
+		OrganizationID:    wire.OrganizationID,
+		Art:               wire.Art,
+		Catalog:           catalogRef,
+		Edition:           editionRef,
+		Issuer:            issuerRef,
+		IssuerDisplayName: issuerName,
 	}, nil
 }
 
@@ -278,22 +336,30 @@ type acceptedRejectedWire struct {
 	Error   *domainwire.DomainError `json:"error,omitempty"`
 }
 
-func encodeCreateResult(result assets.CreateStoreResult) acceptedRejectedWire {
+func encodeCreateResult(result assets.CreateStoreResult) collectibleResultWire {
 	switch typed := result.(type) {
 	case assets.CreateStoreAccepted:
-		return acceptedRejectedWire{Variant: "accepted"}
+		collectible := encodeCollectible(typed.Value)
+		return collectibleResultWire{Variant: "accepted", Collectible: &collectible}
 	case assets.CreateStoreRejected:
 		reason := domainwire.EncodeDomainError(typed.Reason)
-		return acceptedRejectedWire{Variant: "rejected", Error: &reason}
+		return collectibleResultWire{Variant: "rejected", Error: &reason}
 	default:
-		return acceptedRejectedWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown assets result %T", result))}
+		return collectibleResultWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown assets result %T", result))}
 	}
 }
 
-func decodeCreateResult(wire acceptedRejectedWire) (assets.CreateStoreResult, error) {
+func decodeCreateResult(wire collectibleResultWire) (assets.CreateStoreResult, error) {
 	switch wire.Variant {
 	case "accepted":
-		return assets.CreateStoreAccepted{}, nil
+		if wire.Collectible == nil {
+			return nil, fmt.Errorf("create result is missing its collectible")
+		}
+		collectible, err := decodeCollectible(*wire.Collectible)
+		if err != nil {
+			return nil, err
+		}
+		return assets.CreateStoreAccepted{Value: collectible}, nil
 	case "rejected":
 		return assets.CreateStoreRejected{Reason: decodeReason(wire.Error)}, nil
 	default:
@@ -492,4 +558,389 @@ func decodeReason(wire *domainwire.DomainError) core.DomainError {
 func rejectionError(message string) *domainwire.DomainError {
 	reason := domainwire.EncodeDomainError(core.NewDomainError(core.ErrorCodeInvalidState, message))
 	return &reason
+}
+
+// ---- catalog types ----
+
+func decodeCatalogSlug(raw string) (assets.CatalogSlug, error) {
+	accepted, matched := assets.NewCatalogSlug(raw).(assets.CatalogSlugAccepted)
+	if !matched {
+		return assets.CatalogSlug{}, fmt.Errorf("invalid catalog slug %q", raw)
+	}
+	return accepted.Value, nil
+}
+
+func encodeCatalogSlug(slug assets.CatalogSlug) string { return slug.String() }
+
+type catalogEntryWire struct {
+	Slug   string `json:"slug"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Policy string `json:"policy"`
+	Art    string `json:"art"`
+	State  string `json:"state"`
+	// MaxEditions is nil for uncapped (badge) entries.
+	MaxEditions *int64 `json:"max_editions,omitempty"`
+}
+
+func encodeCatalogEntry(entry assets.CatalogEntry) catalogEntryWire {
+	var maxEditions *int64
+	if capped, matched := entry.Cap.(assets.EditionCapOf); matched {
+		limit := capped.Limit
+		maxEditions = &limit
+	}
+	return catalogEntryWire{
+		Slug:        entry.Slug.String(),
+		Name:        encodeName(entry.Name),
+		Kind:        encodeKind(entry.Kind),
+		Policy:      encodePolicy(entry.Policy),
+		Art:         entry.Art,
+		State:       entry.State.String(),
+		MaxEditions: maxEditions,
+	}
+}
+
+func decodeCatalogEntry(wire catalogEntryWire) (assets.CatalogEntry, error) {
+	slug, err := decodeCatalogSlug(wire.Slug)
+	if err != nil {
+		return assets.CatalogEntry{}, err
+	}
+	name, err := decodeName(wire.Name)
+	if err != nil {
+		return assets.CatalogEntry{}, err
+	}
+	kind, err := decodeKind(wire.Kind)
+	if err != nil {
+		return assets.CatalogEntry{}, err
+	}
+	policy, err := decodePolicy(wire.Policy)
+	if err != nil {
+		return assets.CatalogEntry{}, err
+	}
+	stateAccepted, stateMatched := assets.ParseCatalogEntryState(wire.State).(assets.CatalogEntryStateAccepted)
+	if !stateMatched {
+		return assets.CatalogEntry{}, fmt.Errorf("invalid catalog entry state %q", wire.State)
+	}
+	var cap assets.EditionCap = assets.NoEditionCap{}
+	if wire.MaxEditions != nil {
+		cap = assets.EditionCapOf{Limit: *wire.MaxEditions}
+	}
+	return assets.CatalogEntry{
+		Slug:   slug,
+		Name:   name,
+		Kind:   kind,
+		Policy: policy,
+		Art:    wire.Art,
+		State:  stateAccepted.Value,
+		Cap:    cap,
+	}, nil
+}
+
+type catalogListingWire struct {
+	Entry catalogEntryWire `json:"entry"`
+	// LiveInstances counts the entry's non-withdrawn instances.
+	LiveInstances int64 `json:"live_instances"`
+}
+
+type catalogListResultWire struct {
+	Variant string                  `json:"variant"`
+	Entries []catalogListingWire    `json:"entries,omitempty"`
+	Error   *domainwire.DomainError `json:"error,omitempty"`
+}
+
+func encodeCatalogListResult(result assets.CatalogListResult) catalogListResultWire {
+	switch typed := result.(type) {
+	case assets.CatalogListed:
+		entries := make([]catalogListingWire, 0, len(typed.Values))
+		for _, listing := range typed.Values {
+			entries = append(entries, catalogListingWire{Entry: encodeCatalogEntry(listing.Entry), LiveInstances: listing.LiveInstanceCount})
+		}
+		return catalogListResultWire{Variant: "listed", Entries: entries}
+	case assets.CatalogListRejected:
+		reason := domainwire.EncodeDomainError(typed.Reason)
+		return catalogListResultWire{Variant: "rejected", Error: &reason}
+	default:
+		return catalogListResultWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown assets result %T", result))}
+	}
+}
+
+func decodeCatalogListResult(wire catalogListResultWire) (assets.CatalogListResult, error) {
+	switch wire.Variant {
+	case "listed":
+		entries := make([]assets.CatalogListing, 0, len(wire.Entries))
+		for _, listingWire := range wire.Entries {
+			entry, err := decodeCatalogEntry(listingWire.Entry)
+			if err != nil {
+				return nil, err
+			}
+			entries = append(entries, assets.CatalogListing{Entry: entry, LiveInstanceCount: listingWire.LiveInstances})
+		}
+		return assets.CatalogListed{Values: entries}, nil
+	case "rejected":
+		return assets.CatalogListRejected{Reason: decodeReason(wire.Error)}, nil
+	default:
+		return nil, fmt.Errorf("unknown catalog list result variant %q", wire.Variant)
+	}
+}
+
+type catalogMutationResultWire struct {
+	Variant string                  `json:"variant"`
+	Entry   *catalogEntryWire       `json:"entry,omitempty"`
+	Error   *domainwire.DomainError `json:"error,omitempty"`
+}
+
+func encodeCatalogMutationResult(result assets.CatalogMutationResult) catalogMutationResultWire {
+	switch typed := result.(type) {
+	case assets.CatalogMutated:
+		entry := encodeCatalogEntry(typed.Value)
+		return catalogMutationResultWire{Variant: "mutated", Entry: &entry}
+	case assets.CatalogMutationRejected:
+		reason := domainwire.EncodeDomainError(typed.Reason)
+		return catalogMutationResultWire{Variant: "rejected", Error: &reason}
+	default:
+		return catalogMutationResultWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown assets result %T", result))}
+	}
+}
+
+func decodeCatalogMutationResult(wire catalogMutationResultWire) (assets.CatalogMutationResult, error) {
+	switch wire.Variant {
+	case "mutated":
+		if wire.Entry == nil {
+			return nil, fmt.Errorf("catalog mutation result is missing its entry")
+		}
+		entry, err := decodeCatalogEntry(*wire.Entry)
+		if err != nil {
+			return nil, err
+		}
+		return assets.CatalogMutated{Value: entry}, nil
+	case "rejected":
+		return assets.CatalogMutationRejected{Reason: decodeReason(wire.Error)}, nil
+	default:
+		return nil, fmt.Errorf("unknown catalog mutation result variant %q", wire.Variant)
+	}
+}
+
+// ---- lifecycle commands ----
+
+type awardFromCatalogCommandWire struct {
+	NewID          string `json:"new_id"`
+	Slug           string `json:"slug"`
+	OwnerKind      string `json:"owner_kind"`
+	OwnerID        string `json:"owner_id"`
+	OrganizationID string `json:"organization_id"`
+	Issuer         string `json:"issuer"`
+}
+
+func encodeAwardFromCatalogCommand(command assets.AwardFromCatalogStoreCommand) awardFromCatalogCommandWire {
+	return awardFromCatalogCommandWire{
+		NewID:          corewire.EncodeCollectibleID(command.NewID),
+		Slug:           encodeCatalogSlug(command.Slug),
+		OwnerKind:      command.OwnerKind,
+		OwnerID:        command.OwnerID,
+		OrganizationID: command.OrganizationID,
+		Issuer:         corewire.EncodeUserID(command.Issuer),
+	}
+}
+
+func decodeAwardFromCatalogCommand(wire awardFromCatalogCommandWire) (assets.AwardFromCatalogStoreCommand, error) {
+	newID, err := corewire.DecodeCollectibleID(wire.NewID)
+	if err != nil {
+		return assets.AwardFromCatalogStoreCommand{}, err
+	}
+	slug, err := decodeCatalogSlug(wire.Slug)
+	if err != nil {
+		return assets.AwardFromCatalogStoreCommand{}, err
+	}
+	issuer, err := corewire.DecodeUserID(wire.Issuer)
+	if err != nil {
+		return assets.AwardFromCatalogStoreCommand{}, err
+	}
+	return assets.AwardFromCatalogStoreCommand{
+		NewID:          newID,
+		Slug:           slug,
+		OwnerKind:      wire.OwnerKind,
+		OwnerID:        wire.OwnerID,
+		OrganizationID: wire.OrganizationID,
+		Issuer:         issuer,
+	}, nil
+}
+
+type withdrawCollectibleCommandWire struct {
+	CollectibleID string                `json:"collectible_id"`
+	Draft         eventbridge.DraftWire `json:"draft"`
+}
+
+func encodeWithdrawCollectibleCommand(command assets.WithdrawCollectibleStoreCommand) withdrawCollectibleCommandWire {
+	return withdrawCollectibleCommandWire{
+		CollectibleID: corewire.EncodeCollectibleID(command.CollectibleID),
+		Draft:         eventbridge.EncodeDraft(command.Draft),
+	}
+}
+
+func decodeWithdrawCollectibleCommand(wire withdrawCollectibleCommandWire) (assets.WithdrawCollectibleStoreCommand, error) {
+	collectibleID, err := corewire.DecodeCollectibleID(wire.CollectibleID)
+	if err != nil {
+		return assets.WithdrawCollectibleStoreCommand{}, err
+	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return assets.WithdrawCollectibleStoreCommand{}, err
+	}
+	return assets.WithdrawCollectibleStoreCommand{CollectibleID: collectibleID, Draft: draft}, nil
+}
+
+type transferToOrganizationCommandWire struct {
+	FromUserID     string                `json:"from_user_id"`
+	OrganizationID string                `json:"organization_id"`
+	CollectibleID  string                `json:"collectible_id"`
+	Draft          eventbridge.DraftWire `json:"draft"`
+}
+
+func encodeTransferToOrganizationCommand(command assets.TransferToOrganizationStoreCommand) transferToOrganizationCommandWire {
+	return transferToOrganizationCommandWire{
+		FromUserID:     corewire.EncodeUserID(command.FromUserID),
+		OrganizationID: corewire.EncodeOrganizationID(command.OrganizationID),
+		CollectibleID:  corewire.EncodeCollectibleID(command.CollectibleID),
+		Draft:          eventbridge.EncodeDraft(command.Draft),
+	}
+}
+
+func decodeTransferToOrganizationCommand(wire transferToOrganizationCommandWire) (assets.TransferToOrganizationStoreCommand, error) {
+	fromUserID, err := corewire.DecodeUserID(wire.FromUserID)
+	if err != nil {
+		return assets.TransferToOrganizationStoreCommand{}, err
+	}
+	organizationID, err := corewire.DecodeOrganizationID(wire.OrganizationID)
+	if err != nil {
+		return assets.TransferToOrganizationStoreCommand{}, err
+	}
+	collectibleID, err := corewire.DecodeCollectibleID(wire.CollectibleID)
+	if err != nil {
+		return assets.TransferToOrganizationStoreCommand{}, err
+	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return assets.TransferToOrganizationStoreCommand{}, err
+	}
+	return assets.TransferToOrganizationStoreCommand{
+		FromUserID:     fromUserID,
+		OrganizationID: organizationID,
+		CollectibleID:  collectibleID,
+		Draft:          draft,
+	}, nil
+}
+
+type transferFromOrganizationCommandWire struct {
+	OrganizationID string                `json:"organization_id"`
+	ActingUserID   string                `json:"acting_user_id"`
+	ToUserID       string                `json:"to_user_id"`
+	CollectibleID  string                `json:"collectible_id"`
+	Draft          eventbridge.DraftWire `json:"draft"`
+}
+
+func encodeTransferFromOrganizationCommand(command assets.TransferFromOrganizationStoreCommand) transferFromOrganizationCommandWire {
+	return transferFromOrganizationCommandWire{
+		OrganizationID: corewire.EncodeOrganizationID(command.OrganizationID),
+		ActingUserID:   corewire.EncodeUserID(command.ActingUserID),
+		ToUserID:       corewire.EncodeUserID(command.ToUserID),
+		CollectibleID:  corewire.EncodeCollectibleID(command.CollectibleID),
+		Draft:          eventbridge.EncodeDraft(command.Draft),
+	}
+}
+
+func decodeTransferFromOrganizationCommand(wire transferFromOrganizationCommandWire) (assets.TransferFromOrganizationStoreCommand, error) {
+	organizationID, err := corewire.DecodeOrganizationID(wire.OrganizationID)
+	if err != nil {
+		return assets.TransferFromOrganizationStoreCommand{}, err
+	}
+	actingUserID, err := corewire.DecodeUserID(wire.ActingUserID)
+	if err != nil {
+		return assets.TransferFromOrganizationStoreCommand{}, err
+	}
+	toUserID, err := corewire.DecodeUserID(wire.ToUserID)
+	if err != nil {
+		return assets.TransferFromOrganizationStoreCommand{}, err
+	}
+	collectibleID, err := corewire.DecodeCollectibleID(wire.CollectibleID)
+	if err != nil {
+		return assets.TransferFromOrganizationStoreCommand{}, err
+	}
+	draft, err := eventbridge.DecodeDraft(wire.Draft)
+	if err != nil {
+		return assets.TransferFromOrganizationStoreCommand{}, err
+	}
+	return assets.TransferFromOrganizationStoreCommand{
+		OrganizationID: organizationID,
+		ActingUserID:   actingUserID,
+		ToUserID:       toUserID,
+		CollectibleID:  collectibleID,
+		Draft:          draft,
+	}, nil
+}
+
+// ---- lifecycle results ----
+
+type withdrawResultWire struct {
+	Variant        string                  `json:"variant"`
+	Collectible    *collectibleWire        `json:"collectible,omitempty"`
+	RecordedEvents []eventbridge.DraftWire `json:"recorded_events,omitempty"`
+	Error          *domainwire.DomainError `json:"error,omitempty"`
+}
+
+func encodeWithdrawResult(result assets.WithdrawResult) withdrawResultWire {
+	switch typed := result.(type) {
+	case assets.CollectibleWithdrawn:
+		collectible := encodeCollectible(typed.Value)
+		return withdrawResultWire{Variant: "withdrawn", Collectible: &collectible, RecordedEvents: eventbridge.EncodeDrafts(typed.RecordedEvents)}
+	case assets.WithdrawRejected:
+		reason := domainwire.EncodeDomainError(typed.Reason)
+		return withdrawResultWire{Variant: "rejected", Error: &reason}
+	default:
+		return withdrawResultWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown assets result %T", result))}
+	}
+}
+
+func decodeWithdrawResult(wire withdrawResultWire) (assets.WithdrawResult, error) {
+	switch wire.Variant {
+	case "withdrawn":
+		if wire.Collectible == nil {
+			return nil, fmt.Errorf("withdraw result is missing its collectible")
+		}
+		collectible, err := decodeCollectible(*wire.Collectible)
+		if err != nil {
+			return nil, err
+		}
+		recorded, err := eventbridge.DecodeDrafts(wire.RecordedEvents)
+		if err != nil {
+			return nil, err
+		}
+		return assets.CollectibleWithdrawn{Value: collectible, RecordedEvents: recorded}, nil
+	case "rejected":
+		return assets.WithdrawRejected{Reason: decodeReason(wire.Error)}, nil
+	default:
+		return nil, fmt.Errorf("unknown withdraw result variant %q", wire.Variant)
+	}
+}
+
+func encodeDeleteCollectibleResult(result assets.DeleteCollectibleResult) acceptedRejectedWire {
+	switch typed := result.(type) {
+	case assets.CollectibleDeleted:
+		return acceptedRejectedWire{Variant: "deleted"}
+	case assets.DeleteCollectibleRejected:
+		reason := domainwire.EncodeDomainError(typed.Reason)
+		return acceptedRejectedWire{Variant: "rejected", Error: &reason}
+	default:
+		return acceptedRejectedWire{Variant: "rejected", Error: rejectionError(fmt.Sprintf("unknown assets result %T", result))}
+	}
+}
+
+func decodeDeleteCollectibleResult(wire acceptedRejectedWire) (assets.DeleteCollectibleResult, error) {
+	switch wire.Variant {
+	case "deleted":
+		return assets.CollectibleDeleted{}, nil
+	case "rejected":
+		return assets.DeleteCollectibleRejected{Reason: decodeReason(wire.Error)}, nil
+	default:
+		return nil, fmt.Errorf("unknown delete collectible result variant %q", wire.Variant)
+	}
 }

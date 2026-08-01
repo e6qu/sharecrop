@@ -65,8 +65,12 @@ var (
 	PermissionReviewSubmissions      = Permission{value: "review_submissions"}
 	PermissionManageBilling          = Permission{value: "manage_billing"}
 	PermissionManageWallets          = Permission{value: "manage_wallets"}
-	PermissionPublishPublicTask      = Permission{value: "publish_public_task"}
-	PermissionSwitchTaskVisibility   = Permission{value: "switch_task_visibility"}
+	// PermissionManageCollectibles authorizes the organization's collectible
+	// operations: awarding org-owned collectibles to members and transferring
+	// them out of the organization's holdings.
+	PermissionManageCollectibles   = Permission{value: "manage_collectibles"}
+	PermissionPublishPublicTask    = Permission{value: "publish_public_task"}
+	PermissionSwitchTaskVisibility = Permission{value: "switch_task_visibility"}
 )
 
 func (permission Permission) String() string {
@@ -116,7 +120,7 @@ func roleGrantsPermission(role Role, permission Permission) PermissionCheck {
 
 func adminPermission(permission Permission) PermissionCheck {
 	switch permission {
-	case PermissionManageMembers, PermissionManageTeams, PermissionCreateOrganizationTask, PermissionReviewSubmissions, PermissionSwitchTaskVisibility:
+	case PermissionManageMembers, PermissionManageTeams, PermissionCreateOrganizationTask, PermissionReviewSubmissions, PermissionSwitchTaskVisibility, PermissionManageCollectibles:
 		return PermissionGranted{}
 	default:
 		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "admin role does not grant permission")}

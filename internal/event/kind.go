@@ -35,6 +35,8 @@ var (
 	KindCreditGranted              = Kind{value: "credit_granted"}
 	KindTipReceived                = Kind{value: "tip_received"}
 	KindCollectibleAwarded         = Kind{value: "collectible_awarded"}
+	KindCollectibleWithdrawn       = Kind{value: "collectible_withdrawn"}
+	KindCreditsSent                = Kind{value: "credits_sent"}
 )
 
 // AllKinds returns every event kind. Totality tests over the kind set (the
@@ -62,6 +64,8 @@ func AllKinds() []Kind {
 		KindCreditGranted,
 		KindTipReceived,
 		KindCollectibleAwarded,
+		KindCollectibleWithdrawn,
+		KindCreditsSent,
 	}
 }
 

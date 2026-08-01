@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/e6qu/sharecrop/internal/auth"
@@ -56,7 +57,26 @@ func (store EventStore) Append(ctx context.Context, value event.Event, recipient
 
 // insertDomainEventInTx inserts one domain event with its recipient set in
 // the recorded dispatch state, inside the caller's transaction.
+//
+// Before the first insert it locks the single domain_event_fence row, held
+// until the caller's transaction commits. This serializes {seq allocation ->
+// commit} across every event-recording transaction, so events become visible
+// in strictly increasing seq order and the "seq > after" cursor reads (feed
+// pages, long-poll head checks, SSE resume) can never skip an event that a
+// slower transaction commits later with a lower seq. A per-row
+// xid-versus-snapshot-xmin bound was rejected: xid order is not seq order (a
+// transaction acquires its xid at its first write, often several statements
+// before it allocates the event seq), so a committed row can pass the xmin
+// cap while an in-flight transaction still holds a lower seq. Event
+// recording is the final step of each mutation transaction, so the fence is
+// always the last lock acquired (no deadlock cycles), and the serialized
+// window is only the tail of the transaction. On SQLite the FOR UPDATE is
+// translated away; its single-writer model already serializes commits.
 func insertDomainEventInTx(ctx context.Context, tx Tx, value event.Event, recipients event.Recipients) (int64, error) {
+	if _, err := tx.Exec(ctx, "select id from domain_event_fence where id = 1 for update"); err != nil {
+		return 0, err
+	}
+
 	actorKind := "user"
 	if _, matched := value.Actor.(event.ActorSystem); matched {
 		actorKind = "system"
@@ -134,7 +154,9 @@ func (store EventStore) Dispatch(ctx context.Context, id core.DomainEventID) eve
 	if !stateMatched {
 		return event.DispatchStoreRejected{Reason: event.ParseDispatchState(rawState).(event.DispatchStateRejected).Reason}
 	}
-	if stateResult.Value == event.DispatchStateDispatched {
+	if stateResult.Value == event.DispatchStateDispatched || stateResult.Value == event.DispatchStateFailed {
+		// Dispatched is done; dispatch_failed is terminal (the sweep retired
+		// the row after the attempt cap) — both complete as a no-op.
 		return event.DispatchStoreCompleted{}
 	}
 
@@ -158,12 +180,23 @@ func (store EventStore) Dispatch(ctx context.Context, id core.DomainEventID) eve
 
 // ---- host-only dispatch sweep reads (the lifecycle runner) ----
 
+// MaxEventDispatchAttempts caps how many recovery-sweep passes may claim one
+// recorded event. A row claimed this many times without reaching dispatched
+// is moved to the terminal dispatch_failed state on the next pass, so a
+// poison row cannot occupy the sweep forever. Inline dispatches are not
+// counted; only the sweep increments the counter.
+const MaxEventDispatchAttempts = 20
+
 type ListRecordedResult interface {
 	listRecordedResult()
 }
 
 type RecordedEventsListed struct {
 	Values []event.Draft
+	// SkippedMalformed counts claimed rows whose stored columns no longer
+	// parse into a draft. They are skipped (never blocking later rows) and
+	// keep accumulating attempts until the cap retires them.
+	SkippedMalformed int
 }
 
 type ListRecordedRejected struct {
@@ -176,17 +209,35 @@ func (ListRecordedRejected) listRecordedResult() {}
 
 // ListRecordedBefore rebuilds the drafts of events still in the recorded
 // dispatch state whose occurrence instant is at or before cutoff — the stale
-// rows whose inline dispatch was lost to a crash. The lifecycle runner's
-// dispatch sweep feeds them back through Recorder.Dispatch. It is a
-// struct-only method (not part of the bridged event.Store), so the WASI
-// guest can never reach it.
+// rows whose inline dispatch was lost to a crash or a failed fan-out. The
+// lifecycle runner's dispatch sweep feeds them back through
+// Recorder.Dispatch. Each pass first retires rows whose attempt count
+// reached MaxEventDispatchAttempts to dispatch_failed, then claims a batch
+// and increments its attempt counters. Rows that fail to parse are skipped
+// and reported, never aborting the batch. It is a struct-only method (not
+// part of the bridged event.Store), so the WASI guest can never reach it.
 func (store EventStore) ListRecordedBefore(ctx context.Context, cutoff time.Time, limit int) ListRecordedResult {
+	if _, err := store.db.Exec(ctx, `
+		update domain_events
+		set dispatch_state = $1
+		where dispatch_state = $2 and occurred_at <= $3 and dispatch_attempts >= $4
+	`, event.DispatchStateFailed.String(), event.DispatchStateRecorded.String(), cutoff, MaxEventDispatchAttempts); err != nil {
+		return ListRecordedRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "retire exhausted recorded events failed")}
+	}
+
 	rows, err := store.db.Query(ctx, `
-		select `+eventColumns+`
-		from domain_events
-		where domain_events.dispatch_state = $1 and domain_events.occurred_at <= $2
-		order by domain_events.seq
-		limit $3
+		update domain_events
+		set dispatch_attempts = dispatch_attempts + 1
+		where seq in (
+			select seq from domain_events
+			where dispatch_state = $1 and occurred_at <= $2
+			order by seq
+			limit $3
+		)
+		returning seq, id::text, kind, actor_kind, actor_user_id::text,
+			task_id::text, submission_id::text, reservation_id::text,
+			series_id::text, organization_id::text, collectible_id::text,
+			metadata_json::text, occurred_at
 	`, event.DispatchStateRecorded.String(), cutoff, limit)
 	if err != nil {
 		return ListRecordedRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list recorded events failed")}
@@ -194,22 +245,32 @@ func (store EventStore) ListRecordedBefore(ctx context.Context, cutoff time.Time
 	defer rows.Close()
 
 	stored := make([]event.StoredEvent, 0)
+	skipped := 0
 	for rows.Next() {
 		value, scanErr := scanBareStoredEvent(rows)
 		if scanErr != nil {
-			return ListRecordedRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan recorded event failed")}
+			// A malformed row must not poison the batch: skip it and let the
+			// attempt cap retire it.
+			skipped++
+			continue
 		}
 		stored = append(stored, value)
 	}
 	if rows.Err() != nil {
 		return ListRecordedRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "iterate recorded events failed")}
 	}
+	// RETURNING carries no ordering guarantee; the sweep dispatches in seq
+	// order.
+	sort.Slice(stored, func(left int, right int) bool {
+		return stored[left].Cursor.Sequence() < stored[right].Cursor.Sequence()
+	})
 
 	drafts := make([]event.Draft, 0, len(stored))
 	for _, value := range stored {
 		recipients, recipientsErr := store.eventRecipients(ctx, value.Cursor.Sequence())
 		if recipientsErr != nil {
-			return ListRecordedRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read recorded event recipients failed")}
+			skipped++
+			continue
 		}
 		drafts = append(drafts, event.Draft{
 			ID:         value.Event.ID,
@@ -220,7 +281,62 @@ func (store EventStore) ListRecordedBefore(ctx context.Context, cutoff time.Time
 			Recipients: recipients,
 		})
 	}
-	return RecordedEventsListed{Values: drafts}
+	return RecordedEventsListed{Values: drafts, SkippedMalformed: skipped}
+}
+
+// FailedEventRow is one event retired to the terminal dispatch_failed state,
+// exposed so operators can inspect what the sweep gave up on.
+type FailedEventRow struct {
+	Sequence   int64
+	EventID    string
+	Kind       string
+	Attempts   int64
+	OccurredAt time.Time
+}
+
+type ListDispatchFailedResult interface {
+	listDispatchFailedResult()
+}
+
+type DispatchFailedEventsListed struct {
+	Values []FailedEventRow
+}
+
+type ListDispatchFailedRejected struct {
+	Reason core.DomainError
+}
+
+func (DispatchFailedEventsListed) listDispatchFailedResult() {}
+
+func (ListDispatchFailedRejected) listDispatchFailedResult() {}
+
+// ListDispatchFailed lists events in the terminal dispatch_failed state,
+// oldest first. Host-only (struct method), for operator inspection.
+func (store EventStore) ListDispatchFailed(ctx context.Context, limit int) ListDispatchFailedResult {
+	rows, err := store.db.Query(ctx, `
+		select seq, id::text, kind, dispatch_attempts, occurred_at
+		from domain_events
+		where dispatch_state = $1
+		order by seq
+		limit $2
+	`, event.DispatchStateFailed.String(), limit)
+	if err != nil {
+		return ListDispatchFailedRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "list dispatch-failed events failed")}
+	}
+	defer rows.Close()
+
+	values := make([]FailedEventRow, 0)
+	for rows.Next() {
+		var row FailedEventRow
+		if err := rows.Scan(&row.Sequence, &row.EventID, &row.Kind, &row.Attempts, &row.OccurredAt); err != nil {
+			return ListDispatchFailedRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan dispatch-failed event failed")}
+		}
+		values = append(values, row)
+	}
+	if rows.Err() != nil {
+		return ListDispatchFailedRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "iterate dispatch-failed events failed")}
+	}
+	return DispatchFailedEventsListed{Values: values}
 }
 
 // eventRecipients reads the recipient set of one stored event.

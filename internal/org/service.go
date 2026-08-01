@@ -553,12 +553,18 @@ func (service Service) UpdateMemberRoles(ctx context.Context, actor auth.Subject
 }
 
 func (service Service) requirePermission(ctx context.Context, organizationID core.OrganizationID, userID core.UserID, permission Permission) PermissionCheck {
-	rolesResult := service.store.FindMemberRoles(ctx, organizationID, userID)
-	rolesFound, matched := rolesResult.(MemberRolesFound)
-	if !matched {
+	switch typed := service.store.FindMemberRoles(ctx, organizationID, userID).(type) {
+	case MemberRolesFound:
+		return CheckPermission(typed.Roles, permission)
+	case MemberRolesMissing:
+		// A non-member simply lacks the permission; this is an authorization
+		// denial, not a broken state.
+		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodePermissionDenied, "organization membership is required")}
+	case MemberRolesRejected:
+		return PermissionDenied{Reason: typed.Reason}
+	default:
 		return PermissionDenied{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "organization member roles were not found")}
 	}
-	return CheckPermission(rolesFound.Roles, permission)
 }
 
 // requirePermissionForActor adds org-token support in front of

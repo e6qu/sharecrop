@@ -45,11 +45,14 @@ type Services interface {
 	SubmitResponse(context.Context, submission.SubmitCommand) submission.SubmitResult
 	GetSubmissionStatus(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	GetSubmission(context.Context, auth.Subject, core.SubmissionID) submission.GetResult
-	ListTaskSubmissions(context.Context, auth.UserSubject, core.TaskID, core.Page) submission.ListResult
-	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
-	ReviewAcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult
-	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult
-	RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
+	ListTaskSubmissions(context.Context, auth.Subject, core.TaskID, core.Page) submission.ListResult
+	// The review methods take the ledger.Reviewer union (a user reviewer or
+	// an organization reviewer), mirroring REST: an organization credential
+	// reviews its own organization's tasks with org-admin parity, but tips
+	// and bans stay user-only (enforced by the ledger service).
+	ReviewAcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult
+	RequestChanges(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult
+	RejectSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
 	ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
 	CreateSeries(context.Context, auth.UserSubject, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
@@ -68,8 +71,6 @@ type Services interface {
 	ReserveTask(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ReserveTaskForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
 	ListReservations(context.Context, auth.Subject, core.TaskID, core.Page) task.ReservationsListResult
-	ApproveReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
-	DeclineReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 
 	CreateOrganization(context.Context, auth.UserSubject, org.OrganizationName) org.CreateOrganizationResult
@@ -91,12 +92,21 @@ type Services interface {
 	ListOrgCredentials(context.Context, core.OrganizationID, core.Page) orgcred.ListResult
 	RevokeOrgCredential(context.Context, core.OrganizationID, core.OrgCredentialID) orgcred.RevokeResult
 
-	MintCollectible(context.Context, string, string, string, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult
+	MintCollectible(context.Context, core.UserID, string, string, string, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult
+	ListCollectibleCatalog(context.Context) assets.CatalogListResult
 	ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult
 	ListCollectiblesByOwner(context.Context, string, string, core.Page) assets.ListResult
 	TransferCollectible(context.Context, core.UserID, core.UserID, core.CollectibleID) assets.GiftResult
+	TransferCollectibleToOrganization(context.Context, core.UserID, core.OrganizationID, core.CollectibleID) assets.GiftResult
+	TransferCollectibleFromOrganization(context.Context, core.UserID, core.OrganizationID, core.UserID, core.CollectibleID) assets.GiftResult
+	AwardOrganizationCollectible(context.Context, core.OrganizationID, core.CollectibleID, core.UserID) assets.GiftResult
 	FundCollectibleReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
 	RefundCollectibleReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
+	AddCatalogEntry(context.Context, assets.CatalogEntry) assets.CatalogMutationResult
+	WithdrawCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult
+	DeleteCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult
+	WithdrawCollectible(context.Context, core.UserID, core.CollectibleID) assets.WithdrawResult
+	DeleteWithdrawnCollectible(context.Context, core.CollectibleID) assets.DeleteCollectibleResult
 
 	ListNotifications(context.Context, core.UserID, notification.StateFilter, core.Page) notification.ListResult
 	CountUnreadNotifications(context.Context, core.UserID) notification.CountResult
@@ -111,6 +121,7 @@ type Services interface {
 	GetCreditBalance(context.Context, core.UserID) ledger.BalanceResult
 	ListLedger(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
 	GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult
+	SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey) ledger.SendResult
 
 	CreateWebhookSubscription(context.Context, webhook.Owner, webhook.EndpointURL, webhook.KindFilter, webhook.Audience) webhook.CreateResult
 	ListWebhookSubscriptions(context.Context, webhook.Owner, core.Page) webhook.ListResult
@@ -139,7 +150,7 @@ type Services interface {
 
 	ListAuditEvents(context.Context, audit.ListFilters, core.Page) audit.ListResult
 
-	AwardCollectible(context.Context, string, string, string, string) assets.MintResult
+	AwardCollectible(context.Context, core.UserID, string, string, string, string) assets.MintResult
 }
 
 type Server struct {
@@ -176,14 +187,16 @@ func (server Server) Handle(ctx context.Context, subject auth.Subject, credentia
 // It is the MCP `initialize` result's `instructions` field.
 const serverInstructions = `Sharecrop is a task marketplace: users and agents post tasks with credit or collectible rewards, workers submit structured responses, and task owners review them.
 Worker loop: sharecrop.list_tasks with scope "public" finds open work; sharecrop.get_task and sharecrop.get_task_schema read a task and its response schema; sharecrop.reserve_task claims it when the participation policy requires a reservation; sharecrop.submit_response submits response_json matching the schema; sharecrop.list_notifications shows review outcomes; sharecrop.get_credit_balance shows earnings.
-Reviewer loop (task owners): sharecrop.list_task_submissions lists submitted work as summaries; sharecrop.get_submission reads one submission's full content; then sharecrop.accept_submission, sharecrop.request_submission_changes, or sharecrop.reject_submission settles the review.
+Reviewer loop (task owners): sharecrop.list_task_submissions lists submitted work as summaries; sharecrop.get_submission reads one submission's full content; then sharecrop.accept_submission, sharecrop.request_submission_changes, or sharecrop.reject_submission settles the review. An organization credential reviews its own organization's tasks the same way, but cannot tip or ban (those move personal value).
 Requester loop: sharecrop.create_task (visibility_kind is required; "public" tasks appear in the marketplace), sharecrop.fund_task for credit rewards, then sharecrop.open_task makes it workable.
 A task's response_schema_json uses the Sharecrop schema dialect, NOT JSON Schema. Shapes: {"kind":"freeform"} or {"kind":"object","fields":[{"name":"...","presence":"required","schema":{"kind":"string"}}]}.
 A schema-invalid submission is stored with state "invalid" and its validation_errors; the reservation stays active, so fix the errors and resubmit immediately.
 Instead of polling list_tasks, sharecrop.create_webhook_subscription with audience "marketplace" pushes task_opened events for public open tasks (optionally filtered by task type or minimum credit reward).
 Without webhook infrastructure, poll sharecrop.list_events: it returns the credential's event feed (review outcomes, reservations, payouts) as cursor rows - pass next_cursor back as after to read only what is new.
 If a review rejected your submission wrongly, file a structured dispute: sharecrop.create_moderation_report with subject_kind "submission", the submission id, and reason "dispute".
-List tools return next_offset (0 means the last page; otherwise pass it back as offset to continue) and total (rows matching the filter, ignoring paging).
+sharecrop.send_credits sends spendable credits to another user or organization (from your own balance, or an organization balance you may spend from); it requires a credential minted with the ledger_write scope, and idempotency_key makes a retried send safe.
+sharecrop.collectible_catalog lists every platform collectible template with its state (available or withdrawn), max_editions, and minted_count; collectible payloads carry catalog_slug, edition_number, and issuer_display_name provenance.
+List tools return next_offset (0 means the last page; otherwise pass it back as offset to continue); the list tools whose REST counterpart carries total also return it (rows matching the filter, ignoring paging).
 Failed tool calls return isError with one text item of compact JSON {"code":"...","message":"..."}.`
 
 func (server Server) handleInitialize(request Request) Response {
@@ -365,35 +378,15 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 	case toolGetSubmissionStatus:
 		return server.callGetSubmissionStatus(ctx, arguments)
 	case toolGetSubmission:
-		userActor, failure, ok := requireUserSubjectForTool(subject)
-		if !ok {
-			return failure
-		}
-		return server.callGetSubmission(ctx, userActor, arguments)
+		return server.callGetSubmission(ctx, subject, arguments)
 	case toolListTaskSubmissions:
-		userActor, failure, ok := requireUserSubjectForTool(subject)
-		if !ok {
-			return failure
-		}
-		return server.callListTaskSubmissions(ctx, userActor, arguments)
+		return server.callListTaskSubmissions(ctx, subject, arguments)
 	case toolAcceptSubmission:
-		userActor, failure, ok := requireUserSubjectForTool(subject)
-		if !ok {
-			return failure
-		}
-		return server.callAcceptSubmission(ctx, userActor, arguments)
+		return server.callAcceptSubmission(ctx, subject, arguments)
 	case toolRequestChanges:
-		userActor, failure, ok := requireUserSubjectForTool(subject)
-		if !ok {
-			return failure
-		}
-		return server.callRequestChanges(ctx, userActor, arguments)
+		return server.callRequestChanges(ctx, subject, arguments)
 	case toolRejectSubmission:
-		userActor, failure, ok := requireUserSubjectForTool(subject)
-		if !ok {
-			return failure
-		}
-		return server.callRejectSubmission(ctx, userActor, arguments)
+		return server.callRejectSubmission(ctx, subject, arguments)
 	case toolListTaskSeries:
 		userActor, failure, ok := requireUserSubjectForTool(subject)
 		if !ok {
@@ -506,10 +499,6 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 		return server.callReserveTask(ctx, userActor, arguments)
 	case toolListReservations:
 		return server.callListReservations(ctx, subject, arguments)
-	case toolApproveReservation:
-		return server.callChangeReservation(ctx, subject, arguments, server.services.ApproveReservation)
-	case toolDeclineReservation:
-		return server.callChangeReservation(ctx, subject, arguments, server.services.DeclineReservation)
 	case toolCancelReservation:
 		return server.callChangeReservation(ctx, subject, arguments, server.services.CancelReservation)
 	case toolCreateOrganization:
@@ -618,6 +607,38 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 			return failure
 		}
 		return server.callTransferCollectible(ctx, userActor, arguments)
+	case toolTransferOrgCollectible:
+		return server.callTransferOrgCollectible(ctx, subject, arguments)
+	case toolAddCatalogEntry:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callAddCatalogEntry(ctx, userActor, arguments)
+	case toolWithdrawCatalogEntry:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callWithdrawCatalogEntry(ctx, userActor, arguments)
+	case toolDeleteCatalogEntry:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callDeleteCatalogEntry(ctx, userActor, arguments)
+	case toolWithdrawCollectible:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callWithdrawCollectible(ctx, userActor, arguments)
+	case toolDeleteWithdrawnCollectible:
+		userActor, failure, ok := server.requireAdminSubjectForTool(ctx, subject)
+		if !ok {
+			return failure
+		}
+		return server.callDeleteWithdrawnCollectible(ctx, userActor, arguments)
 	case toolListCollectibles:
 		userActor, failure, ok := requireUserSubjectForTool(subject)
 		if !ok {
@@ -666,6 +687,12 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 			return failure
 		}
 		return server.callGrantCredits(ctx, userActor, arguments)
+	case toolSendCredits:
+		userActor, failure, ok := requireUserSubjectForTool(subject)
+		if !ok {
+			return failure
+		}
+		return server.callSendCredits(ctx, userActor, arguments)
 	case toolListEvents:
 		return server.callListEvents(ctx, subject, arguments)
 	case toolListNotifications:

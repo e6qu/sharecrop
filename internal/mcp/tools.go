@@ -39,8 +39,6 @@ const (
 	toolUnpublishTask          = "sharecrop.unpublish_task"
 	toolReserveTask            = "sharecrop.reserve_task"
 	toolListReservations       = "sharecrop.list_task_reservations"
-	toolApproveReservation     = "sharecrop.approve_task_reservation"
-	toolDeclineReservation     = "sharecrop.decline_task_reservation"
 	toolCancelReservation      = "sharecrop.cancel_task_reservation"
 
 	toolCancelTask    = "sharecrop.cancel_task"
@@ -75,7 +73,7 @@ func coreToolDefinitions() []toolDefinition {
 			Name:        toolListTasks,
 			Description: "List tasks the agent is permitted to see. Scope is \"public\" (open tasks to work) or \"user\" (the agent's own tasks). Optional filters mirror the REST task listing: repeated states, participation_policy, query (title/id search), task_type, created_after (RFC3339; only tasks created strictly after it), funded (reward_funded, reward_unfunded, or no_credit_reward), sort, and limit/offset paging. state is a deprecated single-state alias for states. Rows carry creator_display_name, holder_display_name (the active reservation holder, when user-assigned), funded, and pending_review_count (submissions awaiting review, populated only on the caller's own tasks). The result carries next_offset (0 on the last page) and total (rows matching the filter, ignoring paging).",
 			Scope:       agent.ScopeTasksRead,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"scope":{"type":"string","enum":["public","user"]},"state":{"type":"string","enum":["draft","open","closed","cancelled","expired"]},"states":{"type":"array","items":{"type":"string","enum":["draft","open","closed","cancelled","expired"]}},"participation_policy":{"type":"string","enum":["open","reservation_required","approval_required"]},"query":{"type":"string"},"task_type":{"type":"string","enum":["general","code_review","security_review","product_review","ui_ux_review","qa_testing"]},"created_after":{"type":"string"},"funded":{"type":"string","enum":["reward_funded","reward_unfunded","no_credit_reward"]},"sort":{"type":"string","enum":["newest","oldest","title_asc","title_desc","reward_desc","reward_asc"]},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["scope"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"scope":{"type":"string","enum":["public","user"]},"state":{"type":"string","enum":["draft","open","closed","cancelled","expired"]},"states":{"type":"array","items":{"type":"string","enum":["draft","open","closed","cancelled","expired"]}},"participation_policy":{"type":"string","enum":["open","reservation_required"]},"query":{"type":"string"},"task_type":{"type":"string","enum":["general","code_review","security_review","product_review","ui_ux_review","qa_testing"]},"created_after":{"type":"string"},"funded":{"type":"string","enum":["reward_funded","reward_unfunded","no_credit_reward"]},"sort":{"type":"string","enum":["newest","oldest","title_asc","title_desc","reward_desc","reward_asc"]},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["scope"]}`),
 		},
 		{
 			Name:        toolGetTask,
@@ -93,7 +91,7 @@ func coreToolDefinitions() []toolDefinition {
 			Name:        toolCreateTask,
 			Description: "Create a task in draft state, with full REST parity. owner (default: the agent's user) may be a user, team, organization, or organization_team. visibility_kind is REQUIRED and states who can see the task: \"public\" appears in the shared marketplace for anyone to find and work; \"user\" is private to you and the named visibility_user_id (default: your own user, so nobody else can see it); \"team\", \"organization\", and \"organization_team\" limit it to the group named by the matching visibility_* id. Reward kind is \"none\", \"credit\", \"collectible\" (requires reward_collectible_ids, escrowed at creation), or \"bundle\" (credit amount plus optional reward_collectible_ids). participation_policy (default \"open\"), assignee_scope (default \"user\"), and reservation_expiry_hours (1-720, default 48) control how workers claim it. series_id/series_position place the task in an existing series. payload_json attaches machine-readable task data; attachments carry files as data URLs; expires_at (RFC3339, in the future) makes an open task expire automatically. After creating, call fund_task (for credit or bundle rewards) and then open_task so others can pick it up.",
 			Scope:       agent.ScopeTasksWrite,
-			InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"description":{"type":"string"},"response_schema_json":{"type":"string"},"owner":{"type":"object","additionalProperties":false,"properties":{"kind":{"type":"string","enum":["user","team","organization","organization_team"]},"user_id":{"type":"string"},"team_id":{"type":"string"},"organization_id":{"type":"string"}}},"visibility_kind":{"type":"string","enum":["public","user","team","organization","organization_team"]},"visibility_user_id":{"type":"string"},"visibility_team_id":{"type":"string"},"visibility_organization_id":{"type":"string"},"reward_kind":{"type":"string","enum":["none","credit","collectible","bundle"]},"reward_credit_amount":{"type":"integer","minimum":1},"reward_collectible_ids":{"type":"array","items":{"type":"string"}},"participation_policy":{"type":"string","enum":["open","reservation_required","approval_required"]},"assignee_scope":{"type":"string","enum":["user","team","organization_team"]},"reservation_expiry_hours":{"type":"integer","minimum":1,"maximum":720},"task_type":{"type":"string","enum":["general","code_review","security_review","product_review","ui_ux_review","qa_testing"]},"reference_url":{"type":"string"},"series_id":{"type":"string"},"series_position":{"type":"integer","minimum":1},"payload_json":{"type":"string"},"attachments":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"name":{"type":"string"},"content_type":{"type":"string"},"data_url":{"type":"string"}},"required":["name","content_type","data_url"]}},"expires_at":{"type":"string"}},"required":["title","description","response_schema_json","reward_kind","visibility_kind"]}`),
+			InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"description":{"type":"string"},"response_schema_json":{"type":"string"},"owner":{"type":"object","additionalProperties":false,"properties":{"kind":{"type":"string","enum":["user","team","organization","organization_team"]},"user_id":{"type":"string"},"team_id":{"type":"string"},"organization_id":{"type":"string"}}},"visibility_kind":{"type":"string","enum":["public","user","team","organization","organization_team"]},"visibility_user_id":{"type":"string"},"visibility_team_id":{"type":"string"},"visibility_organization_id":{"type":"string"},"reward_kind":{"type":"string","enum":["none","credit","collectible","bundle"]},"reward_credit_amount":{"type":"integer","minimum":1},"reward_collectible_ids":{"type":"array","items":{"type":"string"}},"participation_policy":{"type":"string","enum":["open","reservation_required"]},"assignee_scope":{"type":"string","enum":["user","team","organization_team"]},"reservation_expiry_hours":{"type":"integer","minimum":1,"maximum":720},"task_type":{"type":"string","enum":["general","code_review","security_review","product_review","ui_ux_review","qa_testing"]},"reference_url":{"type":"string"},"series_id":{"type":"string"},"series_position":{"type":"integer","minimum":1},"payload_json":{"type":"string"},"attachments":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"name":{"type":"string"},"content_type":{"type":"string"},"data_url":{"type":"string"}},"required":["name","content_type","data_url"]}},"expires_at":{"type":"string"}},"required":["title","description","response_schema_json","reward_kind","visibility_kind"]}`),
 		},
 		{
 			Name:        toolOpenTask,
@@ -121,31 +119,31 @@ func coreToolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolGetSubmission,
-			Description: "Read one submission's full content for review: response_json, attachments, validation_errors, state, review_note, submitter_id, submitter_display_name, and created_at. Available to the submission's submitter and to the task's owner/reviewer (the same authorization as accept_submission).",
+			Description: "Read one submission's full content for review: response_json, attachments, validation_errors, state, review_note, submitter_id, submitter_display_name, and created_at. Available to the submission's submitter and to the task's owner/reviewer (the same authorization as accept_submission); an organization credential reads submissions on its own organization's tasks.",
 			Scope:       agent.ScopeSubmissionsRead,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"submission_id":{"type":"string"}},"required":["submission_id"]}`),
 		},
 		{
 			Name:        toolListTaskSubmissions,
-			Description: "List submissions for a task owned by the agent's user. Rows are summaries (id, task_id, submitter_id, submitter_display_name, state, created_at); call get_submission for a submission's full content.",
+			Description: "List submissions for a task the caller reviews: a personal agent credential lists tasks its user owns, and an organization credential lists its own organization's tasks. Rows are summaries (id, task_id, submitter_id, submitter_display_name, state, created_at); call get_submission for a submission's full content.",
 			Scope:       agent.ScopeSubmissionsRead,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["task_id"]}`),
 		},
 		{
 			Name:        toolAcceptSubmission,
-			Description: "Accept a submission for a task owned by the agent's user, paying the task's allocated reward when present. Optional payout_amount pays part of the allocated credits, optional tip_amount pays extra credits from the requester balance, and optional tip_collectible_id gifts one of the requester's collectibles as a tip.",
+			Description: "Accept a submission for a task the caller reviews, paying the task's allocated reward when present. Optional payout_amount pays part of the allocated credits, optional tip_amount pays extra credits from the requester balance, and optional tip_collectible_id gifts one of the requester's collectibles as a tip. An organization credential accepts on its own organization's tasks, but cannot pass the tip fields (tips move personal value).",
 			Scope:       agent.ScopeSubmissionsReview,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"submission_id":{"type":"string"},"idempotency_key":{"type":"string"},"payout_amount":{"type":"integer","minimum":1},"tip_amount":{"type":"integer","minimum":1},"tip_collectible_id":{"type":"string"}},"required":["task_id","submission_id","idempotency_key"]}`),
 		},
 		{
 			Name:        toolRequestChanges,
-			Description: "Request changes for submitted work, keeping the task reserved for the same implementor.",
+			Description: "Request changes for submitted work, keeping the task reserved for the same implementor. An organization credential requests changes on its own organization's tasks.",
 			Scope:       agent.ScopeSubmissionsReview,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"submission_id":{"type":"string"},"idempotency_key":{"type":"string"},"review_note":{"type":"string"}},"required":["task_id","submission_id","idempotency_key","review_note"]}`),
 		},
 		{
 			Name:        toolRejectSubmission,
-			Description: "Reject submitted work with required notes. Optional partial_credit_amount pays part of the task's allocated credits, optional tip_amount pays extra credits from requester balance, and ban_selection=ban_implementor prevents the worker from doing the same task again.",
+			Description: "Reject submitted work with required notes. Optional partial_credit_amount pays part of the task's allocated credits, optional tip_amount pays extra credits from requester balance, and ban_selection=ban_implementor prevents the worker from doing the same task again. An organization credential rejects on its own organization's tasks, but cannot pass the tip or ban fields (those act as a person).",
 			Scope:       agent.ScopeSubmissionsReview,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"submission_id":{"type":"string"},"idempotency_key":{"type":"string"},"review_note":{"type":"string"},"partial_credit_amount":{"type":"integer","minimum":1},"tip_amount":{"type":"integer","minimum":1},"ban_selection":{"type":"string","enum":["none","ban_implementor"]}},"required":["task_id","submission_id","idempotency_key","review_note"]}`),
 		},
@@ -247,27 +245,15 @@ func coreToolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        toolReserveTask,
-			Description: "Reserve a task or request requester approval, depending on the task participation policy. Omit assignee_kind to reserve as the agent's user, or pass organization_team with organization_id and team_id to reserve for an organization team the user belongs to.",
+			Description: "Reserve a task; the reservation is active immediately (there is no approval step). Omit assignee_kind to reserve as the agent's user, or pass organization_team with organization_id and team_id to reserve for an organization team the user belongs to.",
 			Scope:       agent.ScopeSubmissionsWrite,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"assignee_kind":{"type":"string","enum":["user","organization_team"]},"organization_id":{"type":"string"},"team_id":{"type":"string"}},"required":["task_id"]}`),
 		},
 		{
 			Name:        toolListReservations,
-			Description: "List reservation requests for a task owned by the agent's user.",
+			Description: "List a task's reservations for its owner. Rows carry holder_display_name (the requesting user's display name).",
 			Scope:       agent.ScopeSubmissionsRead,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"limit":{"type":"integer","minimum":1},"offset":{"type":"integer","minimum":0}},"required":["task_id"]}`),
-		},
-		{
-			Name:        toolApproveReservation,
-			Description: "Approve a reservation request for a task owned by the agent's user.",
-			Scope:       agent.ScopeSubmissionsReview,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"reservation_id":{"type":"string"}},"required":["task_id","reservation_id"]}`),
-		},
-		{
-			Name:        toolDeclineReservation,
-			Description: "Decline a reservation request for a task owned by the agent's user.",
-			Scope:       agent.ScopeSubmissionsReview,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"task_id":{"type":"string"},"reservation_id":{"type":"string"}},"required":["task_id","reservation_id"]}`),
 		},
 		{
 			Name:        toolCancelReservation,

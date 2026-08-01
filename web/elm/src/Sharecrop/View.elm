@@ -23,7 +23,7 @@ import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
 import Sharecrop.ResponseSchema as ResponseSchema
 import Sharecrop.Sprites as Sprites
-import Sharecrop.Labels exposing (allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, domainEventKindLabel, domainEventKindTag, eventSentence, kindLabel, notificationKindLabel, notificationSentence, participationPolicyLabel, participationPolicyTag, participationUsesReservation, relativeTimeLabel, reservationStateLabel, rewardLabel, scopeLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
+import Sharecrop.Labels exposing (absoluteTimeLabel, allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, domainEventKindLabel, domainEventKindTag, eventSentence, kindLabel, notificationKindLabel, notificationSentence, participationPolicyLabel, participationPolicyTag, participationUsesReservation, relativeTimeLabel, reservationStateLabel, rewardLabel, scopeLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
 import Sharecrop.Types exposing (..)
 import Sharecrop.Ui as Ui exposing (testId)
 import Time
@@ -31,7 +31,15 @@ import Time
 
 view : Model -> Browser.Document Msg
 view model =
-    { title = "Sharecrop"
+    { title =
+        -- The tab names the page ("Sharecrop — Tasks"), so several open
+        -- tabs stay tellable apart. Logged out there is only one screen.
+        case model.session of
+            LoggedIn state ->
+                "Sharecrop — " ++ pageTitleText state.page
+
+            LoggedOut ->
+                "Sharecrop"
     , body =
         [ main_ [ Html.Attributes.class "min-h-screen bg-farm-page p-4 text-farm-ink sm:p-8" ]
             [ div [ Html.Attributes.class "mx-auto max-w-3xl space-y-6" ]
@@ -71,14 +79,15 @@ authView model =
         -- attempting a login. Each reset field is bound to the reset action
         -- that makes sense for it.
         (if model.shauth then
-            [ p [ Html.Attributes.class "text-farm-muted" ] [ text "Continue through Shauth to use your organization identity." ]
+            [ sessionEndedNoticeView model.sessionNotice
+            , p [ Html.Attributes.class "text-farm-muted" ] [ text "Continue through Shauth to use your organization identity." ]
             , Ui.secondaryLink [ testId "shauth-login" ] "/api/auth/shauth" "Continue with Shauth"
             , maybeError model.authError "auth-error"
-            , sessionEndedNoticeView model.sessionNotice
             ]
 
          else
-            [ form [ Html.Attributes.class "space-y-4", onSubmit LoginClicked ]
+            [ sessionEndedNoticeView model.sessionNotice
+            , form [ Html.Attributes.class "space-y-4", onSubmit LoginClicked ]
             [ p [ Html.Attributes.class "text-farm-muted" ] [ text "Sign in or create an account to view your credit ledger and set up agents." ]
             , Ui.textInput [ type_ "email", placeholder "Email", value model.email, onInput EmailChanged, testId "email" ]
             , Ui.textInput [ type_ "password", placeholder "Password", value model.password, onInput PasswordChanged, testId "password" ]
@@ -117,7 +126,6 @@ authView model =
                 ]
             ]
         , maybeError model.authError "auth-error"
-        , sessionEndedNoticeView model.sessionNotice
         , case model.authNotice of
             Just notice ->
                 Ui.successText "auth-notice" notice
@@ -129,13 +137,16 @@ authView model =
 
 
 {-| The factual notice shown after a forced sign-out (an authorized request
-came back `unauthenticated` mid-session).
+came back `unauthenticated` mid-session). Rendered at the TOP of the auth
+card in the info tone, so the reason the user is looking at a login form
+again is the first thing they read - not a footnote under the reset forms.
 -}
 sessionEndedNoticeView : Maybe String -> Html Msg
 sessionEndedNoticeView notice =
     case notice of
         Just message ->
-            Ui.noteText "session-ended-notice" message
+            div [ Html.Attributes.class "border-2 border-farm-info bg-farm-info-soft px-3 py-2" ]
+                [ p [ Html.Attributes.class "text-sm font-medium text-farm-info", testId "session-ended-notice" ] [ text message ] ]
 
         Nothing ->
             text ""
@@ -529,7 +540,7 @@ adminModerationReportRow resolutionNote report =
           else
             p [ Html.Attributes.class "text-sm text-farm-ink break-words", testId "admin-moderation-details" ] [ text report.details ]
         , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
-            [ Ui.secondaryButton [ type_ "button", onClick (TriageModerationReportClicked report.id "open"), testId "admin-moderation-open" ] "Reopen"
+            [ Ui.secondaryButton [ type_ "button", onClick (TriageModerationReportClicked report.id "open"), disabled (report.state == "open"), testId "admin-moderation-open" ] "Reopen"
             , Ui.secondaryButton [ type_ "button", onClick (TriageModerationReportClicked report.id "resolved"), disabled (String.trim resolutionNote == ""), testId "admin-moderation-resolve" ] "Resolve"
             , Ui.secondaryButton [ type_ "button", onClick (TriageModerationReportClicked report.id "dismissed"), disabled (String.trim resolutionNote == ""), testId "admin-moderation-dismiss" ] "Dismiss"
             ]
@@ -585,7 +596,7 @@ notificationRow now notification =
     div [ Html.Attributes.class "space-y-2 py-3 text-sm", testId "notification-row" ]
         [ div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2" ]
             [ p [ Html.Attributes.class "font-medium text-farm-ink break-words", testId "notification-sentence" ]
-                [ text (notificationSentence notification.actorDisplayName notification.subjectTitle notification.kind) ]
+                [ text (notificationSentence notification.actorDisplayName notification.subjectTitle notification.metadataJSON notification.kind) ]
             , span [ Html.Attributes.class (notificationStateClass notification.state), testId "notification-state" ] [ text notification.state ]
             ]
         , p [ Html.Attributes.class "break-words text-xs text-farm-muted" ]
@@ -638,8 +649,8 @@ notificationStateClass state =
 
 
 {-| Each route gets its own `<h1>` (WCAG 1.3.1/2.4.6) so the page's identity
-doesn't depend solely on the persistent "Sharecrop" wordmark, which no longer
-renders once logged in (see `sessionView`). Titles are chosen to read
+doesn't depend solely on the persistent "Sharecrop" wordmark in the nav bar,
+which is decoration rather than a heading. Titles are chosen to read
 distinctly from whatever `Ui.sectionTitle`/`<h2>` a page renders internally
 (e.g. "New task" here vs. "Create a task" inside `createTaskView`) so the
 heading hierarchy doesn't repeat the same text at two levels.
@@ -647,71 +658,130 @@ heading hierarchy doesn't repeat the same text at two levels.
 pageView : String -> LoggedInModel -> Html Msg
 pageView origin state =
     let
-        ( title, content ) =
+        content =
             case state.page of
                 OverviewPage ->
-                    ( "Overview", overviewView state )
+                    overviewView state
 
                 TasksPage ->
-                    ( "Tasks", tasksView origin state )
+                    tasksView origin state
 
                 CreateTaskPage ->
-                    ( "New task", createTaskView state )
+                    createTaskView state
 
                 TaskDetailPage _ ->
-                    ( "Task", taskDetailPageView origin state )
+                    taskDetailPageView origin state
 
                 FundingPage ->
-                    ( "Funding", fundingView state )
+                    fundingView state
 
                 AgentsPage ->
-                    ( "Agents", agentsView origin state )
+                    agentsView origin state
 
                 CollectiblesPage ->
-                    ( "Collectibles", collectiblesView state )
+                    collectiblesView state
 
                 OrganizationsPage ->
-                    ( "Organizations", organizationsView state )
+                    organizationsView state
 
                 OrganizationDetailPage _ ->
-                    ( "Organization", organizationDetailView state )
+                    organizationDetailView state
 
                 UserDetailPage userId ->
-                    ( "Profile", userDetailView origin userId state )
+                    userDetailView origin userId state
 
                 UserWorkPage userId ->
-                    ( "Work", userTaskListView "Currently working on" "user-work" userId state.userWork )
+                    userTaskListView "Currently working on" "user-work" userId state.userWork
 
                 UserSubmissionsPage userId ->
-                    ( "Submissions", userSubmissionsView userId state )
+                    userSubmissionsView userId state
 
                 CollectibleDetailPage collectibleId ->
-                    ( "Collectible", collectibleDetailView collectibleId state )
+                    collectibleDetailView collectibleId state
 
                 SeriesDetailPage seriesId ->
-                    ( "Series", seriesDetailView seriesId state )
+                    seriesDetailView seriesId state
 
                 TeamDetailPage teamId ->
-                    ( "Team", teamDetailView teamId state )
+                    teamDetailView teamId state
 
                 AdminPage ->
-                    ( "Admin", adminView state )
+                    adminView state
 
                 InboxPage ->
-                    ( "Inbox", inboxView state )
+                    inboxView state
 
                 NotFoundPage ->
-                    ( "Page not found"
-                    , Ui.card
+                    Ui.card
                         [ p [ Html.Attributes.class "text-sm text-farm-muted" ] [ text "That page does not exist." ]
                         , a [ href "#/", Html.Attributes.class Ui.secondaryButtonClass, testId "not-found-home" ] [ text "Go to overview" ]
                         ]
-                    )
     in
     div [ Html.Attributes.class "space-y-4" ]
-        [ Ui.pageTitle title
+        [ Ui.pageTitle (pageTitleText state.page)
         , content
         ]
+
+
+{-| The short name of each route, shared by the page's `<h1>` and the
+document title ("Sharecrop — Tasks").
+-}
+pageTitleText : Page -> String
+pageTitleText page =
+    case page of
+        OverviewPage ->
+            "Overview"
+
+        TasksPage ->
+            "Tasks"
+
+        CreateTaskPage ->
+            "New task"
+
+        TaskDetailPage _ ->
+            "Task"
+
+        FundingPage ->
+            "Funding"
+
+        AgentsPage ->
+            "Agents"
+
+        CollectiblesPage ->
+            "Collectibles"
+
+        OrganizationsPage ->
+            "Organizations"
+
+        OrganizationDetailPage _ ->
+            "Organization"
+
+        UserDetailPage _ ->
+            "Profile"
+
+        UserWorkPage _ ->
+            "Work"
+
+        UserSubmissionsPage _ ->
+            "Submissions"
+
+        CollectibleDetailPage _ ->
+            "Collectible"
+
+        SeriesDetailPage _ ->
+            "Series"
+
+        TeamDetailPage _ ->
+            "Team"
+
+        AdminPage ->
+            "Admin"
+
+        InboxPage ->
+            "Inbox"
+
+        NotFoundPage ->
+            "Page not found"
 
 
 teamDetailView : String -> LoggedInModel -> Html Msg
@@ -955,9 +1025,6 @@ teamCanActOnTask item =
         Task.TaskViewerActionReserve ->
             True
 
-        Task.TaskViewerActionRequestApproval ->
-            True
-
         _ ->
             False
 
@@ -997,7 +1064,7 @@ collectibleDetailView : String -> LoggedInModel -> Html Msg
 collectibleDetailView collectibleId state =
     Ui.card
         [ a [ href "#/collectibles", Html.Attributes.class Ui.secondaryButtonClass, testId "back-collectibles" ] [ text "Back to collectibles" ]
-        , case List.filter (\collectible -> collectible.id == collectibleId) state.collectibles of
+        , case List.filter (\collectible -> collectible.id == collectibleId) state.collectibles.items of
             collectible :: _ ->
                 div [ Html.Attributes.class "mt-3 space-y-2", testId "collectible-detail" ]
                     [ Sprites.pixel collectible.art 10
@@ -1006,6 +1073,7 @@ collectibleDetailView collectibleId state =
                     , p [ Html.Attributes.class "text-sm" ] [ text ("Kind: " ++ collectibleKindLabel collectible.kind) ]
                     , p [ Html.Attributes.class "text-sm" ] [ text ("State: " ++ collectibleStateLabel collectible.state) ]
                     , p [ Html.Attributes.class "text-sm" ] [ text ("Transfer policy: " ++ collectiblePolicyLabel collectible.transferPolicy) ]
+                    , collectibleProvenanceLine collectible
                     , case collectible.transferPolicy of
                         Collectible.CollectibleTransferPolicyTransferableBetweenUsers ->
                             tradeControls collectible state
@@ -1059,11 +1127,11 @@ seriesSection state =
         , maybeNote state.seriesMessage "series-message"
         ]
     , Ui.sectionTitle "Your series"
-    , if List.isEmpty state.seriesList then
-        Ui.emptyState "series-empty" "seedling" "No series yet."
-
-      else
-        div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "series" ] (List.map seriesRow state.seriesList)
+    , loadedListView "series"
+        "seedling"
+        "No series yet."
+        state.seriesList
+        (\items -> div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "series" ] (List.map seriesRow items))
     ]
 
 
@@ -1155,6 +1223,11 @@ taskRewardBadge rewardKind rewardCreditAmount rewardCollectibleCount =
     if rewardKind == "none" then
         text ""
 
+    else if rewardCreditAmount > 0 then
+        -- Credit-bearing rewards carry the golden-coins mark - the same
+        -- icon that sits beside every credit amount in the app.
+        Ui.badgeVariantWithArt "reward" (Sprites.pixel "golden-coins" 1) (rewardLabel rewardKind rewardCreditAmount rewardCollectibleCount)
+
     else
         Ui.badgeVariantWithIcon "reward" "◆" (rewardLabel rewardKind rewardCreditAmount rewardCollectibleCount)
 
@@ -1212,6 +1285,9 @@ collectibleStateBadge state =
 
                 Collectible.CollectibleStateAwarded ->
                     "success"
+
+                Collectible.CollectibleStateWithdrawn ->
+                    "danger"
     in
     Ui.badgeVariant tone (collectibleStateLabel state)
 
@@ -1314,7 +1390,7 @@ seriesCreatorControls series state =
     , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (seriesStateButtons series)
     , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit (AddSeriesTaskClicked series.id) ]
         [ Ui.fieldLabel "Add task"
-            [ taskPicker "series-add-task-id" state.addSeriesTaskId AddSeriesTaskIdChanged state.tasks ]
+            [ taskPicker "series-add-task-id" state.addSeriesTaskId AddSeriesTaskIdChanged state.tasks.items ]
         , Ui.primaryButton [ type_ "submit", disabled (state.addSeriesTaskId == ""), testId "series-add-task" ] "Add task"
         ]
     ]
@@ -1359,15 +1435,16 @@ seriesCommentRow comment =
         ]
 
 
-userTaskListView : String -> String -> String -> List Task.TaskListItemResponse -> Html Msg
+userTaskListView : String -> String -> String -> Loaded Task.TaskListItemResponse -> Html Msg
 userTaskListView heading identifier userId tasks =
     Ui.card
         [ a [ href ("#/users/" ++ userId), Html.Attributes.class Ui.secondaryButtonClass, testId "back-user" ] [ text "Back to profile" ]
         , Ui.sectionTitle heading
-        , if List.isEmpty tasks then
-            Ui.emptyState (identifier ++ "-empty") "gnome-watering" "Nothing to show."
-
-          else
+        , loadedListView identifier
+            "gnome-watering"
+            "Nothing to show."
+            tasks
+            (\items ->
             div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId identifier ]
                 (List.map
                     (\item ->
@@ -1377,8 +1454,9 @@ userTaskListView heading identifier userId tasks =
                                 [ text (taskStateLabel item.state ++ " · " ++ rewardLabel item.rewardKind item.rewardCreditAmount item.rewardCollectibleCount ++ activeAssigneeSuffix item) ]
                             ]
                     )
-                    tasks
+                    items
                 )
+            )
         ]
 
 
@@ -1403,12 +1481,18 @@ userSubmissionsSection : LoggedInModel -> List (Html Msg)
 userSubmissionsSection state =
     let
         submissions =
-            state.userSubmissions
+            state.userSubmissions.items
 
         revisionItems =
             List.filter isRevisionSubmission submissions
     in
-    [ Ui.sectionTitleWithCount "Revision inbox" (List.length revisionItems) "revision-inbox-heading"
+    [ case state.userSubmissions.failure of
+        Just message ->
+            loadFailureView "user-submissions" message
+
+        Nothing ->
+            text ""
+    , Ui.sectionTitleWithCount "Revision inbox" (List.length revisionItems) "revision-inbox-heading"
     , if List.isEmpty revisionItems then
         Ui.emptyState "revision-inbox-empty" "carrot" "No requested revisions."
 
@@ -1710,7 +1794,7 @@ overviewView state =
         [ introCard
         , needsReviewCard state
         , Ui.sectionTitle "Credit account"
-        , balanceView state.balance
+        , creditAccountCard state
         , ledgerView state.entries state.ledgerOffset state.ledgerNextOffset state.ledgerTotal
         , activityCard state
         ]
@@ -1749,7 +1833,7 @@ needsReviewCard : LoggedInModel -> Html Msg
 needsReviewCard state =
     let
         waiting =
-            List.filter (\item -> item.createdBy == state.subjectId && item.pendingReviewCount > 0) state.tasks
+            List.filter (\item -> item.createdBy == state.subjectId && item.pendingReviewCount > 0) state.tasks.items
     in
     Ui.card
         [ Ui.sectionTitle "Needs review"
@@ -1838,7 +1922,7 @@ activitySubjectLink event =
 
 ownerChooser : LoggedInModel -> Html Msg
 ownerChooser state =
-    if List.isEmpty state.organizations then
+    if List.isEmpty state.organizations.items then
         text ""
 
     else
@@ -1846,7 +1930,7 @@ ownerChooser state =
             [ Ui.label_ "Owner"
             , div [ Html.Attributes.class "flex flex-wrap gap-2", testId "create-owner" ]
                 (Ui.chooserButton (state.createTaskOwner == "") (CreateTaskOwnerChanged "") "create-owner-me" "Me"
-                    :: List.map (ownerButton state.createTaskOwner) state.organizations
+                    :: List.map (ownerButton state.createTaskOwner) state.organizations.items
                 )
             ]
 
@@ -1886,12 +1970,13 @@ organizationsView state =
         ]
 
 
-standaloneTeamsList : List Team.TeamResponse -> Html Msg
+standaloneTeamsList : Loaded Team.TeamResponse -> Html Msg
 standaloneTeamsList teams =
-    if List.isEmpty teams then
-        Ui.emptyState "standalone-teams-empty" "prize-cow" "No teams yet."
-
-    else
+    loadedListView "standalone-teams"
+        "prize-cow"
+        "No teams yet."
+        teams
+        (\items ->
         div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "standalone-teams" ]
             (List.map
                 (\team ->
@@ -1900,15 +1985,16 @@ standaloneTeamsList teams =
                         , a [ href ("#/teams/" ++ team.id), Html.Attributes.class Ui.secondaryButtonClass, testId "standalone-team-open" ] [ text "Open" ]
                         ]
                 )
-                teams
+                items
             )
+        )
 
 
 organizationDetailView : LoggedInModel -> Html Msg
 organizationDetailView state =
     let
         name =
-            state.organizations
+            state.organizations.items
                 |> List.filter (\organization -> organization.id == state.activeOrgId)
                 |> List.head
                 |> Maybe.map .name
@@ -1923,11 +2009,11 @@ organizationDetailView state =
 
 organizationsList : LoggedInModel -> Html Msg
 organizationsList state =
-    if List.isEmpty state.organizations then
-        Ui.emptyState "organizations-empty" "gnome-signpost" "You do not belong to any organizations yet."
-
-    else
-        div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "organizations" ] (List.map organizationRow state.organizations)
+    loadedListView "organizations"
+        "gnome-signpost"
+        "You do not belong to any organizations yet."
+        state.organizations
+        (\items -> div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "organizations" ] (List.map organizationRow items))
 
 
 activeOrganizationView : LoggedInModel -> Html Msg
@@ -1937,14 +2023,18 @@ activeOrganizationView state =
 
     else
         Ui.insetPanel [ Html.Attributes.class "mt-4 space-y-4", testId "active-organization" ]
-            (Ui.label_ ("Spendable balance: " ++ balanceLabel state.orgBalance)
+            (div [ Html.Attributes.class "flex items-center gap-2" ]
+                [ Sprites.pixel "golden-coins" 2
+                , Ui.label_ ("Spendable balance: " ++ balanceLabel state.orgBalance)
+                ]
                 :: allocatedLine state.orgBalance
-                ++ [ organizationOperationsDashboard state
+                ++ [ sendCreditsPanel "org-send-credits" OrgSendCreditsClicked "Send credits from this organization's balance to a user or another organization. Sending needs the organization's billing permission." state
+            , organizationOperationsDashboard state
             , Ui.sectionTitleWithCount "Organization tasks" (List.length state.orgTasks) "org-tasks-heading"
             , Ui.disclosure "org-task-filters" False "Filters" [ orgTaskControls state ]
             , tasksListSimple "org-tasks" state.orgTasks
             , maybeNote state.orgTaskMessage "org-task-message"
-            , Ui.disclosure "org-teams-section" False ("Teams (" ++ String.fromInt (List.length state.orgTeams) ++ ")") <|
+            , Ui.disclosure "org-teams-section" False ("Teams (" ++ String.fromInt (List.length state.orgTeams.items) ++ ")") <|
                 [ orgTeamsList state.orgTeams
                 , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit CreateOrgTeamClicked ]
                     [ Ui.fieldLabel "New team"
@@ -1953,7 +2043,7 @@ activeOrganizationView state =
                     ]
                 , maybeNote state.orgTeamMessage "org-team-message"
                 ]
-            , Ui.disclosure "org-members-section" False ("Members (" ++ String.fromInt (List.length state.orgMembers) ++ ")") <|
+            , Ui.disclosure "org-members-section" False ("Members (" ++ String.fromInt (List.length state.orgMembers.items) ++ ")") <|
                 [ orgMembersList state.orgMembers
                 , Ui.sectionTitle "Provision a member"
                 , form [ Html.Attributes.class "flex flex-wrap items-end gap-2", onSubmit ProvisionMemberClicked ]
@@ -1973,15 +2063,20 @@ activeOrganizationView state =
                   else
                     div [ Html.Attributes.class "mt-3 space-y-2" ]
                         [ Ui.label_ "Award a collectible to a member"
-                        , orgMemberPicker "award-org-collectible-recipient" state.awardOrgCollectibleRecipientId AwardOrgCollectibleRecipientIdChanged state.orgMembers
+                        , orgMemberPicker "award-org-collectible-recipient" state.awardOrgCollectibleRecipientId AwardOrgCollectibleRecipientIdChanged state.orgMembers.items
                         , div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "org-collectible-award-rows" ] (List.map (orgCollectibleAwardRow state.awardOrgCollectibleRecipientId) state.orgCollectibles)
+                        , Ui.label_ "Send a collectible to a user"
+                        , p [ Html.Attributes.class "text-xs text-farm-muted" ] [ text "Moves the collectible out of the organization to any user. Sending needs the organization's manage-collectibles permission." ]
+                        , userPicker "org-send-collectible-recipient" state.orgSendCollectibleRecipientId state.userDirectoryQuery OrgSendCollectibleRecipientIdChanged "Choose user" state.userDirectory state.userDirectoryOffset state.userDirectoryNextOffset
+                        , div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "org-collectible-send-rows" ] (List.map (orgCollectibleSendRow state.orgSendCollectibleRecipientId) state.orgCollectibles)
                         ]
                 , -- Kept outside the isEmpty branch above: a successful award empties
                   -- state.orgCollectibles when it was the org's last one, which would
                   -- otherwise make this confirmation disappear the instant it's shown.
                   maybeNote state.awardOrgCollectibleMessage "award-org-collectible-message"
+                , maybeNote state.orgSendCollectibleMessage "org-send-collectible-message"
                 ]
-            , Ui.disclosure "org-credentials-section" False ("Credentials (" ++ String.fromInt (List.length state.orgCredentials) ++ ")") <|
+            , Ui.disclosure "org-credentials-section" False ("Credentials (" ++ String.fromInt (List.length state.orgCredentials.items) ++ ")") <|
                 [ orgCredentialsList state.orgCredentials
                 , orgNewCredentialView state.newOrgCredential
                 , form [ Html.Attributes.class "mt-3 space-y-3", onSubmit CreateOrgCredentialClicked ]
@@ -2024,13 +2119,18 @@ orgNewCredentialView created =
             text ""
 
 
-orgCredentialsList : List Agent.OrgCredentialResponse -> Html Msg
+orgCredentialsList : Loaded Agent.OrgCredentialResponse -> Html Msg
 orgCredentialsList credentials =
-    if List.isEmpty credentials then
-        text ""
+    case credentials.failure of
+        Just message ->
+            loadFailureView "org-credentials" message
 
-    else
-        div [ Html.Attributes.class "mt-2 divide-y-2 divide-farm-line-soft", testId "org-credentials" ] (List.map orgCredentialRow credentials)
+        Nothing ->
+            if List.isEmpty credentials.items then
+                text ""
+
+            else
+                div [ Html.Attributes.class "mt-2 divide-y-2 divide-farm-line-soft", testId "org-credentials" ] (List.map orgCredentialRow credentials.items)
 
 
 orgCredentialRow : Agent.OrgCredentialResponse -> Html Msg
@@ -2061,9 +2161,9 @@ organizationOperationsDashboard state =
         , div [ Html.Attributes.class "grid gap-2 sm:grid-cols-2" ]
             [ operationMetric "Spendable" (balanceLabel state.orgBalance) "org-ops-balance"
             , operationMetric "Allocated" (allocatedLabel state.orgBalance) "org-ops-allocated"
-            , operationMetric "Teams" (String.fromInt (List.length state.orgTeams)) "org-ops-teams"
-            , operationMetric "Active members" (String.fromInt (countMembers Organization.MembershipStatusActive state.orgMembers)) "org-ops-members-active"
-            , operationMetric "Inactive members" (String.fromInt (inactiveMemberCount state.orgMembers)) "org-ops-members-inactive"
+            , operationMetric "Teams" (String.fromInt (List.length state.orgTeams.items)) "org-ops-teams"
+            , operationMetric "Active members" (String.fromInt (countMembers Organization.MembershipStatusActive state.orgMembers.items)) "org-ops-members-active"
+            , operationMetric "Inactive members" (String.fromInt (inactiveMemberCount state.orgMembers.items)) "org-ops-members-inactive"
             , operationMetric "Collectibles" (String.fromInt (List.length state.orgCollectibles)) "org-ops-collectibles"
             , operationMetric "Draft tasks" (String.fromInt (countTasks Task.TaskStateDraft state.orgTasks)) "org-ops-tasks-draft"
             , operationMetric "Open tasks" (String.fromInt (countTasks Task.TaskStateOpen state.orgTasks)) "org-ops-tasks-open"
@@ -2074,17 +2174,20 @@ organizationOperationsDashboard state =
         ]
 
 
-orgLedgerPanel : List Ledger.LedgerEntryResponse -> Int -> Int -> Int -> Html Msg
+orgLedgerPanel : Loaded Ledger.LedgerEntryResponse -> Int -> Int -> Int -> Html Msg
 orgLedgerPanel entries offset nextOffset total =
     div [ Html.Attributes.class "space-y-2", testId "org-ledger-panel" ]
         [ h3 [ Html.Attributes.class "font-display text-[0.65rem] leading-relaxed text-farm-accent-strong" ] [ text "Organization ledger" ]
-        , if List.isEmpty entries then
-            Ui.emptyState "org-ledger-empty" "golden-egg" "No ledger entries."
-
-          else
-            table [ Html.Attributes.class "w-full text-left text-sm" ]
-                [ tbody [ testId "org-ledger" ] (List.map ledgerRow entries)
-                ]
+        , loadedListView "org-ledger"
+            "golden-egg"
+            "No ledger entries."
+            entries
+            (\items ->
+                table [ Html.Attributes.class "w-full text-left text-sm" ]
+                    [ ledgerTableHead
+                    , tbody [ testId "org-ledger" ] (List.map ledgerRow items)
+                    ]
+            )
         , paginationControlsWithTotal "org-ledger-page" PreviousOrgLedgerPageClicked NextOrgLedgerPageClicked offset nextOffset total
         ]
 
@@ -2182,14 +2285,16 @@ orgTaskFilterButton selected ( tag, labelText ) =
         labelText
 
 
-orgTeamsList : List Team.TeamResponse -> Html Msg
+orgTeamsList : Loaded Team.TeamResponse -> Html Msg
 orgTeamsList teams =
-    if List.isEmpty teams then
-        Ui.emptyState "org-teams-empty" "prize-cow" "No teams yet."
-
-    else
-        div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "org-teams" ]
-            (List.map (\team -> a [ href ("#/teams/" ++ team.id), Html.Attributes.class "block py-1 text-sm underline", testId "org-team-row" ] [ text team.name ]) teams)
+    loadedListView "org-teams"
+        "prize-cow"
+        "No teams yet."
+        teams
+        (\items ->
+            div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "org-teams" ]
+                (List.map (\team -> a [ href ("#/teams/" ++ team.id), Html.Attributes.class "block py-1 text-sm underline", testId "org-team-row" ] [ text team.name ]) items)
+        )
 
 
 provisionRolePicker : List String -> Html Msg
@@ -2218,13 +2323,13 @@ roleLabel role =
             role
 
 
-orgMembersList : List Organization.OrganizationMemberResponse -> Html Msg
+orgMembersList : Loaded Organization.OrganizationMemberResponse -> Html Msg
 orgMembersList members =
-    if List.isEmpty members then
-        Ui.emptyState "org-members-empty" "prize-cow" "No members yet."
-
-    else
-        div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "org-members" ] (List.map orgMemberRow members)
+    loadedListView "org-members"
+        "prize-cow"
+        "No members yet."
+        members
+        (\items -> div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "org-members" ] (List.map orgMemberRow items))
 
 
 orgMemberRow : Organization.OrganizationMemberResponse -> Html Msg
@@ -2316,14 +2421,57 @@ organizationRow organization =
         ]
 
 
-balanceView : Maybe Wallet -> Html Msg
-balanceView balance =
+{-| The signed-in user's credit card: the spendable balance under the
+golden-coins mark, plus the peer "Send credits" panel - money in and money
+out live on the same card.
+-}
+creditAccountCard : LoggedInModel -> Html Msg
+creditAccountCard state =
     Ui.card
         ([ Ui.label_ "Spendable balance"
-         , p [ Html.Attributes.class "font-display text-xl leading-relaxed text-farm-accent-strong break-words", testId "balance" ] [ text (balanceLabel balance) ]
+         , div [ Html.Attributes.class "flex items-center gap-3" ]
+            [ Sprites.pixel "golden-coins" 3
+            , p [ Html.Attributes.class "font-display text-xl leading-relaxed text-farm-accent-strong break-words", testId "balance" ] [ text (balanceLabel state.balance) ]
+            ]
          ]
-            ++ allocatedLine balance
+            ++ allocatedLine state.balance
+            ++ [ sendCreditsPanel "send-credits" SendCreditsClicked "Send credits from your spendable balance to another user or to an organization. The transfer shows up in both ledgers." state ]
         )
+
+
+{-| The peer credit-send form, shared by the Overview card (personal
+balance) and the organization page (organization balance): recipient kind,
+recipient picker, amount, optional note. The submit message decides which
+balance pays. `idPrefix` keeps the two forms' testids distinct where it
+matters (the submit button); the draft fields are shared state, which is
+safe because the two forms live on different pages.
+-}
+sendCreditsPanel : String -> Msg -> String -> LoggedInModel -> Html Msg
+sendCreditsPanel idPrefix submitMsg explanation state =
+    Ui.disclosure (idPrefix ++ "-panel")
+        False
+        "Send credits"
+        [ p [ Html.Attributes.class "text-xs text-farm-muted" ] [ text explanation ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.chooserButton (state.sendRecipientKind == "user") (SendRecipientKindChanged "user") "send-kind-user" "To a user"
+            , Ui.chooserButton (state.sendRecipientKind == "organization") (SendRecipientKindChanged "organization") "send-kind-organization" "To an organization"
+            ]
+        , if state.sendRecipientKind == "organization" then
+            Ui.fieldLabel "Recipient organization"
+                [ organizationPicker "send-recipient-id" state.sendRecipientId state.organizationQuery SendRecipientIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations.items state.organizationOffset state.organizationNextOffset ]
+
+          else
+            Ui.fieldLabel "Recipient"
+                [ userPicker "send-recipient-id" state.sendRecipientId state.userDirectoryQuery SendRecipientIdChanged "Choose user" state.userDirectory state.userDirectoryOffset state.userDirectoryNextOffset ]
+        , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ]
+            [ Ui.fieldLabel "Amount (credits)"
+                [ Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.sendAmount, onInput SendAmountChanged, testId "send-amount" ] ]
+            , Ui.fieldLabel "Note (optional)"
+                [ Ui.textInput [ type_ "text", placeholder "Shows in both ledgers", value state.sendNote, onInput SendNoteChanged, testId "send-note" ] ]
+            ]
+        , Ui.primaryButton [ type_ "button", onClick submitMsg, testId idPrefix ] "Send credits"
+        , maybeNote state.sendMessage "send-message"
+        ]
 
 
 -- balanceLabel shows the SPENDABLE credits (what the account can spend or use
@@ -2486,7 +2634,7 @@ rewardCollectibleField state =
     if state.createRewardKind == "collectible" || state.createRewardKind == "bundle" then
         let
             available =
-                List.filter (\collectible -> collectible.state == Collectible.CollectibleStateMinted) state.collectibles
+                List.filter (\collectible -> collectible.state == Collectible.CollectibleStateMinted) state.collectibles.items
         in
         div [ Html.Attributes.class "space-y-2", testId "create-reward-collectibles" ]
             [ Ui.label_ "Collectibles"
@@ -2796,11 +2944,11 @@ visibilityScopeField state =
 
     else if state.createVisibility == visibilityTeamTag then
         Ui.fieldLabel "Share with team"
-            [ teamPicker "create-scope-team" state.createScopeTeamId state.standaloneTeamQuery CreateScopeTeamIdChanged StandaloneTeamQueryChanged SearchStandaloneTeamsClicked PreviousStandaloneTeamsPageClicked NextStandaloneTeamsPageClicked "Choose team" state.standaloneTeams state.standaloneTeamOffset state.standaloneTeamNextOffset ]
+            [ teamPicker "create-scope-team" state.createScopeTeamId state.standaloneTeamQuery CreateScopeTeamIdChanged StandaloneTeamQueryChanged SearchStandaloneTeamsClicked PreviousStandaloneTeamsPageClicked NextStandaloneTeamsPageClicked "Choose team" state.standaloneTeams.items state.standaloneTeamOffset state.standaloneTeamNextOffset ]
 
     else if state.createVisibility == visibilityOrganizationTag then
         Ui.fieldLabel "Share with organization"
-            [ organizationPicker "create-scope-organization" state.createScopeOrganizationId state.organizationQuery CreateScopeOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations state.organizationOffset state.organizationNextOffset ]
+            [ organizationPicker "create-scope-organization" state.createScopeOrganizationId state.organizationQuery CreateScopeOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations.items state.organizationOffset state.organizationNextOffset ]
 
     else
         text ""
@@ -2814,20 +2962,39 @@ participationButton selectedPolicy policy =
         (participationPolicyLabel policy)
 
 
-ledgerView : List Ledger.LedgerEntryResponse -> Int -> Int -> Int -> Html Msg
+ledgerView : Loaded Ledger.LedgerEntryResponse -> Int -> Int -> Int -> Html Msg
 ledgerView entries offset nextOffset total =
     Ui.card
         [ Ui.sectionTitle "Ledger"
-        , table [ Html.Attributes.class "w-full text-left text-sm" ]
-            [ thead []
-                [ tr [ Html.Attributes.class "text-farm-muted" ]
-                    [ th [ Html.Attributes.class "pb-2" ] [ text "Entry" ]
-                    , th [ Html.Attributes.class "pb-2 text-right" ] [ text "Amount" ]
+        , loadedListView "ledger"
+            "golden-egg"
+            "No ledger entries yet."
+            entries
+            (\items ->
+                table [ Html.Attributes.class "w-full text-left text-sm" ]
+                    [ ledgerTableHead
+                    , tbody [ testId "ledger" ] (List.map ledgerRow items)
+                    ]
+            )
+        , paginationControlsWithTotal "ledger-page" PreviousLedgerPageClicked NextLedgerPageClicked offset nextOffset total
+        ]
+
+
+{-| The shared ledger table header: the Amount column carries the
+golden-coins mark once, instead of stamping a coin on every row.
+-}
+ledgerTableHead : Html Msg
+ledgerTableHead =
+    thead []
+        [ tr [ Html.Attributes.class "text-farm-muted" ]
+            [ th [ Html.Attributes.class "pb-2" ] [ text "Entry" ]
+            , th [ Html.Attributes.class "pb-2" ]
+                [ span [ Html.Attributes.class "flex items-center justify-end gap-1.5" ]
+                    [ Sprites.pixel "golden-coins" 1
+                    , text "Amount"
                     ]
                 ]
-            , tbody [ testId "ledger" ] (List.map ledgerRow entries)
             ]
-        , paginationControlsWithTotal "ledger-page" PreviousLedgerPageClicked NextLedgerPageClicked offset nextOffset total
         ]
 
 
@@ -2870,9 +3037,9 @@ fundingView state =
 
         -- The backend only accepts funding for draft tasks, so offering the
         -- rest of the list here just produces avoidable rejections.
-        , taskPicker "fund-task-id" state.fundTaskId FundTaskIdChanged (List.filter (\item -> item.state == Task.TaskStateDraft) state.tasks)
+        , taskPicker "fund-task-id" state.fundTaskId FundTaskIdChanged (List.filter (\item -> item.state == Task.TaskStateDraft) state.tasks.items)
         , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
-        , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset state.organizationNextOffset
+        , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations.items state.organizationOffset state.organizationNextOffset
         , Ui.primaryButton [ type_ "submit", disabled (state.fundTaskId == ""), testId "fund" ] "Fund task"
         , maybeNote state.fundMessage "fund-message"
         ]
@@ -2937,7 +3104,9 @@ tasksView : String -> LoggedInModel -> Html Msg
 tasksView origin state =
     let
         visibleTasks =
-            filterTasksByQuery state.taskListQuery state.tasks
+            { items = filterTasksByQuery state.taskListQuery state.tasks.items
+            , failure = state.tasks.failure
+            }
     in
     Ui.card
         ([ a [ href ("#" ++ pageToPath CreateTaskPage), Html.Attributes.class Ui.primaryButtonClass, testId "new-task-button" ] [ text "+ New task" ]
@@ -3154,13 +3323,13 @@ filterTasksByQuery query tasks =
             tasks
 
 
-tasksList : String -> List Task.TaskListItemResponse -> Html Msg
+tasksList : String -> Loaded Task.TaskListItemResponse -> Html Msg
 tasksList subjectId tasks =
-    if List.isEmpty tasks then
-        Ui.emptyState "tasks-empty" "gnome-watering" "No tasks yet."
-
-    else
-        div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "tasks" ] (List.map (taskRow subjectId) tasks)
+    loadedListView "tasks"
+        "gnome-watering"
+        "No tasks yet."
+        tasks
+        (\items -> div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "tasks" ] (List.map (taskRow subjectId) items))
 
 
 {-| A task is "mine" if I created it, or if I'm the active assignee (reserved
@@ -3548,13 +3717,18 @@ newCredentialView origin created =
             text ""
 
 
-credentialsList : List Agent.AgentCredentialResponse -> Html Msg
+credentialsList : Loaded Agent.AgentCredentialResponse -> Html Msg
 credentialsList credentials =
-    if List.isEmpty credentials then
-        text ""
+    case credentials.failure of
+        Just message ->
+            loadFailureView "credentials" message
 
-    else
-        div [ Html.Attributes.class "mt-4 divide-y-2 divide-farm-line-soft", testId "credentials" ] (List.map credentialRow credentials)
+        Nothing ->
+            if List.isEmpty credentials.items then
+                text ""
+
+            else
+                div [ Html.Attributes.class "mt-4 divide-y-2 divide-farm-line-soft", testId "credentials" ] (List.map credentialRow credentials.items)
 
 
 credentialRow : Agent.AgentCredentialResponse -> Html Msg
@@ -3574,7 +3748,7 @@ expiryNote expiresAt =
         ""
 
     else
-        " · expires " ++ expiresAt
+        " · expires " ++ absoluteTimeLabel expiresAt
 
 
 revokeButton : Agent.AgentCredentialResponse -> Html Msg
@@ -3594,7 +3768,7 @@ revokeButton credential =
 collectiblesView : LoggedInModel -> Html Msg
 collectiblesView state =
     Ui.card
-        [ p [ Html.Attributes.class "text-sm text-farm-muted" ] [ text "Mint your own collectibles, award default collectibles to users, teams, or organizations, and trade collectibles to other users." ]
+        [ p [ Html.Attributes.class "text-sm text-farm-muted" ] [ text "Mint your own collectibles, award default collectibles to users, teams, or organizations, and send collectibles to other users." ]
         , Ui.disclosure "collectibles-mint" False "Mint a collectible" [ mintForm state ]
         , Ui.disclosure "collectibles-award-task" False "Award a collectible to a task" [ awardForm state ]
         , if state.isAdmin then
@@ -3602,9 +3776,105 @@ collectiblesView state =
 
           else
             text ""
+        , if state.isAdmin then
+            Ui.disclosure "catalog-manage-section" False "Admin: manage the catalog" (catalogManageControls state)
+
+          else
+            text ""
         , catalogGallery state
         , collectiblesList state
+
+        -- Card-level so a send's confirmation survives the sent collectible
+        -- leaving the list (and the panel closing) the moment it succeeds.
+        , maybeNote state.transferMessage "transfer-message"
+        , maybeNote state.withdrawMessage "withdraw-message"
         ]
+
+
+{-| The admin catalog editor: an "add entry" form whose art comes from the
+sprite registry (every sprite rendered, pick by click), plus the shared
+outcome note for adds, withdrawals, and deletions.
+-}
+catalogManageControls : LoggedInModel -> List (Html Msg)
+catalogManageControls state =
+    [ p [ Html.Attributes.class "text-xs text-farm-muted" ]
+        [ text "Add a new awardable catalog entry. Uniques mint exactly once, editions up to their run size, badges without limit. Withdraw and Delete live on each entry below." ]
+    , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ]
+        [ Ui.fieldLabel "Slug (identifier, e.g. harvest-moon-2026)"
+            [ Ui.textInput [ type_ "text", placeholder "harvest-moon-2026", value state.catalogSlug, onInput CatalogSlugChanged, testId "catalog-slug" ] ]
+        , Ui.fieldLabel "Name"
+            [ Ui.textInput [ type_ "text", placeholder "Harvest Moon 2026", value state.catalogName, onInput CatalogNameChanged, testId "catalog-name" ] ]
+        ]
+    , Ui.label_ "Kind"
+    , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (catalogKindButton state.catalogKind) allKinds)
+    , if state.catalogKind == Collectible.CollectibleKindEdition then
+        Ui.fieldLabel "Edition run size"
+            [ Ui.textInput [ type_ "number", placeholder "100", value state.catalogMaxEditions, onInput CatalogMaxEditionsChanged, testId "catalog-max-editions" ] ]
+
+      else
+        text ""
+    , Ui.label_ "Transfer policy"
+    , div [ Html.Attributes.class "flex flex-wrap gap-2" ] (List.map (catalogPolicyButton state.catalogPolicy) allPolicies)
+    , Ui.label_ "Art"
+    , p [ Html.Attributes.class "text-xs text-farm-muted" ] [ text "Pick the sprite this entry mints with." ]
+    , div [ Html.Attributes.class "grid grid-cols-4 gap-2 sm:grid-cols-6", testId "catalog-art-picker" ]
+        (List.map (catalogArtOption state.catalogArt) Sprites.slugs)
+    , Ui.primaryButton [ type_ "button", onClick AddCatalogEntryClicked, testId "catalog-add" ] "Add catalog entry"
+    , maybeNote state.catalogMessage "catalog-message"
+    ]
+
+
+catalogKindButton : Collectible.CollectibleKind -> Collectible.CollectibleKind -> Html Msg
+catalogKindButton selected kind =
+    Ui.chooserButton (selected == kind)
+        (CatalogKindChosen kind)
+        ("catalog-kind-" ++ collectibleKindTag kind)
+        (collectibleKindLabel kind)
+
+
+catalogPolicyButton : Collectible.CollectibleTransferPolicy -> Collectible.CollectibleTransferPolicy -> Html Msg
+catalogPolicyButton selected policy =
+    Ui.chooserButton (selected == policy)
+        (CatalogPolicyChosen policy)
+        ("catalog-policy-" ++ collectiblePolicyTag policy)
+        (collectiblePolicyLabel policy)
+
+
+{-| One selectable sprite in the art picker: the sprite itself is the
+choice, with its slug as the visible caption and the pressed state marked
+for assistive tech.
+-}
+catalogArtOption : String -> String -> Html Msg
+catalogArtOption selected slug =
+    button
+        [ type_ "button"
+        , onClick (CatalogArtChosen slug)
+        , attributePressed (selected == slug)
+        , Html.Attributes.class
+            ("flex flex-col items-center gap-1 border-2 p-2 text-center "
+                ++ (if selected == slug then
+                        "border-farm-accent-strong bg-farm-reward-soft"
+
+                    else
+                        "border-farm-line-soft bg-farm-field hover:bg-farm-surface"
+                   )
+            )
+        , testId ("catalog-art-" ++ slug)
+        ]
+        [ Sprites.pixel slug 3
+        , span [ Html.Attributes.class "break-all text-[10px] text-farm-muted" ] [ text slug ]
+        ]
+
+
+attributePressed : Bool -> Html.Attribute Msg
+attributePressed pressed =
+    Html.Attributes.attribute "aria-pressed"
+        (if pressed then
+            "true"
+
+         else
+            "false"
+        )
 
 
 awardRecipientControl : LoggedInModel -> List (Html Msg)
@@ -3623,10 +3893,10 @@ awardRecipientControl state =
 awardRecipientPicker : LoggedInModel -> Html Msg
 awardRecipientPicker state =
     if state.awardRecipientKind == "organization" then
-        organizationPicker "award-recipient-id" state.awardRecipientId state.organizationQuery AwardRecipientIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations state.organizationOffset state.organizationNextOffset
+        organizationPicker "award-recipient-id" state.awardRecipientId state.organizationQuery AwardRecipientIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations.items state.organizationOffset state.organizationNextOffset
 
     else if state.awardRecipientKind == "team" then
-        teamPicker "award-recipient-id" state.awardRecipientId state.standaloneTeamQuery AwardRecipientIdChanged StandaloneTeamQueryChanged SearchStandaloneTeamsClicked PreviousStandaloneTeamsPageClicked NextStandaloneTeamsPageClicked "Choose team" state.standaloneTeams state.standaloneTeamOffset state.standaloneTeamNextOffset
+        teamPicker "award-recipient-id" state.awardRecipientId state.standaloneTeamQuery AwardRecipientIdChanged StandaloneTeamQueryChanged SearchStandaloneTeamsClicked PreviousStandaloneTeamsPageClicked NextStandaloneTeamsPageClicked "Choose team" state.standaloneTeams.items state.standaloneTeamOffset state.standaloneTeamNextOffset
 
     else
         userPicker "award-recipient-id" state.awardRecipientId state.userDirectoryQuery AwardRecipientIdChanged "Choose user" state.userDirectory state.userDirectoryOffset state.userDirectoryNextOffset
@@ -3634,22 +3904,96 @@ awardRecipientPicker state =
 
 catalogGallery : LoggedInModel -> Html Msg
 catalogGallery state =
-    div [ Html.Attributes.class "mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3", testId "catalog" ]
-        (List.map (catalogEntry state.isAdmin state.awardRecipientId) state.collectibleCatalog)
+    loadedListView "catalog"
+        "harvest-star"
+        "The catalog is empty."
+        state.collectibleCatalog
+        (\entries ->
+            div [ Html.Attributes.class "mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3", testId "catalog" ]
+                (List.map (catalogEntry state.isAdmin state.awardRecipientId) entries)
+        )
 
 
 catalogEntry : Bool -> String -> Collectible.CollectibleCatalogEntry -> Html Msg
 catalogEntry isAdmin recipientId entry =
     div [ Html.Attributes.class "flex flex-col items-center gap-1 border-2 border-farm-line-soft bg-farm-field p-2 text-center", testId "catalog-entry" ]
-        [ Sprites.pixel entry.art 6
-        , span [ Html.Attributes.class "text-xs font-medium break-words" ] [ text entry.name ]
-        , Ui.badge (collectibleKindLabel entry.kind)
-        , if isAdmin then
-            Ui.secondaryButton [ type_ "button", onClick (AwardDefaultClicked entry.slug), disabled (String.trim recipientId == ""), testId "catalog-award" ] "Award"
+        ([ Sprites.pixel entry.art 6
+         , span [ Html.Attributes.class "text-xs font-medium break-words" ] [ text entry.name ]
+         , span [ Html.Attributes.class "flex flex-wrap items-center justify-center gap-1" ]
+            [ Ui.badge (collectibleKindLabel entry.kind)
+            , catalogEntryStateBadge entry.state
+            ]
+         , span [ Html.Attributes.class "text-[10px] text-farm-muted", testId "catalog-entry-minted" ] [ text (catalogMintedLabel entry) ]
+         ]
+            ++ (if isAdmin then
+                    catalogEntryAdminControls recipientId entry
 
-          else
-            text ""
-        ]
+                else
+                    []
+               )
+        )
+
+
+catalogEntryStateBadge : Collectible.CollectibleCatalogEntryState -> Html Msg
+catalogEntryStateBadge state =
+    case state of
+        Collectible.CollectibleCatalogEntryStateAvailable ->
+            Ui.badgeVariant "success" "available"
+
+        Collectible.CollectibleCatalogEntryStateWithdrawn ->
+            Ui.badgeVariant "danger" "withdrawn"
+
+
+{-| How much of the entry's run has minted: "3 of 100 minted" for an
+edition, "unique — 1 of 1 minted" once a unique exists, a bare count for
+uncapped badges.
+-}
+catalogMintedLabel : Collectible.CollectibleCatalogEntry -> String
+catalogMintedLabel entry =
+    case entry.kind of
+        Collectible.CollectibleKindUnique ->
+            if entry.mintedCount >= 1 then
+                "unique — 1 of 1 minted"
+
+            else
+                "unique — not yet minted"
+
+        Collectible.CollectibleKindEdition ->
+            String.fromInt entry.mintedCount ++ " of " ++ String.fromInt entry.maxEditions ++ " minted"
+
+        Collectible.CollectibleKindBadge ->
+            String.fromInt entry.mintedCount ++ " minted"
+
+
+{-| The admin's per-entry controls. Every disabled button says why it is
+disabled, in text: an Award with no recipient chosen, a Delete on an entry
+that is still available. Withdrawn entries cannot mint, so Award is not
+offered on them at all.
+-}
+catalogEntryAdminControls : String -> Collectible.CollectibleCatalogEntry -> List (Html Msg)
+catalogEntryAdminControls recipientId entry =
+    let
+        noRecipient =
+            String.trim recipientId == ""
+    in
+    case entry.state of
+        Collectible.CollectibleCatalogEntryStateAvailable ->
+            [ div [ Html.Attributes.class "flex flex-wrap items-center justify-center gap-1" ]
+                [ Ui.secondaryButton [ type_ "button", onClick (AwardDefaultClicked entry.slug), disabled noRecipient, testId "catalog-award" ] "Award"
+                , Ui.secondaryButton [ type_ "button", onClick (WithdrawCatalogEntryClicked entry.slug), testId "catalog-withdraw" ] "Withdraw"
+                , Ui.dangerButton [ type_ "button", disabled True, testId "catalog-delete" ] "Delete"
+                ]
+            , p [ Html.Attributes.class "text-[10px] text-farm-muted", testId "catalog-delete-hint" ] [ text "Withdraw the entry first to delete it." ]
+            ]
+                ++ (if noRecipient then
+                        [ p [ Html.Attributes.class "text-[10px] text-farm-muted", testId "catalog-award-hint" ] [ text "To award, choose a recipient above first." ] ]
+
+                    else
+                        []
+                   )
+
+        Collectible.CollectibleCatalogEntryStateWithdrawn ->
+            [ Ui.dangerButton [ type_ "button", onClick (DeleteCatalogEntryClicked entry.slug), testId "catalog-delete" ] "Delete" ]
 
 
 mintForm : LoggedInModel -> Html Msg
@@ -3686,7 +4030,7 @@ awardForm state =
     div [ Html.Attributes.class "mt-4 space-y-3" ]
         -- Collectible reward funding is draft-only on the backend, like
         -- credit funding.
-        [ taskPicker "award-task-id" state.awardTaskId AwardTaskIdChanged (List.filter (\item -> item.state == Task.TaskStateDraft) state.tasks)
+        [ taskPicker "award-task-id" state.awardTaskId AwardTaskIdChanged (List.filter (\item -> item.state == Task.TaskStateDraft) state.tasks.items)
         , p [ Html.Attributes.class "text-xs text-farm-muted" ] [ text "Choose a draft task here, then press Award next to a collectible below." ]
         , maybeNote state.awardMessage "award-message"
         ]
@@ -3694,34 +4038,218 @@ awardForm state =
 
 collectiblesList : LoggedInModel -> Html Msg
 collectiblesList state =
-    if List.isEmpty state.collectibles then
-        Ui.emptyState "collectibles-empty" "harvest-star" "No collectibles yet."
+    loadedListView "collectibles"
+        "harvest-star"
+        "No collectibles yet."
+        state.collectibles
+        (\items -> div [ Html.Attributes.class "mt-4 divide-y-2 divide-farm-line-soft", testId "collectibles" ] (List.map (collectibleRow state) items))
 
-    else
-        div [ Html.Attributes.class "mt-4 divide-y-2 divide-farm-line-soft", testId "collectibles" ] (List.map (collectibleRow state.awardTaskId) state.collectibles)
 
-
-collectibleRow : String -> Collectible.CollectibleResponse -> Html Msg
-collectibleRow awardTaskId collectible =
-    div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "collectible-row" ]
+collectibleRow : LoggedInModel -> Collectible.CollectibleResponse -> Html Msg
+collectibleRow state collectible =
+    div [ Html.Attributes.class "space-y-2 py-2", testId "collectible-row" ]
         [ div [ Html.Attributes.class "flex min-w-0 flex-wrap items-center gap-2" ]
             [ Sprites.pixel collectible.art 5
             , a [ href ("#/collectibles/" ++ collectible.id), Html.Attributes.class "font-medium underline break-words", testId "collectible-link" ] [ text collectible.name ]
             , collectibleStateBadge collectible.state
             , span [ Html.Attributes.class "text-xs text-farm-muted" ] [ text (collectibleKindLabel collectible.kind) ]
             ]
-        , awardCollectibleButton awardTaskId collectible
+        , collectibleProvenanceLine collectible
+        , div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+            (List.filterMap identity
+                [ awardCollectibleButton state.awardTaskId collectible
+                , sendCollectibleButton state.openSendCollectibleID collectible
+                , adminWithdrawButton state.isAdmin collectible
+                , adminDeleteButton state.isAdmin collectible
+                ]
+            )
+        , sendCollectibleUnavailableNote collectible
+        , if state.openSendCollectibleID == Just collectible.id then
+            sendCollectiblePanel state collectible
+
+          else
+            text ""
         ]
 
 
-awardCollectibleButton : String -> Collectible.CollectibleResponse -> Html Msg
+{-| Edition number, catalog origin, and issuer - the "where did this come
+from" line under a collectible's name. Skipped entirely for self-minted
+collectibles with no story to tell.
+-}
+collectibleProvenanceLine : Collectible.CollectibleResponse -> Html Msg
+collectibleProvenanceLine collectible =
+    let
+        parts =
+            List.filterMap identity
+                [ if collectible.editionNumber > 0 then
+                    Just ("edition #" ++ String.fromInt collectible.editionNumber)
+
+                  else
+                    Nothing
+                , if collectible.catalogSlug == "" then
+                    Nothing
+
+                  else
+                    Just ("from catalog '" ++ collectible.catalogSlug ++ "'")
+                , if String.trim collectible.issuerDisplayName == "" then
+                    Nothing
+
+                  else
+                    Just ("issued by " ++ collectible.issuerDisplayName)
+                ]
+    in
+    if List.isEmpty parts then
+        text ""
+
+    else
+        p [ Html.Attributes.class "text-xs text-farm-muted break-words", testId "collectible-provenance" ]
+            [ text (String.join " · " parts) ]
+
+
+awardCollectibleButton : String -> Collectible.CollectibleResponse -> Maybe (Html Msg)
 awardCollectibleButton awardTaskId collectible =
     case collectible.state of
         Collectible.CollectibleStateMinted ->
-            Ui.secondaryButton [ type_ "button", onClick (AwardClicked collectible.id), disabled (awardTaskId == ""), testId "award-collectible" ] "Award to selected task"
+            Just (Ui.secondaryButton [ type_ "button", onClick (AwardClicked collectible.id), disabled (awardTaskId == ""), testId "award-collectible" ] "Award to selected task")
 
         _ ->
-            text ""
+            Nothing
+
+
+{-| Whether a collectible's policy allows the holder to send it on. -}
+collectibleIsSendable : Collectible.CollectibleTransferPolicy -> Bool
+collectibleIsSendable policy =
+    case policy of
+        Collectible.CollectibleTransferPolicyTransferableBetweenUsers ->
+            True
+
+        Collectible.CollectibleTransferPolicyTransferableWithinOrganization ->
+            True
+
+        Collectible.CollectibleTransferPolicyNonTransferableExceptPayout ->
+            False
+
+        Collectible.CollectibleTransferPolicyIssuerControlled ->
+            False
+
+
+{-| The row's Send toggle: offered on held (minted or awarded) collectibles
+whose policy allows transfer; a non-transferable one shows a disabled button
+whose reason renders as text right below (see
+sendCollectibleUnavailableNote) - a silently disabled button explains
+nothing.
+-}
+sendCollectibleButton : Maybe String -> Collectible.CollectibleResponse -> Maybe (Html Msg)
+sendCollectibleButton openSendID collectible =
+    let
+        held =
+            collectible.state == Collectible.CollectibleStateMinted || collectible.state == Collectible.CollectibleStateAwarded
+
+        label =
+            if openSendID == Just collectible.id then
+                "Close send"
+
+            else
+                "Send"
+    in
+    if not held then
+        Nothing
+
+    else if collectibleIsSendable collectible.transferPolicy then
+        Just (Ui.secondaryButton [ type_ "button", onClick (ToggleSendCollectible collectible.id), testId "send-collectible-toggle" ] label)
+
+    else
+        Just (Ui.secondaryButton [ type_ "button", disabled True, testId "send-collectible-toggle" ] "Send")
+
+
+{-| Why a held collectible's Send button is disabled, in words. -}
+sendCollectibleUnavailableNote : Collectible.CollectibleResponse -> Html Msg
+sendCollectibleUnavailableNote collectible =
+    let
+        held =
+            collectible.state == Collectible.CollectibleStateMinted || collectible.state == Collectible.CollectibleStateAwarded
+    in
+    if not held || collectibleIsSendable collectible.transferPolicy then
+        text ""
+
+    else
+        p [ Html.Attributes.class "text-xs text-farm-muted", testId "send-collectible-unavailable" ]
+            [ text
+                (case collectible.transferPolicy of
+                    Collectible.CollectibleTransferPolicyNonTransferableExceptPayout ->
+                        "Can't send: this collectible only moves as a task payout."
+
+                    Collectible.CollectibleTransferPolicyIssuerControlled ->
+                        "Can't send: only this collectible's issuer can move it."
+
+                    _ ->
+                        ""
+                )
+            ]
+
+
+{-| The open per-row send form: user or organization target, the matching
+picker, and the send action.
+-}
+sendCollectiblePanel : LoggedInModel -> Collectible.CollectibleResponse -> Html Msg
+sendCollectiblePanel state collectible =
+    Ui.insetPanel [ Html.Attributes.class "space-y-3", testId "send-collectible-panel" ]
+        [ Ui.label_ ("Send " ++ collectible.name)
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.chooserButton (state.sendCollectibleTargetKind == "user") (SendCollectibleTargetKindChanged "user") "send-collectible-kind-user" "To a user"
+            , Ui.chooserButton (state.sendCollectibleTargetKind == "organization") (SendCollectibleTargetKindChanged "organization") "send-collectible-kind-organization" "To an organization"
+            ]
+        , if state.sendCollectibleTargetKind == "organization" then
+            organizationPicker "send-collectible-recipient" state.transferRecipientId state.organizationQuery TransferRecipientIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations.items state.organizationOffset state.organizationNextOffset
+
+          else
+            userPicker "send-collectible-recipient" state.transferRecipientId state.userDirectoryQuery TransferRecipientIdChanged "Choose user" state.userDirectory state.userDirectoryOffset state.userDirectoryNextOffset
+        , Ui.primaryButton [ type_ "button", onClick (SendCollectibleClicked collectible.id), testId "send-collectible" ] "Send"
+        ]
+
+
+{-| Admin-only instance withdrawal: catalog-minted instances can be pulled
+back from their holder.
+-}
+adminWithdrawButton : Bool -> Collectible.CollectibleResponse -> Maybe (Html Msg)
+adminWithdrawButton isAdmin collectible =
+    if isAdmin && collectible.catalogSlug /= "" && collectible.state /= Collectible.CollectibleStateWithdrawn then
+        Just (Ui.secondaryButton [ type_ "button", onClick (WithdrawCollectibleClicked collectible.id), testId "collectible-withdraw" ] "Withdraw")
+
+    else
+        Nothing
+
+
+{-| Admin-only hard delete, offered only once an instance is withdrawn. -}
+adminDeleteButton : Bool -> Collectible.CollectibleResponse -> Maybe (Html Msg)
+adminDeleteButton isAdmin collectible =
+    if isAdmin && collectible.state == Collectible.CollectibleStateWithdrawn then
+        Just (Ui.dangerButton [ type_ "button", onClick (DeleteCollectibleClicked collectible.id), testId "collectible-delete" ] "Delete")
+
+    else
+        Nothing
+
+
+{-| One org-owned collectible with its "send to the chosen user" action;
+disabled until a user is picked, with the reason spelled out beside it.
+-}
+orgCollectibleSendRow : String -> Collectible.CollectibleResponse -> Html Msg
+orgCollectibleSendRow recipientId collectible =
+    div [ Html.Attributes.class "flex flex-wrap items-center justify-between gap-2 py-2", testId "org-collectible-send-row" ]
+        [ div [ Html.Attributes.class "flex min-w-0 flex-wrap items-center gap-2" ]
+            [ Sprites.pixel collectible.art 5
+            , span [ Html.Attributes.class "text-sm font-medium break-words" ] [ text collectible.name ]
+            ]
+        , div [ Html.Attributes.class "flex flex-col items-end gap-1" ]
+            (Ui.secondaryButton [ type_ "button", onClick (OrgSendCollectibleClicked collectible.id), disabled (recipientId == ""), testId "org-send-collectible" ] "Send to user"
+                :: (if recipientId == "" then
+                        [ p [ Html.Attributes.class "text-[10px] text-farm-muted" ] [ text "Choose a user above first." ] ]
+
+                    else
+                        []
+                   )
+            )
+        ]
 
 
 
@@ -3736,7 +4264,9 @@ discoverySection : LoggedInModel -> List (Html Msg)
 discoverySection state =
     let
         visibleTasks =
-            filterTasksByQuery state.discoveryQuery state.discoveryTasks
+            { items = filterTasksByQuery state.discoveryQuery state.discoveryTasks.items
+            , failure = state.discoveryTasks.failure
+            }
     in
     [ Ui.sectionTitle "Discover public tasks"
     , Ui.disclosure "discovery-filters"
@@ -3752,13 +4282,13 @@ discoverySection state =
     ]
 
 
-discoveryList : String -> List Task.TaskListItemResponse -> Html Msg
+discoveryList : String -> Loaded Task.TaskListItemResponse -> Html Msg
 discoveryList subjectId tasks =
-    if List.isEmpty tasks then
-        Ui.emptyState "discovery-empty" "gnome-watering" "No public tasks available."
-
-    else
-        div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "discovery-tasks" ] (List.map (discoveryRow subjectId) tasks)
+    loadedListView "discovery"
+        "gnome-watering"
+        "No public tasks available."
+        tasks
+        (\items -> div [ Html.Attributes.class "divide-y-2 divide-farm-line-soft", testId "discovery-tasks" ] (List.map (discoveryRow subjectId) items))
 
 
 discoveryRow : String -> Task.TaskListItemResponse -> Html Msg
@@ -4264,7 +4794,7 @@ ownerControlsCard state =
                                 )
                             ]
                         , Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
-                        , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset state.organizationNextOffset
+                        , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations.items state.organizationOffset state.organizationNextOffset
                         , Ui.primaryButton [ type_ "button", onClick FundClicked, testId "fund" ] "Fund task"
                         ]
 
@@ -4273,7 +4803,7 @@ ownerControlsCard state =
                         False
                         "Fund this task"
                         [ Ui.textInput [ type_ "number", placeholder "Amount in credits", value state.fundAmount, onInput FundAmountChanged, testId "fund-amount" ]
-                        , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations state.organizationOffset state.organizationNextOffset
+                        , organizationPicker "fund-organization" state.fundOrganizationId state.organizationQuery FundOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Personal balance" state.organizations.items state.organizationOffset state.organizationNextOffset
                         , Ui.primaryButton [ type_ "button", onClick FundClicked, testId "fund" ] "Fund task"
                         ]
 
@@ -4320,7 +4850,7 @@ detailCard origin state =
                     text ""
 
                   else
-                    p [ Html.Attributes.class "text-xs font-medium text-farm-warning", testId "detail-expires" ] [ text ("Expires " ++ detail.expiresAt) ]
+                    p [ Html.Attributes.class "text-xs font-medium text-farm-warning", Html.Attributes.title detail.expiresAt, testId "detail-expires" ] [ text ("Expires " ++ absoluteTimeLabel detail.expiresAt) ]
                 , p [ Html.Attributes.class "text-xs text-farm-muted" ]
                     [ text "Posted by "
                     , a [ href ("#/users/" ++ detail.createdBy), Html.Attributes.class "underline", Html.Attributes.title detail.createdBy, testId "detail-created-by-link" ]
@@ -4374,8 +4904,21 @@ reservationCard state =
                 -- Spell these out: the raw enum badges ("submit user",
                 -- "wait user") read as noise to anyone who has not read the
                 -- API reference.
+                -- Owners cannot submit to their own task, so the generic
+                -- viewer-action sentence ("You can: submit a response now")
+                -- would be false for them; they get owner-appropriate copy.
                 , p [ Html.Attributes.class "text-sm text-farm-muted", testId "reservation-summary" ]
-                    [ text ("You can: " ++ viewerActionSentence viewerHoldsReservation detail.viewerAction ++ " · Assignee scope: " ++ assigneeScopeLabel detail.assigneeScope) ]
+                    [ text
+                        ((if isOwner then
+                            "You posted this task, so you cannot work on it yourself. Reservations and submissions from workers appear below."
+
+                          else
+                            "You can: " ++ viewerActionSentence viewerHoldsReservation detail.viewerAction
+                         )
+                            ++ " · Assignee scope: "
+                            ++ assigneeScopeLabel detail.assigneeScope
+                        )
+                    ]
 
                 -- The server's viewerAction doesn't rule out an owner
                 -- reserving their own task, but that's not a real workflow
@@ -4465,9 +5008,6 @@ viewerActionSentence viewerHoldsReservation action =
         Task.TaskViewerActionReserve ->
             "reserve this task"
 
-        Task.TaskViewerActionRequestApproval ->
-            "request a reservation (the owner must approve it)"
-
         Task.TaskViewerActionWait ->
             -- viewerAction is computed without looking at who is asking, so
             -- the "wait" may be about the viewer's own reservation - saying
@@ -4501,9 +5041,6 @@ reservationAction state detail =
         Task.TaskViewerActionReserve ->
             reservationActionForm state detail "Reserve" "reserve-task"
 
-        Task.TaskViewerActionRequestApproval ->
-            reservationActionForm state detail "Request approval" "request-approval"
-
         _ ->
             text ""
 
@@ -4521,12 +5058,12 @@ organizationTeamReservationFields state detail =
     case detail.assigneeScope of
         Task.TaskAssigneeScopeOrganizationTeam ->
             div [ Html.Attributes.class "grid gap-3 md:grid-cols-2" ]
-                [ Ui.fieldLabel "Organization" [ organizationPicker "reservation-organization-id" state.reservationOrganizationId state.organizationQuery ReservationOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations state.organizationOffset state.organizationNextOffset ]
-                , Ui.fieldLabel "Team" [ teamPicker "reservation-team-id" state.reservationTeamId state.orgTeamQuery ReservationTeamIdChanged OrgTeamQueryChanged SearchOrgTeamsClicked PreviousOrgTeamsPageClicked NextOrgTeamsPageClicked "Choose team" state.orgTeams state.orgTeamOffset state.orgTeamNextOffset ]
+                [ Ui.fieldLabel "Organization" [ organizationPicker "reservation-organization-id" state.reservationOrganizationId state.organizationQuery ReservationOrganizationIdChanged OrganizationQueryChanged SearchOrganizationsClicked PreviousOrganizationsPageClicked NextOrganizationsPageClicked "Choose organization" state.organizations.items state.organizationOffset state.organizationNextOffset ]
+                , Ui.fieldLabel "Team" [ teamPicker "reservation-team-id" state.reservationTeamId state.orgTeamQuery ReservationTeamIdChanged OrgTeamQueryChanged SearchOrgTeamsClicked PreviousOrgTeamsPageClicked NextOrgTeamsPageClicked "Choose team" state.orgTeams.items state.orgTeamOffset state.orgTeamNextOffset ]
                 ]
 
         Task.TaskAssigneeScopeTeam ->
-            Ui.fieldLabel "Team" [ teamPicker "reservation-team-id" state.reservationTeamId state.standaloneTeamQuery ReservationTeamIdChanged StandaloneTeamQueryChanged SearchStandaloneTeamsClicked PreviousStandaloneTeamsPageClicked NextStandaloneTeamsPageClicked "Choose team" state.standaloneTeams state.standaloneTeamOffset state.standaloneTeamNextOffset ]
+            Ui.fieldLabel "Team" [ teamPicker "reservation-team-id" state.reservationTeamId state.standaloneTeamQuery ReservationTeamIdChanged StandaloneTeamQueryChanged SearchStandaloneTeamsClicked PreviousStandaloneTeamsPageClicked NextStandaloneTeamsPageClicked "Choose team" state.standaloneTeams.items state.standaloneTeamOffset state.standaloneTeamNextOffset ]
 
         _ ->
             text ""
@@ -4582,15 +5119,6 @@ reservationButtons isOwner subjectId reservation =
             reservation.assigneeKind == Task.TaskAssigneeScopeUser && reservation.assigneeID == subjectId
     in
     case reservation.state of
-        Task.TaskReservationStateRequested ->
-            if isOwner then
-                [ Ui.primaryButton [ type_ "button", onClick (ApproveReservationClicked reservation.id), testId "approve-reservation" ] "Approve"
-                , Ui.secondaryButton [ type_ "button", onClick (DeclineReservationClicked reservation.id), testId "decline-reservation" ] "Decline"
-                ]
-
-            else
-                []
-
         Task.TaskReservationStateActive ->
             if isOwner || isHolder then
                 [ Ui.secondaryButton [ type_ "button", onClick (CancelReservationClicked reservation.id), testId "cancel-reservation" ] "Cancel" ]
@@ -4730,7 +5258,7 @@ mySubmissionsCard state =
         Just detail ->
             let
                 mine =
-                    List.filter (\submission -> submission.taskID == detail.id) state.userSubmissions
+                    List.filter (\submission -> submission.taskID == detail.id) state.userSubmissions.items
             in
             if List.isEmpty mine then
                 text ""
@@ -4823,7 +5351,7 @@ reviewControls state =
                         -- Only minted holdings can be tipped; offering an
                         -- escrowed or awarded collectible here just produces
                         -- a server rejection on Accept.
-                        (List.filter (\c -> c.state == Collectible.CollectibleStateMinted) state.collectibles)
+                        (List.filter (\c -> c.state == Collectible.CollectibleStateMinted) state.collectibles.items)
                 )
             ]
         ]
@@ -4962,6 +5490,39 @@ redactedAtSuffix value =
 
 
 -- Labels and helpers
+
+
+{-| The body of a list section, branching on how the last load went: a
+failed load renders a visible error block (distinct from genuine
+emptiness), an empty success renders the sprite empty-state, and rows
+render through the given function. `identifier` is the section's base
+testid: the empty state keeps its historical `<id>-empty` testid, the
+failure block gets `<id>-load-error`.
+-}
+loadedListView : String -> String -> String -> Loaded a -> (List a -> Html Msg) -> Html Msg
+loadedListView identifier spriteSlug emptyMessage loaded renderItems =
+    case loaded.failure of
+        Just message ->
+            loadFailureView identifier message
+
+        Nothing ->
+            if List.isEmpty loaded.items then
+                Ui.emptyState (identifier ++ "-empty") spriteSlug emptyMessage
+
+            else
+                renderItems loaded.items
+
+
+{-| The visible load-error state: names the failure (the server's own error
+text or the transport problem) so an API outage never masquerades as "no
+data yet", and says what happens next.
+-}
+loadFailureView : String -> String -> Html Msg
+loadFailureView identifier message =
+    div [ Html.Attributes.class "space-y-1 border-2 border-farm-danger bg-farm-danger-soft px-3 py-2", testId (identifier ++ "-load-error") ]
+        [ p [ Html.Attributes.class "text-sm font-medium text-farm-danger" ] [ text ("Couldn't load this list: " ++ message) ]
+        , p [ Html.Attributes.class "text-xs text-farm-danger" ] [ text "Retrying on the next refresh." ]
+        ]
 
 
 maybeError : Maybe String -> String -> Html Msg
@@ -5188,5 +5749,4 @@ allParticipationPolicies : List Task.TaskParticipationPolicy
 allParticipationPolicies =
     [ Task.TaskParticipationPolicyOpen
     , Task.TaskParticipationPolicyReservationRequired
-    , Task.TaskParticipationPolicyApprovalRequired
     ]

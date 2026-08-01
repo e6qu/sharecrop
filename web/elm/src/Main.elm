@@ -97,7 +97,7 @@ emptyLoggedIn response =
     , page = OverviewPage
     , openNavMenu = Nothing
     , balance = Nothing
-    , entries = []
+    , entries = loadedNone
     , ledgerOffset = 0
     , ledgerNextOffset = 0
     , ledgerTotal = 0
@@ -141,7 +141,13 @@ emptyLoggedIn response =
     , fundOrganizationId = ""
     , fundMessage = Nothing
     , fundNonce = 0
-    , tasks = []
+    , sendRecipientKind = "user"
+    , sendRecipientId = ""
+    , sendAmount = ""
+    , sendNote = ""
+    , sendKey = ""
+    , sendMessage = Nothing
+    , tasks = loadedNone
     , taskStateFilter = []
     , taskListOffset = 0
     , taskListNextOffset = 0
@@ -152,10 +158,10 @@ emptyLoggedIn response =
     , agentLabel = ""
     , agentScopes = [ Agent.AgentScopeTasksRead, Agent.AgentScopeSubmissionsWrite ]
     , agentExpiresHours = ""
-    , credentials = []
+    , credentials = loadedNone
     , newCredential = Nothing
     , agentMessage = Nothing
-    , discoveryTasks = []
+    , discoveryTasks = loadedNone
     , discoveryIncludeReserved = False
     , discoveryFundedOnly = False
     , discoveryOffset = 0
@@ -185,7 +191,7 @@ emptyLoggedIn response =
     , reviewTipCollectibleId = ""
     , reviewBan = Ledger.BanSelectionNone
     , reviewMessage = Nothing
-    , collectibles = []
+    , collectibles = loadedNone
     , collectibleName = ""
     , collectibleKind = Collectible.CollectibleKindBadge
     , collectiblePolicy = Collectible.CollectibleTransferPolicyNonTransferableExceptPayout
@@ -193,27 +199,37 @@ emptyLoggedIn response =
     , awardTaskId = ""
     , awardMessage = Nothing
     , awardDefaultMessage = Nothing
-    , collectibleCatalog = []
+    , collectibleCatalog = loadedNone
     , awardRecipientKind = "user"
     , awardRecipientId = ""
     , transferRecipientId = ""
     , transferMessage = Nothing
-    , organizations = []
+    , openSendCollectibleID = Nothing
+    , sendCollectibleTargetKind = "user"
+    , withdrawMessage = Nothing
+    , catalogSlug = ""
+    , catalogName = ""
+    , catalogKind = Collectible.CollectibleKindBadge
+    , catalogPolicy = Collectible.CollectibleTransferPolicyNonTransferableExceptPayout
+    , catalogArt = ""
+    , catalogMaxEditions = ""
+    , catalogMessage = Nothing
+    , organizations = loadedNone
     , createOrgName = ""
     , orgMessage = Nothing
     , activeOrgId = ""
     , orgBalance = Nothing
-    , orgLedger = []
+    , orgLedger = loadedNone
     , orgLedgerOffset = 0
     , orgLedgerNextOffset = 0
     , orgLedgerTotal = 0
     , orgAuditEvents = []
     , orgAuditMessage = Nothing
-    , orgTeams = []
-    , standaloneTeams = []
+    , orgTeams = loadedNone
+    , standaloneTeams = loadedNone
     , createTeamName = ""
     , createTeamMessage = Nothing
-    , orgMembers = []
+    , orgMembers = loadedNone
     , orgTasks = []
     , orgTaskQuery = ""
     , orgTaskFilter = ""
@@ -229,7 +245,9 @@ emptyLoggedIn response =
     , orgCollectiblesMessage = Nothing
     , awardOrgCollectibleRecipientId = ""
     , awardOrgCollectibleMessage = Nothing
-    , orgCredentials = []
+    , orgSendCollectibleRecipientId = ""
+    , orgSendCollectibleMessage = Nothing
+    , orgCredentials = loadedNone
     , orgCredentialLabel = ""
     , orgCredentialScopes = [ Agent.AgentScopeOrgRead ]
     , orgCredentialExpiresHours = ""
@@ -239,8 +257,8 @@ emptyLoggedIn response =
     , teamCollectiblesMessage = Nothing
     , userProfile = Nothing
     , userProfileError = Nothing
-    , userWork = []
-    , userSubmissions = []
+    , userWork = loadedNone
+    , userSubmissions = loadedNone
     , userSubmissionsOffset = 0
     , userSubmissionsNextOffset = 0
     , userSubmissionsTotal = 0
@@ -248,7 +266,7 @@ emptyLoggedIn response =
     , pendingRevisionResponse = ""
     , seriesDetail = Nothing
     , seriesDetailError = Nothing
-    , seriesList = []
+    , seriesList = loadedNone
     , createSeriesTitle = ""
     , createSeriesDescription = ""
     , seriesMessage = Nothing
@@ -657,22 +675,22 @@ enterPageFields page state =
                 , discoveryFundedOnly = False
                 , discoveryOffset = 0
                 , discoveryQuery = ""
-                , userSubmissions = []
+                , userSubmissions = loadedNone
                 , userSubmissionsOffset = 0
                 , seriesMessage = Nothing
             }
 
         OrganizationDetailPage organizationId ->
-            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = [], orgLedgerOffset = 0, orgAuditEvents = [], orgAuditMessage = Nothing, orgTeams = [], orgMembers = [], orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, awardOrgCollectibleRecipientId = "", awardOrgCollectibleMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
+            { state | page = page, activeOrgId = organizationId, orgBalance = Nothing, orgLedger = loadedNone, orgLedgerOffset = 0, orgAuditEvents = [], orgAuditMessage = Nothing, orgTeams = loadedNone, orgMembers = loadedNone, orgTasks = [], orgTaskQuery = "", orgTaskFilter = "", orgTaskTypeFilter = "", orgTaskSort = "newest", orgTaskOffset = 0, orgTaskMessage = Nothing, orgCollectibles = [], orgCollectiblesMessage = Nothing, awardOrgCollectibleRecipientId = "", awardOrgCollectibleMessage = Nothing, orgSendCollectibleRecipientId = "", orgSendCollectibleMessage = Nothing, sendRecipientKind = "user", sendRecipientId = "", sendAmount = "", sendNote = "", sendKey = "", sendMessage = Nothing, orgTeamMessage = Nothing, provisionMemberRoles = [ "member" ], provisionMemberMessage = Nothing }
 
         UserDetailPage _ ->
             { state | page = page, userProfile = Nothing, userProfileError = Nothing, accountProfile = Nothing, displayNameDraft = "" }
 
         UserWorkPage _ ->
-            { state | page = page, userWork = [] }
+            { state | page = page, userWork = loadedNone }
 
         UserSubmissionsPage _ ->
-            { state | page = page, userSubmissions = [], userSubmissionsOffset = 0 }
+            { state | page = page, userSubmissions = loadedNone, userSubmissionsOffset = 0 }
 
         SeriesDetailPage _ ->
             { state | page = page, seriesDetail = Nothing, seriesDetailError = Nothing, seriesMessage = Nothing, addSeriesTaskId = "", seriesCommentBody = "", seriesRenameTitle = "", seriesRenameDescription = "" }
@@ -688,7 +706,9 @@ enterPageFields page state =
             -- resumes after the last event already shown (routeLoadCmd passes
             -- the kept cursor) instead of re-reading the stream from its
             -- start. appendActivityEvents dedupes and caps the render list.
-            { state | page = page }
+            -- The send-credits panel resets so a stale confirmation or
+            -- half-typed draft does not reappear on return.
+            { state | page = page, sendRecipientKind = "user", sendRecipientId = "", sendAmount = "", sendNote = "", sendKey = "", sendMessage = Nothing }
 
         AgentsPage ->
             { state | page = page, webhookURL = "", webhookKinds = [], webhookAudience = Events.WebhookAudienceRecipient, webhookFilterTaskType = "", webhookFilterMinReward = "", webhookMessage = Nothing, newWebhookSecret = Nothing, activeWebhookDeliveriesID = Nothing, webhookDeliveries = [] }
@@ -714,7 +734,7 @@ enterPageFields page state =
         CollectiblesPage ->
             -- Reset the award / mint / transfer messages and drafts so a stale
             -- "Awarded" note or prefilled recipient does not reappear on return.
-            { state | page = page, awardMessage = Nothing, awardDefaultMessage = Nothing, collectibleMessage = Nothing, transferMessage = Nothing, collectibleName = "", awardRecipientId = "", awardTaskId = "" }
+            { state | page = page, awardMessage = Nothing, awardDefaultMessage = Nothing, collectibleMessage = Nothing, transferMessage = Nothing, collectibleName = "", awardRecipientId = "", awardTaskId = "", openSendCollectibleID = Nothing, sendCollectibleTargetKind = "user", transferRecipientId = "", withdrawMessage = Nothing, catalogSlug = "", catalogName = "", catalogArt = "", catalogMaxEditions = "", catalogMessage = Nothing }
 
         CreateTaskPage ->
             -- Clear a half-finished draft and any stale create message on entry.
@@ -882,7 +902,58 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | balance = Api.balanceFromResult result }), Cmd.none )
 
         LedgerReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | entries = Api.entriesFromResult result, ledgerNextOffset = nextOffsetFromResult .nextOffset result, ledgerTotal = totalFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | entries = Api.loadedFromResult .entries result, ledgerNextOffset = nextOffsetFromResult .nextOffset result, ledgerTotal = totalFromResult result }), Cmd.none )
+
+        SendRecipientKindChanged value ->
+            -- Changing any send input starts a new send intent, so the
+            -- idempotency key is discarded and reminted on the next submit.
+            ( Api.updateLoggedIn model (\state -> { state | sendRecipientKind = value, sendRecipientId = "", sendKey = "" }), Cmd.none )
+
+        SendRecipientIdChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | sendRecipientId = value, sendKey = "" }), Cmd.none )
+
+        SendAmountChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | sendAmount = value, sendKey = "" }), Cmd.none )
+
+        SendNoteChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | sendNote = value, sendKey = "" }), Cmd.none )
+
+        SendCreditsClicked ->
+            -- The key is minted on the first submit of this send intent and
+            -- reused by retries (network timeouts), so the server dedupes
+            -- instead of double-sending; editing any field clears it.
+            Api.withSession model (\state -> Api.sendCreditsCommand model state (mintSendKey state))
+
+        OrgSendCreditsClicked ->
+            Api.withSession model (\state -> Api.orgSendCreditsCommand model state (mintSendKey state))
+
+        CreditsSentReceived recipientLabel (Ok sent) ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model
+                        (\current ->
+                            { current
+                                | sendMessage = Just (SuccessNote ("Sent " ++ String.fromInt sent.amount ++ " credits to " ++ recipientLabel ++ "."))
+                                , sendAmount = ""
+                                , sendNote = ""
+                                , sendKey = ""
+                            }
+                        )
+                    , Cmd.batch
+                        (Api.refreshBalanceAndLedger model
+                            :: (case state.page of
+                                    OrganizationDetailPage organizationId ->
+                                        [ Api.loadOrganization state.accessToken organizationId ]
+
+                                    _ ->
+                                        []
+                               )
+                        )
+                    )
+                )
+
+        CreditsSentReceived _ (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | sendMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         PreviousLedgerPageClicked ->
             Api.withSession model
@@ -905,7 +976,7 @@ update msg model =
                 )
 
         TasksReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | tasks = Api.tasksFromResult result, taskListNextOffset = nextOffsetFromResult .nextOffset result, taskListTotal = totalFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | tasks = Api.loadedFromResult .tasks result, taskListNextOffset = nextOffsetFromResult .nextOffset result, taskListTotal = totalFromResult result }), Cmd.none )
 
         TaskStateFilterToggled value ->
             let
@@ -1107,7 +1178,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | createMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         CredentialsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | credentials = Api.credentialsFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | credentials = Api.loadedFromResult .credentials result }), Cmd.none )
 
         FundTaskIdChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | fundTaskId = value }), Cmd.none )
@@ -1263,7 +1334,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | agentMessage = Just (FailureNote ("Could not revoke the credential: " ++ httpErrorLabel error)) }), Cmd.none )
 
         OrgCredentialsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | orgCredentials = Api.orgCredentialsFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgCredentials = Api.loadedFromResult .credentials result }), Cmd.none )
 
         OrgCredentialLabelChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | orgCredentialLabel = value }), Cmd.none )
@@ -1361,7 +1432,7 @@ update msg model =
                 )
 
         DiscoveryReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | discoveryTasks = Api.tasksFromResult result, discoveryNextOffset = nextOffsetFromResult .nextOffset result, discoveryTotal = totalFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | discoveryTasks = Api.loadedFromResult .tasks result, discoveryNextOffset = nextOffsetFromResult .nextOffset result, discoveryTotal = totalFromResult result }), Cmd.none )
 
         DiscoveryViewClicked taskId ->
             ( Api.updateLoggedIn model
@@ -1405,7 +1476,7 @@ update msg model =
         ReservationOrganizationIdChanged value ->
             Api.withSession model
                 (\state ->
-                    ( Api.updateLoggedIn model (\current -> { current | reservationOrganizationId = value, reservationTeamId = "", orgTeams = [], orgTeamQuery = "", orgTeamOffset = 0 })
+                    ( Api.updateLoggedIn model (\current -> { current | reservationOrganizationId = value, reservationTeamId = "", orgTeams = loadedNone, orgTeamQuery = "", orgTeamOffset = 0 })
                     , if value == "" then
                         Cmd.none
 
@@ -1436,12 +1507,6 @@ update msg model =
 
         ReservationsReceived (Err _) ->
             ( Api.updateLoggedIn model (\state -> { state | reservations = [] }), Cmd.none )
-
-        ApproveReservationClicked reservationId ->
-            Api.withSession model (\state -> Api.reservationChangeCommand model state reservationId "approve")
-
-        DeclineReservationClicked reservationId ->
-            Api.withSession model (\state -> Api.reservationChangeCommand model state reservationId "decline")
 
         CancelReservationClicked reservationId ->
             Api.withSession model (\state -> Api.reservationChangeCommand model state reservationId "cancel")
@@ -1653,7 +1718,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | collectibleMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         CollectiblesReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | collectibles = Api.collectiblesFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | collectibles = Api.loadedFromResult .collectibles result }), Cmd.none )
 
         AwardTaskIdChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | awardTaskId = value }), Cmd.none )
@@ -1705,11 +1770,8 @@ update msg model =
         AwardOrgCollectibleReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | awardOrgCollectibleMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
-        CollectibleCatalogReceived (Ok response) ->
-            ( Api.updateLoggedIn model (\state -> { state | collectibleCatalog = response.entries }), Cmd.none )
-
-        CollectibleCatalogReceived (Err _) ->
-            ( model, Cmd.none )
+        CollectibleCatalogReceived result ->
+            ( Api.updateLoggedIn model (\state -> { state | collectibleCatalog = Api.loadedFromResult .entries result }), Cmd.none )
 
         AwardRecipientKindChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | awardRecipientKind = value, awardRecipientId = "" }), Cmd.none )
@@ -1751,21 +1813,157 @@ update msg model =
                         ( Api.updateLoggedIn model (\current -> { current | transferMessage = Just (FailureNote "Enter a recipient id first.") }), Cmd.none )
 
                     else
-                        ( model, Api.transferCollectible state.accessToken collectibleId state.transferRecipientId )
+                        ( model, Api.transferCollectible state.accessToken collectibleId "user" state.transferRecipientId )
                 )
 
-        TransferCollectibleReceived (Ok _) ->
+        TransferCollectibleReceived (Ok collectible) ->
             let
                 updated =
-                    Api.updateLoggedIn model (\state -> { state | transferMessage = Just (SuccessNote "Transferred.") })
+                    Api.updateLoggedIn model (\state -> { state | transferMessage = Just (SuccessNote ("Sent " ++ collectible.name ++ ".")), openSendCollectibleID = Nothing })
             in
             ( updated, Api.refreshCollectibles updated )
 
         TransferCollectibleReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | transferMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
+        ToggleSendCollectible collectibleId ->
+            ( Api.updateLoggedIn model
+                (\state ->
+                    if state.openSendCollectibleID == Just collectibleId then
+                        { state | openSendCollectibleID = Nothing }
+
+                    else
+                        { state | openSendCollectibleID = Just collectibleId, sendCollectibleTargetKind = "user", transferRecipientId = "", transferMessage = Nothing }
+                )
+            , Cmd.none
+            )
+
+        SendCollectibleTargetKindChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | sendCollectibleTargetKind = value, transferRecipientId = "" }), Cmd.none )
+
+        SendCollectibleClicked collectibleId ->
+            Api.withSession model
+                (\state ->
+                    if String.trim state.transferRecipientId == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | transferMessage = Just (FailureNote "Choose a recipient first.") }), Cmd.none )
+
+                    else
+                        ( model, Api.transferCollectible state.accessToken collectibleId state.sendCollectibleTargetKind state.transferRecipientId )
+                )
+
+        OrgSendCollectibleRecipientIdChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | orgSendCollectibleRecipientId = value }), Cmd.none )
+
+        OrgSendCollectibleClicked collectibleId ->
+            Api.withSession model
+                (\state ->
+                    if String.trim state.orgSendCollectibleRecipientId == "" then
+                        ( Api.updateLoggedIn model (\current -> { current | orgSendCollectibleMessage = Just (FailureNote "Choose a user first.") }), Cmd.none )
+
+                    else
+                        ( Api.updateLoggedIn model (\current -> { current | orgSendCollectibleMessage = Nothing })
+                        , Api.postOrgSendCollectible state.accessToken state.activeOrgId collectibleId state.orgSendCollectibleRecipientId
+                        )
+                )
+
+        OrgSendCollectibleReceived (Ok collectible) ->
+            let
+                updated =
+                    Api.updateLoggedIn model (\state -> { state | orgSendCollectibleMessage = Just (SuccessNote ("Sent " ++ collectible.name ++ ".")) })
+            in
+            Api.withSession updated (\state -> ( updated, Api.fetchOrganizationCollectibles state.accessToken state.activeOrgId ))
+
+        OrgSendCollectibleReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | orgSendCollectibleMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
+        CatalogSlugChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | catalogSlug = value }), Cmd.none )
+
+        CatalogNameChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | catalogName = value }), Cmd.none )
+
+        CatalogKindChosen kind ->
+            ( Api.updateLoggedIn model (\state -> { state | catalogKind = kind }), Cmd.none )
+
+        CatalogPolicyChosen policy ->
+            ( Api.updateLoggedIn model (\state -> { state | catalogPolicy = policy }), Cmd.none )
+
+        CatalogArtChosen slug ->
+            ( Api.updateLoggedIn model (\state -> { state | catalogArt = slug }), Cmd.none )
+
+        CatalogMaxEditionsChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | catalogMaxEditions = value }), Cmd.none )
+
+        AddCatalogEntryClicked ->
+            Api.withSession model (\state -> Api.addCatalogEntryCommand model state)
+
+        CatalogEntryMutated (Ok entry) ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model
+                        (\current ->
+                            { current
+                                | catalogMessage = Just (SuccessNote (catalogMutationLabel entry))
+                                , catalogSlug = ""
+                                , catalogName = ""
+                                , catalogMaxEditions = ""
+                                , catalogArt = ""
+                            }
+                        )
+                    , Api.fetchCollectibleCatalog state.accessToken
+                    )
+                )
+
+        CatalogEntryMutated (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | catalogMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
+        WithdrawCatalogEntryClicked slug ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | catalogMessage = Nothing }), Api.postWithdrawCatalogEntry state.accessToken slug ))
+
+        DeleteCatalogEntryClicked slug ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | catalogMessage = Nothing }), Api.deleteCatalogEntryCmd state.accessToken slug ))
+
+        CatalogEntryDeleted (Ok ()) ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | catalogMessage = Just (SuccessNote "Deleted the catalog entry.") })
+                    , Api.fetchCollectibleCatalog state.accessToken
+                    )
+                )
+
+        CatalogEntryDeleted (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | catalogMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
+        WithdrawCollectibleClicked collectibleId ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | withdrawMessage = Nothing }), Api.postWithdrawCollectible state.accessToken collectibleId ))
+
+        CollectibleWithdrawnReceived (Ok collectible) ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | withdrawMessage = Just (SuccessNote ("Withdrew '" ++ collectible.name ++ "'.")) })
+                    , Cmd.batch [ Api.fetchCollectibles state.accessToken, Api.fetchCollectibleCatalog state.accessToken ]
+                    )
+                )
+
+        CollectibleWithdrawnReceived (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | withdrawMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
+        DeleteCollectibleClicked collectibleId ->
+            Api.withSession model (\state -> ( Api.updateLoggedIn model (\current -> { current | withdrawMessage = Nothing }), Api.deleteCollectibleCmd state.accessToken collectibleId ))
+
+        CollectibleDeleted (Ok ()) ->
+            Api.withSession model
+                (\state ->
+                    ( Api.updateLoggedIn model (\current -> { current | withdrawMessage = Just (SuccessNote "Deleted the collectible.") })
+                    , Cmd.batch [ Api.fetchCollectibles state.accessToken, Api.fetchCollectibleCatalog state.accessToken ]
+                    )
+                )
+
+        CollectibleDeleted (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | withdrawMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
+
         OrganizationsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | organizations = Api.organizationsFromResult result, organizationNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | organizations = Api.loadedFromResult .organizations result, organizationNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         CreateOrgNameChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createOrgName = value }), Cmd.none )
@@ -1783,7 +1981,7 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | orgBalance = Api.balanceFromResult result }), Cmd.none )
 
         OrgLedgerReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | orgLedger = Api.entriesFromResult result, orgLedgerNextOffset = nextOffsetFromResult .nextOffset result, orgLedgerTotal = totalFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgLedger = Api.loadedFromResult .entries result, orgLedgerNextOffset = nextOffsetFromResult .nextOffset result, orgLedgerTotal = totalFromResult result }), Cmd.none )
 
         PreviousOrgLedgerPageClicked ->
             Api.withSession model
@@ -1812,10 +2010,10 @@ update msg model =
             ( Api.updateLoggedIn model (\state -> { state | orgAuditEvents = [], orgAuditMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgTeamsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | orgTeams = Api.teamsFromResult result, orgTeamNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgTeams = Api.loadedFromResult .teams result, orgTeamNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         StandaloneTeamsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | standaloneTeams = Api.teamsFromResult result, standaloneTeamNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | standaloneTeams = Api.loadedFromResult .teams result, standaloneTeamNextOffset = nextOffsetFromResult .nextOffset result }), Cmd.none )
 
         CreateTeamNameChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createTeamName = value }), Cmd.none )
@@ -1990,7 +2188,7 @@ update msg model =
                 )
 
         OrgMembersReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | orgMembers = Api.membersFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | orgMembers = Api.loadedFromResult .members result }), Cmd.none )
 
         UserProfileReceived result ->
             ( Api.updateLoggedIn model
@@ -2006,10 +2204,10 @@ update msg model =
             )
 
         UserWorkReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | userWork = Api.tasksFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | userWork = Api.loadedFromResult .tasks result }), Cmd.none )
 
         UserSubmissionsReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | userSubmissions = Api.submissionsFromResult result, userSubmissionsNextOffset = nextOffsetFromResult .nextOffset result, userSubmissionsTotal = totalFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | userSubmissions = Api.loadedFromResult .submissions result, userSubmissionsNextOffset = nextOffsetFromResult .nextOffset result, userSubmissionsTotal = totalFromResult result }), Cmd.none )
 
         PreviousUserSubmissionsPageClicked ->
             Api.withSession model
@@ -2037,7 +2235,7 @@ update msg model =
             )
 
         SeriesListReceived result ->
-            ( Api.updateLoggedIn model (\state -> { state | seriesList = Api.seriesFromResult result }), Cmd.none )
+            ( Api.updateLoggedIn model (\state -> { state | seriesList = Api.loadedFromResult .series result }), Cmd.none )
 
         CreateSeriesTitleChanged value ->
             ( Api.updateLoggedIn model (\state -> { state | createSeriesTitle = value }), Cmd.none )
@@ -3330,3 +3528,29 @@ toggleString value values =
 
     else
         value :: values
+
+
+{-| The idempotency key for the current send-credits intent: minted on the
+first submit, reused for retries of the same intent (see the *Changed
+handlers, which clear it).
+-}
+mintSendKey : LoggedInModel -> String
+mintSendKey state =
+    if state.sendKey == "" then
+        "ui-send:" ++ String.fromInt (Time.posixToMillis state.now) ++ ":" ++ state.subjectId
+
+    else
+        state.sendKey
+
+
+{-| The confirmation for an admin catalog mutation, phrased by the state the
+entry landed in (an add leaves it available; a withdraw marks it withdrawn).
+-}
+catalogMutationLabel : Collectible.CollectibleCatalogEntry -> String
+catalogMutationLabel entry =
+    case entry.state of
+        Collectible.CollectibleCatalogEntryStateAvailable ->
+            "Catalog entry '" ++ entry.name ++ "' is available to award."
+
+        Collectible.CollectibleCatalogEntryStateWithdrawn ->
+            "Withdrew '" ++ entry.name ++ "' from the catalog. Copies already minted keep circulating."

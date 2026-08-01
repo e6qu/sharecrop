@@ -6,7 +6,11 @@ type CreateStoreResult interface {
 	createStoreResult()
 }
 
-type CreateStoreAccepted struct{}
+type CreateStoreAccepted struct {
+	// Value is the collectible as created, including store-assigned
+	// provenance (the edition number for edition-kind mints).
+	Value Collectible
+}
 
 type CreateStoreRejected struct {
 	Reason core.DomainError

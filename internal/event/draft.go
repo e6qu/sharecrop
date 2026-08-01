@@ -98,10 +98,12 @@ func (NoEvent) plan() {}
 func (Record) plan() {}
 
 // DispatchState is the outbox lifecycle of a stored event: recorded (the
-// mutation transaction committed the row; side effects still due) or
-// dispatched (inbox fan-out and webhook expansion completed). The
-// dispatched_at column records the completion instant as a fact; this enum,
-// not the timestamp, carries the state.
+// mutation transaction committed the row; side effects still due),
+// dispatched (inbox fan-out and webhook expansion completed), or
+// dispatch_failed (terminal: the recovery sweep exhausted its attempt cap on
+// the row and retired it for operator inspection). The dispatched_at column
+// records the completion instant as a fact; this enum, not the timestamp,
+// carries the state.
 type DispatchState struct {
 	value string
 }
@@ -109,6 +111,7 @@ type DispatchState struct {
 var (
 	DispatchStateRecorded   = DispatchState{value: "recorded"}
 	DispatchStateDispatched = DispatchState{value: "dispatched"}
+	DispatchStateFailed     = DispatchState{value: "dispatch_failed"}
 )
 
 func (state DispatchState) String() string {
@@ -139,6 +142,8 @@ func ParseDispatchState(raw string) DispatchStateResult {
 		return DispatchStateParsed{Value: DispatchStateRecorded}
 	case DispatchStateDispatched.value:
 		return DispatchStateParsed{Value: DispatchStateDispatched}
+	case DispatchStateFailed.value:
+		return DispatchStateParsed{Value: DispatchStateFailed}
 	default:
 		return DispatchStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "unknown event dispatch state")}
 	}

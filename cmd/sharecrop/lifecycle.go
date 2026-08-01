@@ -32,10 +32,13 @@ const (
 
 	// The event dispatch sweep is the crash-recovery half of the outbox: it
 	// re-dispatches events whose mutation committed but whose inline
-	// dispatch was lost. It runs on a short cycle so lost notifications and
-	// webhook deliveries surface quickly, and only touches recorded rows
-	// older than a grace period so it never races a mutation whose inline
-	// dispatch is still in flight.
+	// dispatch was lost or failed part-way. It runs on a short cycle so lost
+	// notifications and webhook deliveries surface quickly. The sweep can
+	// only ever see rows whose recording transaction committed (MVCC keeps
+	// an in-flight transaction's rows invisible), and racing a slow inline
+	// dispatch is safe because every dispatch leg is idempotent per event;
+	// the grace period merely avoids burning attempt counts and duplicate
+	// work on rows whose inline dispatch is normally still running.
 	eventDispatchSweepInterval = 30 * time.Second
 	eventDispatchGracePeriod   = 10 * time.Second
 	// eventDispatchSweepBatch bounds one recovery pass; the next tick
@@ -103,7 +106,7 @@ func buildLifecycleRunner(logger *slog.Logger, pool *pgxpool.Pool, recorder even
 			Name:     "event_dispatch",
 			Interval: eventDispatchSweepInterval,
 			Run: func(ctx context.Context) error {
-				return sweepRecordedEvents(ctx, db.NewEventStore(pool), recorder)
+				return sweepRecordedEvents(ctx, logger, db.NewEventStore(pool), recorder)
 			},
 		},
 		{
@@ -122,64 +125,51 @@ func buildLifecycleRunner(logger *slog.Logger, pool *pgxpool.Pool, recorder even
 
 // sweepRecordedEvents dispatches stale recorded events: rows the outbox
 // committed whose inline dispatch (inbox fan-out, webhook expansion) was
-// lost to a crash. Dispatch is idempotent per event, so racing a slow inline
-// dispatch is harmless.
-func sweepRecordedEvents(ctx context.Context, eventStore db.EventStore, recorder event.Recorder) error {
+// lost to a crash or failed part-way. Dispatch is idempotent per event, so
+// racing a slow inline dispatch is harmless. Malformed rows are skipped by
+// the store (they accumulate attempts until the cap retires them to
+// dispatch_failed) and surfaced here as a log line, never as a sweep
+// failure.
+func sweepRecordedEvents(ctx context.Context, logger *slog.Logger, eventStore db.EventStore, recorder event.Recorder) error {
 	cutoff := time.Now().UTC().Add(-eventDispatchGracePeriod)
 	result := eventStore.ListRecordedBefore(ctx, cutoff, eventDispatchSweepBatch)
 	listed, matched := result.(db.RecordedEventsListed)
 	if !matched {
 		return errors.New(result.(db.ListRecordedRejected).Reason.Description())
 	}
+	if listed.SkippedMalformed > 0 {
+		logger.Warn("event dispatch sweep skipped malformed recorded rows",
+			"skipped", listed.SkippedMalformed)
+	}
 	recorder.Dispatch(ctx, listed.Values...)
 	return nil
 }
 
-// sweepDueReservations releases expired reservations and emits one
-// reservation_expired event per released row, notifying the reservation
-// holder and the task owner as the system actor.
+// sweepDueReservations releases expired reservations; the store records one
+// reservation_expired event per released row (holder and task owner as
+// recipients, system actor) inside the release transaction, and the sweep
+// dispatches those recorded drafts inline. A crash before this dispatch is
+// recovered by the event dispatch sweep.
 func sweepDueReservations(ctx context.Context, taskStore db.TaskStore, recorder event.Recorder) error {
 	result := taskStore.ExpireDueReservations(ctx)
 	completed, matched := result.(db.ExpireDueReservationsCompleted)
 	if !matched {
 		return errors.New(result.(db.ExpireDueReservationsRejected).Reason.Description())
 	}
-	for _, row := range completed.Values {
-		subject := event.NoSubjectRefs()
-		subject.Task = event.TaskSubject{ID: row.TaskID}
-		subject.Reservation = event.ReservationSubject{ID: row.ReservationID}
-		_ = recorder.Emit(ctx, event.EmitCommand{
-			Kind:       event.KindReservationExpired,
-			Actor:      event.ActorSystem{},
-			Subject:    subject,
-			Metadata:   event.TaskMetadata(row.TaskID),
-			Recipients: event.NewRecipients(row.HolderID, row.TaskOwnerID),
-		})
-	}
+	recorder.Dispatch(ctx, completed.RecordedEvents...)
 	return nil
 }
 
 // sweepDueTasks expires open tasks past their expiration instant (refunding
-// escrow and releasing reservations inside the store transaction) and emits
-// one task_expired event per expired task, notifying the owner and every
-// released reservation holder as the system actor.
+// escrow and releasing reservations inside the store transaction); the store
+// records one task_expired event per expired task in the same transaction,
+// and the sweep dispatches those recorded drafts inline.
 func sweepDueTasks(ctx context.Context, taskStore db.TaskStore, recorder event.Recorder) error {
 	result := taskStore.ExpireDueTasks(ctx)
 	completed, matched := result.(db.ExpireDueTasksCompleted)
 	if !matched {
 		return errors.New(result.(db.ExpireDueTasksRejected).Reason.Description())
 	}
-	for _, row := range completed.Values {
-		subject := event.NoSubjectRefs()
-		subject.Task = event.TaskSubject{ID: row.TaskID}
-		recipients := append([]core.UserID{row.OwnerID}, row.ReleasedHolders...)
-		_ = recorder.Emit(ctx, event.EmitCommand{
-			Kind:       event.KindTaskExpired,
-			Actor:      event.ActorSystem{},
-			Subject:    subject,
-			Metadata:   event.TaskMetadata(row.TaskID),
-			Recipients: event.NewRecipients(recipients...),
-		})
-	}
+	recorder.Dispatch(ctx, completed.RecordedEvents...)
 	return nil
 }

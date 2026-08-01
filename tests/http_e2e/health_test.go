@@ -314,19 +314,19 @@ func (healthLedgerService) OrganizationBalance(context.Context, core.Organizatio
 	return ledger.BalanceRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthLedgerService) AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult {
+func (healthLedgerService) AcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult {
 	return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthLedgerService) ReviewAcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult {
+func (healthLedgerService) ReviewAcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult {
 	return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthLedgerService) RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult {
+func (healthLedgerService) RequestChanges(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult {
 	return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthLedgerService) RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult {
+func (healthLedgerService) RejectSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult {
 	return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -352,6 +352,10 @@ func (healthLedgerService) ListOrganizationEntries(context.Context, core.Organiz
 
 func (healthLedgerService) GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult {
 	return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthLedgerService) SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey) ledger.SendResult {
+	return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
 type healthAgentService struct{}
@@ -388,7 +392,15 @@ func (healthOrgCredentialService) Revoke(context.Context, core.OrganizationID, c
 
 type healthAssetService struct{}
 
-func (healthAssetService) Mint(context.Context, string, string, string, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult {
+func (healthAssetService) Mint(context.Context, core.UserID, string, string, string, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult {
+	return assets.MintRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) ListCatalog(context.Context) assets.CatalogListResult {
+	return assets.CatalogListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) AwardFromCatalog(context.Context, core.UserID, string, string, string, string) assets.MintResult {
 	return assets.MintRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -413,6 +425,34 @@ func (healthAssetService) GiftCollectible(context.Context, core.UserID, core.Use
 }
 
 func (healthAssetService) AwardOrganizationCollectible(context.Context, core.OrganizationID, core.CollectibleID, core.UserID) assets.GiftResult {
+	return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) AddCatalogEntry(context.Context, assets.CatalogEntry) assets.CatalogMutationResult {
+	return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) WithdrawCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult {
+	return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) DeleteCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult {
+	return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) WithdrawCollectible(context.Context, core.UserID, core.CollectibleID) assets.WithdrawResult {
+	return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) DeleteWithdrawnCollectible(context.Context, core.CollectibleID) assets.DeleteCollectibleResult {
+	return assets.DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) TransferCollectibleToOrganization(context.Context, core.UserID, core.OrganizationID, core.CollectibleID) assets.GiftResult {
+	return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAssetService) TransferCollectibleFromOrganization(context.Context, core.UserID, core.OrganizationID, core.UserID, core.CollectibleID) assets.GiftResult {
 	return assets.GiftRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 

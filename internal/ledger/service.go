@@ -20,13 +20,16 @@ type FundStoreCommand struct {
 	Draft event.Draft
 }
 
-// AcceptStoreCommand carries a validated submission-acceptance request to the store.
+// AcceptStoreCommand carries a validated submission-acceptance request to the
+// store. Reviewer authorization (task creator, org member with the review
+// permission, or the owning organization itself) resolves inside the accept
+// transaction.
 type AcceptStoreCommand struct {
 	PayoutEntryID    core.LedgerEntryID
 	RefundEntryID    core.LedgerEntryID
 	TipDebitEntryID  core.LedgerEntryID
 	TipCreditEntryID core.LedgerEntryID
-	RequesterUserID  core.UserID
+	Reviewer         Reviewer
 	TaskID           core.TaskID
 	SubmissionID     core.SubmissionID
 	IdempotencyKey   IdempotencyKey
@@ -40,11 +43,11 @@ type AcceptStoreCommand struct {
 }
 
 type RequestChangesStoreCommand struct {
-	RequesterUserID core.UserID
-	TaskID          core.TaskID
-	SubmissionID    core.SubmissionID
-	IdempotencyKey  IdempotencyKey
-	ReviewNote      submission.ReviewNote
+	Reviewer       Reviewer
+	TaskID         core.TaskID
+	SubmissionID   core.SubmissionID
+	IdempotencyKey IdempotencyKey
+	ReviewNote     submission.ReviewNote
 	// Draft is the submission_changes_requested event recorded inside the
 	// transaction; the store merges the worker into its recipients.
 	Draft event.Draft
@@ -54,7 +57,7 @@ type RejectStoreCommand struct {
 	PayoutEntryID    core.LedgerEntryID
 	TipDebitEntryID  core.LedgerEntryID
 	TipCreditEntryID core.LedgerEntryID
-	RequesterUserID  core.UserID
+	Reviewer         Reviewer
 	TaskID           core.TaskID
 	SubmissionID     core.SubmissionID
 	IdempotencyKey   IdempotencyKey
@@ -111,6 +114,28 @@ type GrantStoreCommand struct {
 	Draft event.Draft
 }
 
+// PeerTransferStoreCommand is the store command for one peer credit send:
+// an atomic double-entry pair of peer_transfer rows (sender debit, receiver
+// credit). The store authorizes an organization source in-transaction (the
+// acting user must hold the billing permission), rejects self-sends, and
+// replays idempotently per (sender account, key).
+type PeerTransferStoreCommand struct {
+	DebitEntryID  core.LedgerEntryID
+	CreditEntryID core.LedgerEntryID
+	// ActingUserID is the human performing the send: the sender for a self
+	// send, or the authorizing member for an organization send.
+	ActingUserID   core.UserID
+	Source         TransferSource
+	Target         TransferTarget
+	Amount         CreditAmount
+	Note           TransferNote
+	IdempotencyKey IdempotencyKey
+	// Draft is the credits_sent event recorded inside the transfer
+	// transaction; the store merges the resolved receivers into its
+	// recipients.
+	Draft event.Draft
+}
+
 type Store interface {
 	FundTask(context.Context, FundStoreCommand) FundResult
 	FundTaskFromOrganization(context.Context, OrganizationFundStoreCommand) FundResult
@@ -119,6 +144,7 @@ type Store interface {
 	RejectSubmission(context.Context, RejectStoreCommand) RejectResult
 	RefundTask(context.Context, RefundStoreCommand) RefundResult
 	GrantCredits(context.Context, GrantStoreCommand) GrantResult
+	PeerTransfer(context.Context, PeerTransferStoreCommand) SendResult
 	TaskAllocatedCredits(context.Context, core.TaskID) TaskAllocatedResult
 	Balance(context.Context, core.UserID) BalanceResult
 	OrganizationBalance(context.Context, core.OrganizationID) BalanceResult
@@ -200,11 +226,54 @@ func (service Service) FundTask(ctx context.Context, funder core.UserID, taskID 
 	return result
 }
 
-func (service Service) AcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey) AcceptResult {
-	return service.ReviewAcceptSubmission(ctx, requester, taskID, submissionID, key, FullCreditReviewSelection{}, NoTipSelection{}, NoCollectibleTipSelection{})
+func (service Service) AcceptSubmission(ctx context.Context, reviewer Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey) AcceptResult {
+	return service.ReviewAcceptSubmission(ctx, reviewer, taskID, submissionID, key, FullCreditReviewSelection{}, NoTipSelection{}, NoCollectibleTipSelection{})
 }
 
-func (service Service) ReviewAcceptSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, creditSelection CreditReviewSelection, tipSelection TipSelection, collectibleTip CollectibleTipSelection) AcceptResult {
+// reviewerActor maps a reviewer to the event actor and initial recipients of
+// its review drafts. A user reviewer is the actor and hears about the review
+// in their own feed; an organization reviewer has no user feed, so its
+// reviews are recorded as the system actor with only the store-resolved
+// worker as audience.
+func reviewerActor(reviewer Reviewer) (event.Actor, event.Recipients, *core.DomainError) {
+	switch typed := reviewer.(type) {
+	case UserReviewer:
+		return event.ActorUser{ID: typed.ID}, event.NewRecipients(typed.ID), nil
+	case OrganizationReviewer:
+		return event.ActorSystem{}, event.NewRecipients(), nil
+	default:
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "submission reviewer is invalid")
+		return nil, event.Recipients{}, &reason
+	}
+}
+
+// requireReviewerCanPay rejects review inputs that move personal value or
+// name a banning user when the reviewer is an organization credential: tips
+// come from a personal balance and bans record the banning user, so only a
+// user reviewer may select them.
+func requireReviewerCanPay(reviewer Reviewer, tipSelection TipSelection, collectibleTip CollectibleTipSelection, banSelection BanSelection) *core.DomainError {
+	if _, isOrganization := reviewer.(OrganizationReviewer); !isOrganization {
+		return nil
+	}
+	if _, none := tipSelection.(NoTipSelection); !none {
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "an organization credential cannot pay a credit tip")
+		return &reason
+	}
+	if _, none := collectibleTip.(NoCollectibleTipSelection); !none {
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "an organization credential cannot tip a collectible")
+		return &reason
+	}
+	if _, none := banSelection.(NoBanSelection); !none {
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "an organization credential cannot ban an implementor")
+		return &reason
+	}
+	return nil
+}
+
+func (service Service) ReviewAcceptSubmission(ctx context.Context, reviewer Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, creditSelection CreditReviewSelection, tipSelection TipSelection, collectibleTip CollectibleTipSelection) AcceptResult {
+	if reason := requireReviewerCanPay(reviewer, tipSelection, collectibleTip, NoBanSelection{}); reason != nil {
+		return AcceptRejected{Reason: *reason}
+	}
 	payoutEntryID, idResult := newLedgerEntryID()
 	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
 		return AcceptRejected{Reason: rejected.reason}
@@ -222,11 +291,15 @@ func (service Service) ReviewAcceptSubmission(ctx context.Context, requester cor
 		return AcceptRejected{Reason: rejected.reason}
 	}
 
+	actor, recipients, actorProblem := reviewerActor(reviewer)
+	if actorProblem != nil {
+		return AcceptRejected{Reason: *actorProblem}
+	}
 	// The worker is resolved inside the store transaction and merged into
 	// the draft's recipients there; the payout/tip and submission_superseded
 	// events are derived from this draft in the same transaction.
-	draft, draftProblem := ledgerDraft(event.KindSubmissionAccepted, event.ActorUser{ID: requester},
-		reviewSubject(taskID, submissionID), event.TaskMetadata(taskID), event.NewRecipients(requester))
+	draft, draftProblem := ledgerDraft(event.KindSubmissionAccepted, actor,
+		reviewSubject(taskID, submissionID), event.TaskMetadata(taskID), recipients)
 	if draftProblem != nil {
 		return AcceptRejected{Reason: *draftProblem}
 	}
@@ -236,7 +309,7 @@ func (service Service) ReviewAcceptSubmission(ctx context.Context, requester cor
 		RefundEntryID:    refundEntryID,
 		TipDebitEntryID:  tipDebitEntryID,
 		TipCreditEntryID: tipCreditEntryID,
-		RequesterUserID:  requester,
+		Reviewer:         reviewer,
 		TaskID:           taskID,
 		SubmissionID:     submissionID,
 		IdempotencyKey:   key,
@@ -251,20 +324,24 @@ func (service Service) ReviewAcceptSubmission(ctx context.Context, requester cor
 	return result
 }
 
-func (service Service) RequestChanges(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, note submission.ReviewNote) RequestChangesResult {
-	draft, draftProblem := ledgerDraft(event.KindSubmissionChangesRequested, event.ActorUser{ID: requester},
-		reviewSubject(taskID, submissionID), event.TaskMetadata(taskID), event.NewRecipients(requester))
+func (service Service) RequestChanges(ctx context.Context, reviewer Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, note submission.ReviewNote) RequestChangesResult {
+	actor, recipients, actorProblem := reviewerActor(reviewer)
+	if actorProblem != nil {
+		return RequestChangesRejected{Reason: *actorProblem}
+	}
+	draft, draftProblem := ledgerDraft(event.KindSubmissionChangesRequested, actor,
+		reviewSubject(taskID, submissionID), event.TaskMetadata(taskID), recipients)
 	if draftProblem != nil {
 		return RequestChangesRejected{Reason: *draftProblem}
 	}
 
 	result := service.store.RequestChanges(ctx, RequestChangesStoreCommand{
-		RequesterUserID: requester,
-		TaskID:          taskID,
-		SubmissionID:    submissionID,
-		IdempotencyKey:  key,
-		ReviewNote:      note,
-		Draft:           draft,
+		Reviewer:       reviewer,
+		TaskID:         taskID,
+		SubmissionID:   submissionID,
+		IdempotencyKey: key,
+		ReviewNote:     note,
+		Draft:          draft,
 	})
 	if changed, matched := result.(ChangesRequested); matched {
 		service.recorder.Dispatch(ctx, changed.RecordedEvents...)
@@ -272,7 +349,10 @@ func (service Service) RequestChanges(ctx context.Context, requester core.UserID
 	return result
 }
 
-func (service Service) RejectSubmission(ctx context.Context, requester core.UserID, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, note submission.ReviewNote, creditSelection CreditReviewSelection, tipSelection TipSelection, banSelection BanSelection) RejectResult {
+func (service Service) RejectSubmission(ctx context.Context, reviewer Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, note submission.ReviewNote, creditSelection CreditReviewSelection, tipSelection TipSelection, banSelection BanSelection) RejectResult {
+	if reason := requireReviewerCanPay(reviewer, tipSelection, NoCollectibleTipSelection{}, banSelection); reason != nil {
+		return RejectRejected{Reason: *reason}
+	}
 	payoutEntryID, idResult := newLedgerEntryID()
 	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
 		return RejectRejected{Reason: rejected.reason}
@@ -285,8 +365,12 @@ func (service Service) RejectSubmission(ctx context.Context, requester core.User
 	if rejected, matched := idResult.(ledgerEntryIDRejected); matched {
 		return RejectRejected{Reason: rejected.reason}
 	}
-	draft, draftProblem := ledgerDraft(event.KindSubmissionRejected, event.ActorUser{ID: requester},
-		reviewSubject(taskID, submissionID), event.TaskMetadata(taskID), event.NewRecipients(requester))
+	actor, recipients, actorProblem := reviewerActor(reviewer)
+	if actorProblem != nil {
+		return RejectRejected{Reason: *actorProblem}
+	}
+	draft, draftProblem := ledgerDraft(event.KindSubmissionRejected, actor,
+		reviewSubject(taskID, submissionID), event.TaskMetadata(taskID), recipients)
 	if draftProblem != nil {
 		return RejectRejected{Reason: *draftProblem}
 	}
@@ -295,7 +379,7 @@ func (service Service) RejectSubmission(ctx context.Context, requester core.User
 		PayoutEntryID:    payoutEntryID,
 		TipDebitEntryID:  tipDebitEntryID,
 		TipCreditEntryID: tipCreditEntryID,
-		RequesterUserID:  requester,
+		Reviewer:         reviewer,
 		TaskID:           taskID,
 		SubmissionID:     submissionID,
 		IdempotencyKey:   key,
@@ -479,4 +563,67 @@ func (service Service) ListEntries(ctx context.Context, owner core.UserID, page 
 
 func (service Service) ListOrganizationEntries(ctx context.Context, organizationID core.OrganizationID, page core.Page) ListEntriesResult {
 	return service.store.ListOrganizationEntries(ctx, organizationID, page)
+}
+
+// SendCredits moves credits from the sender's spendable balance to another
+// account as a peer_transfer double entry: user-to-user, user-to-
+// organization, or organization-to-user (the acting member must hold the
+// organization's billing permission, verified inside the store transaction).
+// Self-sends and organization-to-organization sends are rejected. The
+// credits_sent event (recipients: the actor and the resolved receivers) is
+// recorded inside the transfer transaction and dispatched after commit; no
+// admin audit entry is written because this is not an administrative action.
+func (service Service) SendCredits(ctx context.Context, actor core.UserID, source TransferSource, target TransferTarget, amount CreditAmount, note TransferNote, key IdempotencyKey) SendResult {
+	subject := event.NoSubjectRefs()
+	switch typed := source.(type) {
+	case TransferFromSelf:
+		if user, isUser := target.(TransferToUser); isUser && user.ID == actor {
+			return SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credits cannot be sent to yourself")}
+		}
+	case TransferFromOrganization:
+		if _, isOrganization := target.(TransferToOrganization); isOrganization {
+			return SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "organization credits can be sent to users only")}
+		}
+		subject.Organization = event.OrganizationSubject{ID: typed.ID}
+	default:
+		return SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "credit send source is invalid")}
+	}
+	if organization, isOrganization := target.(TransferToOrganization); isOrganization {
+		subject.Organization = event.OrganizationSubject{ID: organization.ID}
+	}
+
+	debitResult := core.NewLedgerEntryID()
+	debitCreated, debitMatched := debitResult.(core.LedgerEntryIDCreated)
+	if !debitMatched {
+		return SendRejected{Reason: debitResult.(core.LedgerEntryIDRejected).Reason}
+	}
+	creditResult := core.NewLedgerEntryID()
+	creditCreated, creditMatched := creditResult.(core.LedgerEntryIDCreated)
+	if !creditMatched {
+		return SendRejected{Reason: creditResult.(core.LedgerEntryIDRejected).Reason}
+	}
+
+	draft, draftProblem := ledgerDraft(event.KindCreditsSent, event.ActorUser{ID: actor}, subject,
+		event.AmountMetadata(amount.Int64()), event.NewRecipients(actor))
+	if draftProblem != nil {
+		return SendRejected{Reason: *draftProblem}
+	}
+
+	result := service.store.PeerTransfer(ctx, PeerTransferStoreCommand{
+		DebitEntryID:   debitCreated.Value,
+		CreditEntryID:  creditCreated.Value,
+		ActingUserID:   actor,
+		Source:         source,
+		Target:         target,
+		Amount:         amount,
+		Note:           note,
+		IdempotencyKey: key,
+		Draft:          draft,
+	})
+	sent, sentMatched := result.(CreditsSent)
+	if !sentMatched {
+		return result
+	}
+	service.recorder.Dispatch(ctx, sent.RecordedEvents...)
+	return sent
 }

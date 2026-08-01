@@ -42,6 +42,7 @@ type LedgerEntryKind
     | LedgerEntryKindTaskPayout
     | LedgerEntryKindTaskTip
     | LedgerEntryKindManualAdjustment
+    | LedgerEntryKindPeerTransfer
 
 ledgerEntryKindDecoder : Decoder LedgerEntryKind
 ledgerEntryKindDecoder =
@@ -67,6 +68,9 @@ ledgerEntryKindDecoder =
                     "manual_adjustment" ->
                         Decode.succeed LedgerEntryKindManualAdjustment
 
+                    "peer_transfer" ->
+                        Decode.succeed LedgerEntryKindPeerTransfer
+
                     _ ->
                         Decode.fail "invalid LedgerEntryKind"
             )
@@ -91,6 +95,9 @@ ledgerEntryKindEncoder ledgerEntryKind =
 
         LedgerEntryKindManualAdjustment ->
             Encode.string "manual_adjustment"
+
+        LedgerEntryKindPeerTransfer ->
+            Encode.string "peer_transfer"
 
 
 type alias BalanceResponse =
@@ -154,6 +161,84 @@ creditGrantResponseEncoder creditGrantResponse =
     Encode.object
         [ ( "entry_id", Encode.string creditGrantResponse.entryID )
         , ( "amount", Encode.int creditGrantResponse.amount )
+        ]
+
+type CreditTransferSourceKind
+    = CreditTransferSourceSelf
+    | CreditTransferSourceOrganization
+
+creditTransferSourceKindDecoder : Decoder CreditTransferSourceKind
+creditTransferSourceKindDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "self" ->
+                        Decode.succeed CreditTransferSourceSelf
+
+                    "organization" ->
+                        Decode.succeed CreditTransferSourceOrganization
+
+                    _ ->
+                        Decode.fail "invalid CreditTransferSourceKind"
+            )
+
+creditTransferSourceKindEncoder : CreditTransferSourceKind -> Encode.Value
+creditTransferSourceKindEncoder creditTransferSourceKind =
+    case creditTransferSourceKind of
+        CreditTransferSourceSelf ->
+            Encode.string "self"
+
+        CreditTransferSourceOrganization ->
+            Encode.string "organization"
+
+
+type CreditTransferTargetKind
+    = CreditTransferTargetUser
+    | CreditTransferTargetOrganization
+
+creditTransferTargetKindDecoder : Decoder CreditTransferTargetKind
+creditTransferTargetKindDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "user" ->
+                        Decode.succeed CreditTransferTargetUser
+
+                    "organization" ->
+                        Decode.succeed CreditTransferTargetOrganization
+
+                    _ ->
+                        Decode.fail "invalid CreditTransferTargetKind"
+            )
+
+creditTransferTargetKindEncoder : CreditTransferTargetKind -> Encode.Value
+creditTransferTargetKindEncoder creditTransferTargetKind =
+    case creditTransferTargetKind of
+        CreditTransferTargetUser ->
+            Encode.string "user"
+
+        CreditTransferTargetOrganization ->
+            Encode.string "organization"
+
+
+type alias CreditTransferResponse =
+    { entryID : String
+    , amount : Int
+    }
+
+creditTransferResponseDecoder : Decoder CreditTransferResponse
+creditTransferResponseDecoder =
+    Decode.map2 CreditTransferResponse
+        (Decode.field "entry_id" Decode.string)
+        (Decode.field "amount" Decode.int)
+
+creditTransferResponseEncoder : CreditTransferResponse -> Encode.Value
+creditTransferResponseEncoder creditTransferResponse =
+    Encode.object
+        [ ( "entry_id", Encode.string creditTransferResponse.entryID )
+        , ( "amount", Encode.int creditTransferResponse.amount )
         ]
 
 type alias LedgerResponse =

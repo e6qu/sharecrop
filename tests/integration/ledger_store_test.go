@@ -180,11 +180,11 @@ func TestRequestChangesStoresNoteAndReactivatesReservation(t *testing.T) {
 	note := reviewNote(t, "Use the latest endpoint response.")
 
 	result := store.RequestChanges(context.Background(), ledger.RequestChangesStoreCommand{
-		RequesterUserID: owner,
-		TaskID:          taskID,
-		SubmissionID:    submissionID,
-		ReviewNote:      note,
-		Draft:           testEventDraft(t, event.KindSubmissionChangesRequested, owner),
+		Reviewer:     ledger.UserReviewer{ID: owner},
+		TaskID:       taskID,
+		SubmissionID: submissionID,
+		ReviewNote:   note,
+		Draft:        testEventDraft(t, event.KindSubmissionChangesRequested, owner),
 	})
 	if _, matched := result.(ledger.ChangesRequested); !matched {
 		t.Fatalf("request changes result = %T, want ChangesRequested", result)
@@ -220,7 +220,7 @@ func TestRejectCanPayPartialTipAndBanImplementor(t *testing.T) {
 		PayoutEntryID:    newEntryID(t),
 		TipDebitEntryID:  newEntryID(t),
 		TipCreditEntryID: newEntryID(t),
-		RequesterUserID:  owner,
+		Reviewer:         ledger.UserReviewer{ID: owner},
 		TaskID:           taskID,
 		SubmissionID:     submissionID,
 		IdempotencyKey:   idempotencyKey(t, "reject-"+submissionID.String()),
@@ -459,7 +459,7 @@ func acceptCommand(t *testing.T, owner core.UserID, taskID core.TaskID, submissi
 		RefundEntryID:    newEntryID(t),
 		TipDebitEntryID:  newEntryID(t),
 		TipCreditEntryID: newEntryID(t),
-		RequesterUserID:  owner,
+		Reviewer:         ledger.UserReviewer{ID: owner},
 		TaskID:           taskID,
 		SubmissionID:     submissionID,
 		IdempotencyKey:   idempotencyKey(t, key),

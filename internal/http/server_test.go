@@ -916,14 +916,6 @@ func (testTaskService) ReserveForTeam(_ context.Context, actor auth.UserSubject,
 	}}
 }
 
-func (testTaskService) ApproveReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
-	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
-}
-
-func (testTaskService) DeclineReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
-	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
-}
-
 func (testTaskService) CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult {
 	return task.ReservationStateChangeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
@@ -1013,19 +1005,19 @@ func (testLedgerService) OrganizationBalance(context.Context, core.OrganizationI
 	return ledger.BalanceFound{Value: ledger.NewBalance(100, 0)}
 }
 
-func (testLedgerService) AcceptSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey) ledger.AcceptResult {
+func (testLedgerService) AcceptSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey) ledger.AcceptResult {
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
-func (testLedgerService) ReviewAcceptSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.CollectibleTipSelection) ledger.AcceptResult {
+func (testLedgerService) ReviewAcceptSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.CollectibleTipSelection) ledger.AcceptResult {
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
-func (testLedgerService) RequestChanges(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, note submission.ReviewNote) ledger.RequestChangesResult {
+func (testLedgerService) RequestChanges(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, note submission.ReviewNote) ledger.RequestChangesResult {
 	return ledger.ChangesRequested{TaskID: taskID, SubmissionID: submissionID, ReviewNote: note.String()}
 }
 
-func (testLedgerService) RejectSubmission(_ context.Context, _ core.UserID, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ submission.ReviewNote, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.BanSelection) ledger.RejectResult {
+func (testLedgerService) RejectSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ submission.ReviewNote, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.BanSelection) ledger.RejectResult {
 	return ledger.SubmissionRejected{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
@@ -1051,6 +1043,10 @@ func (testLedgerService) ListOrganizationEntries(context.Context, core.Organizat
 
 func (testLedgerService) GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult {
 	return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (testLedgerService) SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey) ledger.SendResult {
+	return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
 type testAgentService struct{}
@@ -1099,9 +1095,17 @@ func (testOrgCredentialService) Revoke(_ context.Context, organizationID core.Or
 
 type testAssetService struct{}
 
-func (testAssetService) Mint(_ context.Context, ownerKind string, ownerID string, organizationID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
+func (testAssetService) Mint(_ context.Context, issuer core.UserID, ownerKind string, ownerID string, organizationID string, name assets.CollectibleName, kind assets.CollectibleKind, policy assets.TransferPolicy, art string) assets.MintResult {
 	idCreated := core.NewCollectibleID().(core.CollectibleIDCreated)
-	return assets.CollectibleMinted{Value: assets.Collectible{ID: idCreated.Value, Name: name, Kind: kind, State: assets.CollectibleStateMinted, Policy: policy, OwnerKind: ownerKind, OwnerID: ownerID, OrganizationID: organizationID, Art: art}}
+	return assets.CollectibleMinted{Value: assets.Collectible{ID: idCreated.Value, Name: name, Kind: kind, State: assets.CollectibleStateMinted, Policy: policy, OwnerKind: ownerKind, OwnerID: ownerID, OrganizationID: organizationID, Art: art, Catalog: assets.NoCatalogRef{}, Edition: assets.NoEditionNumber{}, Issuer: assets.IssuedBy{ID: issuer}}}
+}
+
+func (testAssetService) ListCatalog(context.Context) assets.CatalogListResult {
+	return assets.CatalogListed{Values: []assets.CatalogListing{}}
+}
+
+func (testAssetService) AwardFromCatalog(context.Context, core.UserID, string, string, string, string) assets.MintResult {
+	return assets.MintRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
 }
 
 func (testAssetService) ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult {
@@ -1129,6 +1133,34 @@ func (testAssetService) TaskHeldCollectibles(context.Context, core.TaskID) asset
 }
 
 func (testAssetService) AwardOrganizationCollectible(context.Context, core.OrganizationID, core.CollectibleID, core.UserID) assets.GiftResult {
+	return assets.CollectibleGifted{}
+}
+
+func (testAssetService) AddCatalogEntry(context.Context, assets.CatalogEntry) assets.CatalogMutationResult {
+	return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
+}
+
+func (testAssetService) WithdrawCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult {
+	return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
+}
+
+func (testAssetService) DeleteCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult {
+	return assets.CatalogMutationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
+}
+
+func (testAssetService) WithdrawCollectible(context.Context, core.UserID, core.CollectibleID) assets.WithdrawResult {
+	return assets.WithdrawRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
+}
+
+func (testAssetService) DeleteWithdrawnCollectible(context.Context, core.CollectibleID) assets.DeleteCollectibleResult {
+	return assets.DeleteCollectibleRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test asset service")}
+}
+
+func (testAssetService) TransferCollectibleToOrganization(context.Context, core.UserID, core.OrganizationID, core.CollectibleID) assets.GiftResult {
+	return assets.CollectibleGifted{}
+}
+
+func (testAssetService) TransferCollectibleFromOrganization(context.Context, core.UserID, core.OrganizationID, core.UserID, core.CollectibleID) assets.GiftResult {
 	return assets.CollectibleGifted{}
 }
 

@@ -324,6 +324,18 @@ badgeVariantWithIcon tone icon value =
         ]
 
 
+{-| Like badgeVariantWithIcon, but the leading glyph is a rendered element
+(a pixel sprite) rather than a text character. The art is `aria-hidden`
+decoration - the badge's text still names the value on its own (WCAG 1.4.1).
+-}
+badgeVariantWithArt : String -> Html msg -> String -> Html msg
+badgeVariantWithArt tone art value =
+    span [ class ("inline-flex items-center gap-1 border-2 border-farm-line px-2 py-0.5 text-xs font-semibold " ++ badgeToneClass tone) ]
+        [ span [ attribute "aria-hidden" "true" ] [ art ]
+        , text value
+        ]
+
+
 {-| Tone-to-class pairs from the farm palette, each measured (WCAG relative
 luminance) at or above a 4.5:1 contrast ratio against its own background
 (AA for normal text):

@@ -11,9 +11,11 @@ import (
 )
 
 type orgCredentialRequest struct {
-	Label     string   `json:"label"`
-	Scopes    []string `json:"scopes"`
-	ExpiresAt string   `json:"expires_at"`
+	Label  string   `json:"label"`
+	Scopes []string `json:"scopes"`
+	// ExpiresAt is an optional RFC3339 expiry; absent mints a non-expiring
+	// credential.
+	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
 type orgCredentialResponse struct {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/db"
+	"github.com/e6qu/sharecrop/internal/event"
 	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/ledger"
 )
@@ -58,22 +59,27 @@ func TestExpireDueTasksSweepRefundsAndReleases(t *testing.T) {
 	if !matched {
 		t.Fatalf("expire sweep rejected: %#v", result)
 	}
-	var row db.ExpiredTaskRow
+	var draft event.Draft
 	found := false
-	for _, candidate := range completed.Values {
-		if candidate.TaskID == taskID {
-			row = candidate
+	for _, candidate := range completed.RecordedEvents {
+		if subject, isTask := candidate.Subject.Task.(event.TaskSubject); isTask && subject.ID == taskID {
+			draft = candidate
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("sweep did not report the due task")
+		t.Fatalf("sweep did not record a draft for the due task")
 	}
-	if row.OwnerID != owner {
-		t.Fatalf("owner = %s, want %s", row.OwnerID.String(), owner.String())
+	if draft.Kind != event.KindTaskExpired {
+		t.Fatalf("draft kind = %q, want task_expired", draft.Kind.String())
 	}
-	if len(row.ReleasedHolders) != 1 || row.ReleasedHolders[0] != worker {
-		t.Fatalf("released holders = %#v", row.ReleasedHolders)
+	if !recipientsContain(draft.Recipients, owner) || !recipientsContain(draft.Recipients, worker) {
+		t.Fatalf("draft recipients = %#v, want owner and released holder", draft.Recipients.Users)
+	}
+	// The draft was recorded inside the expire transaction (the outbox), so
+	// a crash before the runner's inline dispatch cannot lose the event.
+	if got := countEventsByKindForTask(t, pool, taskID, event.KindTaskExpired); got != 1 {
+		t.Fatalf("recorded task_expired events = %d, want 1", got)
 	}
 
 	var state string
@@ -119,8 +125,8 @@ func TestExpireDueTasksSweepRefundsAndReleases(t *testing.T) {
 	if !secondMatched {
 		t.Fatalf("second sweep rejected: %#v", second)
 	}
-	for _, candidate := range secondCompleted.Values {
-		if candidate.TaskID == taskID {
+	for _, candidate := range secondCompleted.RecordedEvents {
+		if subject, isTask := candidate.Subject.Task.(event.TaskSubject); isTask && subject.ID == taskID {
 			t.Fatalf("second sweep reported the already-expired task")
 		}
 	}
@@ -147,16 +153,25 @@ func TestExpireDueReservationsSweepReturnsReleasedRows(t *testing.T) {
 		t.Fatalf("reservation sweep rejected: %#v", result)
 	}
 	found := false
-	for _, row := range completed.Values {
-		if row.ReservationID == reservationID {
-			found = true
-			if row.TaskID != taskID || row.HolderID != worker || row.TaskOwnerID != owner {
-				t.Fatalf("released row = %#v", row)
-			}
+	for _, draft := range completed.RecordedEvents {
+		subject, isReservation := draft.Subject.Reservation.(event.ReservationSubject)
+		if !isReservation || subject.ID != reservationID {
+			continue
+		}
+		found = true
+		if draft.Kind != event.KindReservationExpired {
+			t.Fatalf("draft kind = %q, want reservation_expired", draft.Kind.String())
+		}
+		taskSubject, isTask := draft.Subject.Task.(event.TaskSubject)
+		if !isTask || taskSubject.ID != taskID {
+			t.Fatalf("draft task subject = %#v", draft.Subject.Task)
+		}
+		if !recipientsContain(draft.Recipients, worker) || !recipientsContain(draft.Recipients, owner) {
+			t.Fatalf("draft recipients = %#v, want holder and owner", draft.Recipients.Users)
 		}
 	}
 	if !found {
-		t.Fatalf("sweep did not report the due reservation")
+		t.Fatalf("sweep did not record a draft for the due reservation")
 	}
 
 	var state string
@@ -167,13 +182,27 @@ func TestExpireDueReservationsSweepReturnsReleasedRows(t *testing.T) {
 		t.Fatalf("reservation state = %q, want expired", state)
 	}
 
-	// Released once: the next sweep does not report it again.
+	// Released once: the next sweep does not report it again, and no second
+	// reservation_expired event was recorded.
 	second := store.ExpireDueReservations(context.Background()).(db.ExpireDueReservationsCompleted)
-	for _, row := range second.Values {
-		if row.ReservationID == reservationID {
+	for _, draft := range second.RecordedEvents {
+		if subject, isReservation := draft.Subject.Reservation.(event.ReservationSubject); isReservation && subject.ID == reservationID {
 			t.Fatalf("second sweep reported the already-released reservation")
 		}
 	}
+	if got := countEventsByKindForTask(t, pool, taskID, event.KindReservationExpired); got != 1 {
+		t.Fatalf("recorded reservation_expired events = %d, want 1", got)
+	}
+}
+
+// recipientsContain reports whether the recipient set names the user.
+func recipientsContain(recipients event.Recipients, user core.UserID) bool {
+	for _, candidate := range recipients.Users {
+		if candidate == user {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRateLimiterEvictExpiredAndFailClosed(t *testing.T) {

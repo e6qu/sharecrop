@@ -170,8 +170,9 @@ func TestReplicaExpirySweepsAreExactlyOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			// Replicate the lifecycle runner's sweep bodies: expire, then emit
-			// one event per reported row as the system actor.
+			// Replicate the lifecycle runner's sweep bodies: expire (which
+			// records the event drafts inside the store transactions), then
+			// dispatch the recorded drafts inline.
 			replicaStore := db.NewTaskStore(pool)
 			recorder := newDBRecorder(pool)
 			taskResult := replicaStore.ExpireDueTasks(context.Background())
@@ -187,31 +188,19 @@ func TestReplicaExpirySweepsAreExactlyOnce(t *testing.T) {
 				return
 			}
 			mu.Lock()
-			for _, row := range tasksCompleted.Values {
-				reportedTasks[row.TaskID.String()]++
+			for _, draft := range tasksCompleted.RecordedEvents {
+				if subject, isTask := draft.Subject.Task.(event.TaskSubject); isTask {
+					reportedTasks[subject.ID.String()]++
+				}
 			}
-			for _, row := range reservationsCompleted.Values {
-				reportedReservations[row.ReservationID.String()]++
+			for _, draft := range reservationsCompleted.RecordedEvents {
+				if subject, isReservation := draft.Subject.Reservation.(event.ReservationSubject); isReservation {
+					reportedReservations[subject.ID.String()]++
+				}
 			}
 			mu.Unlock()
-			for _, row := range tasksCompleted.Values {
-				subject := event.NoSubjectRefs()
-				subject.Task = event.TaskSubject{ID: row.TaskID}
-				recipients := append([]core.UserID{row.OwnerID}, row.ReleasedHolders...)
-				_ = recorder.Emit(context.Background(), event.EmitCommand{
-					Kind: event.KindTaskExpired, Actor: event.ActorSystem{}, Subject: subject,
-					Metadata: event.TaskMetadata(row.TaskID), Recipients: event.NewRecipients(recipients...),
-				})
-			}
-			for _, row := range reservationsCompleted.Values {
-				subject := event.NoSubjectRefs()
-				subject.Task = event.TaskSubject{ID: row.TaskID}
-				subject.Reservation = event.ReservationSubject{ID: row.ReservationID}
-				_ = recorder.Emit(context.Background(), event.EmitCommand{
-					Kind: event.KindReservationExpired, Actor: event.ActorSystem{}, Subject: subject,
-					Metadata: event.TaskMetadata(row.TaskID), Recipients: event.NewRecipients(row.HolderID, row.TaskOwnerID),
-				})
-			}
+			recorder.Dispatch(context.Background(), tasksCompleted.RecordedEvents...)
+			recorder.Dispatch(context.Background(), reservationsCompleted.RecordedEvents...)
 		}()
 	}
 	wg.Wait()

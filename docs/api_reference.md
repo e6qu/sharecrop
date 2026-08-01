@@ -13,7 +13,7 @@ Three bearer credential kinds reach the API. Their coverage differs:
 | Credential | Prefix | Covers |
 | --- | --- | --- |
 | User access token | JWT | Every route in this document. User sessions carry no scope model. |
-| Organization credential | `scrop_org_` | Routes widened to org parity: task listing/state changes/detail-adjacent flows that accept an org actor, reservation review, submission listing/review, webhook management, the event feed (`GET /api/events`, `notifications_read`), MCP. Each call is checked against the scopes the credential was minted with. `scope=organization` task listings only; the org credential acts as the organization, not as a member. |
+| Organization credential | `scrop_org_` | Routes widened to org parity: task listing/state changes/detail-adjacent flows that accept an org actor, reservation review, submission listing (`GET /api/tasks/{task_id}/submissions`, `submissions_read`) and submission review (accept/request-changes/reject, `submissions_review`) on the organization's own tasks, webhook management, the event feed (`GET /api/events`, `notifications_read`), MCP. Each call is checked against the scopes the credential was minted with. `scope=organization` task listings only; the org credential acts as the organization, not as a member. An org credential cannot pay tips or ban implementors on a review (those name a user), and its reviews record the system actor on the emitted events. |
 | Personal agent credential | `scrop_agent_` | `GET /api/tasks` (public scope only, `tasks_read`), `GET /api/tasks/{task_id}` (`tasks_read`), `POST /api/tasks/{task_id}/submissions` (`submissions_write`), `POST /api/tasks/{task_id}/reservations` (`submissions_write`), `GET /api/events` (`notifications_read`), and the MCP endpoint (all tools, per scope). Other REST routes reject it. A task-scoped credential (auto-issued on reservation) is additionally bound to its task. |
 
 ## Authentication
@@ -56,7 +56,7 @@ Three bearer credential kinds reach the API. Their coverage differs:
 - `POST /api/organizations/{organization_id}/credentials`: mint an organization-wide credential with full org-admin parity. Requires `PermissionManageMembers` on the organization. Same `label`/`scopes`/`expires_at` shape as personal credentials.
 - `GET /api/organizations/{organization_id}/credentials`: list an organization's own org-wide credentials.
 - `POST /api/organizations/{organization_id}/credentials/{credential_id}/revoke`: revoke an organization-wide credential.
-- Reserving a task also auto-issues a task-scoped agent credential for the reserving user once the reservation becomes active (immediately for `reservation_required` tasks, or on approval for `approval_required` tasks); the plaintext secret is returned exactly once in that reservation response's `issued_worker_credential` field.
+- Reserving a task also auto-issues a task-scoped agent credential for the reserving user (reservations are active immediately; there is no approval step); the plaintext secret is returned exactly once in that reservation response's `issued_worker_credential` field.
 
 ## Tasks
 
@@ -77,14 +77,12 @@ Three bearer credential kinds reach the API. Their coverage differs:
 
 ## Reservations And Submissions
 
-- `POST /api/tasks/{task_id}/reservations`: reserve a user-assignee task or reserve/request approval for an organization-team assignee task.
+- `POST /api/tasks/{task_id}/reservations`: reserve a task. Reservations are active immediately for user and organization-team assignees alike — there is no approval gate, and the worker proceeds straight to submitting. The historical `requested` and `declined` reservation states remain only on rows written before the approval flow was removed.
 - `GET /api/tasks/{task_id}/reservations`: list reservations for a task. Each reservation carries `holder_display_name`, the requesting worker's display name.
-- `POST /api/tasks/{task_id}/reservations/{reservation_id}/approve`: approve a requested reservation.
-- `POST /api/tasks/{task_id}/reservations/{reservation_id}/decline`: decline a requested reservation.
 - `POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel`: cancel a reservation as requester.
 - `POST /api/tasks/{task_id}/submissions`: submit a JSON response. The request
   may include the same small `attachments` shape and limits as task creation.
-- `GET /api/tasks/{task_id}/submissions`: list task submissions for an authorized reviewer. Each submission carries `submitter_display_name`. Submission `state` values are `submitted`, `invalid`, `accepted`, `rejected`, `changes_requested`, and `superseded` (terminal: another submission's accept closed the task while this one was still awaiting review).
+- `GET /api/tasks/{task_id}/submissions`: list task submissions for an authorized reviewer — a user session, or an organization credential holding `submissions_read` on the organization's own tasks. Each submission carries `submitter_display_name`. Submission `state` values are `submitted`, `invalid`, `accepted`, `rejected`, `changes_requested`, and `superseded` (terminal: another submission's accept closed the task while this one was still awaiting review).
 - `GET /api/users/{user_id}/submissions`: list the authenticated user's own submissions. Supports `limit` and `offset`.
 - `GET /api/users`: search the user directory with `query`, `limit`, and `offset`; returns id/email/display_name/status entries for selector-backed flows.
 - `GET /api/users/{user_id}`: read a user's profile: their `display_name` and the tasks they created that are visible to the caller.
@@ -103,12 +101,12 @@ Three bearer credential kinds reach the API. Their coverage differs:
 
 ## Events And Webhooks
 
-The domain event stream is one wire shape shared by the live feed and webhook deliveries: `id`, `kind`, `actor_kind`, `actor_user_id`, `actor_display_name`, `occurred_at`, `cursor`, subject references (`task_id`, `task_title`, `submission_id`, `reservation_id`, `series_id`, `organization_id`, `collectible_id`), and `metadata_json`. `actor_display_name` and `task_title` are read-time enrichments; they are empty for system actors, events without a task subject, and webhook deliveries (the dispatcher reads the unenriched stream).
+The domain event stream is one wire shape shared by the live feed and webhook deliveries: `id`, `kind`, `actor_kind`, `actor_user_id`, `actor_display_name`, `occurred_at`, `cursor`, subject references (`task_id`, `task_title`, `submission_id`, `reservation_id`, `series_id`, `organization_id`, `collectible_id`), and `metadata_json`. `actor_display_name` and `task_title` are read-time enrichments carried by both the feed reads and webhook delivery bodies (the delivery claim resolves them in the same read); they are empty for system actors and for events without a task subject.
 
 - `GET /api/events`: list the caller's visible events after an optional `after` cursor. Feed paging is cursor-based (`after` and `limit`); `offset` is not accepted. The response carries `next_cursor` to resume from. Callers are a user session, a personal agent credential holding `notifications_read` (the feed is the owning user's own event stream), or an organization credential holding `notifications_read` (the feed is the organization's own event stream: events whose subject organization is the credential's organization, the same rule an organization-owned recipient-audience webhook uses). The scope is `notifications_read` because the feed carries the same recipient-scoped facts the notification inbox is built from; a credential never sees more than its owner would.
 - `GET /api/events?wait=N`: optional long poll for agents. `wait` is a whole number of seconds; when the page after `after` would be empty, the server holds the request until an event for the caller arrives or the wait elapses, then responds with the normal list shape (possibly empty). Waits above 25 seconds are capped at 25 (the API Gateway edge cuts requests at 30 seconds); malformed or negative values are rejected with `invalid_argument`. Under the WASI guest runtime the hold degrades to an immediate response with the same shape, so clients must treat an empty page as "poll again with the same `after`".
 - `GET /api/events/stream`: the same feed as Server-Sent Events, for browser sessions only (agents and org credentials poll or long-poll `GET /api/events` instead). The `Last-Event-ID` header takes precedence over `?after` on reconnect. Connections end cleanly before the 30-second edge cap; clients reconnect with `Last-Event-ID`.
-- `POST /api/webhook-subscriptions`: create a subscription with `url`, `kinds` (domain event kinds), and an optional `audience`:
+- `POST /api/webhook-subscriptions`: create a subscription with `url` (an absolute `https` URL; plain `http` receivers are rejected with `invalid_argument`), `kinds` (domain event kinds), and an optional `audience`:
   - `recipient` (the default): deliveries carry events addressed to the subscription owner.
   - `marketplace`: deliveries carry every public open `task_opened` event, regardless of recipients. Requires `kinds` to be exactly `["task_opened"]`. Optional narrowing filters: `filter_task_type` (one task type) and `filter_min_credit_reward` (a positive integer credit floor). The filter fields are rejected with `invalid_argument` on recipient subscriptions.
   The response returns the subscription plus the signing `secret` exactly once; listings never repeat it. Callers are a user session or an org credential holding `webhooks_manage`; an org credential must also hold the read scope matching every subscribed kind.
@@ -171,17 +169,19 @@ SHARECROP_WEBHOOK_SECRET=scrop_whsec_... deno run --allow-net --allow-env tools/
 ## Collectibles, Ledger, Notifications, Admin
 
 - `GET /api/credits/balance`: read the authenticated user's credit balance. The account has two sections: `spendable_credits` (credits that can be spent or used to fund tasks) and `allocated_credits` (credits currently locked to funded tasks).
-- `GET /api/credits/ledger`: list authenticated-user ledger entries, newest first. Each entry carries `id`, `kind`, `amount`, `task_id` (empty when the entry is not tied to a task), and `note` (the stored note, for example the required explanation on a platform-admin credit grant; empty for entry kinds without one).
+- `GET /api/credits/ledger`: list authenticated-user ledger entries, newest first. Each entry carries `id`, `kind`, `amount`, `task_id` (empty when the entry is not tied to a task), and `note` (the stored note, for example the required explanation on a platform-admin credit grant or the message on a peer credit send; empty for entry kinds without one).
+- `POST /api/credits/transfers`: send credits to another account as a `peer_transfer` double entry. Request: `source_kind` (`self`, or `organization` with `source_organization_id` — the caller needs the organization's billing permission), `target_kind` (`user` or `organization`), `target_id`, `amount` (positive), an optional `note` (stored on both ledger rows), and `idempotency_key`. The response returns the sender-side `entry_id` and `amount`; a replayed key returns the original entry without moving credits again. Self-sends and organization-to-organization sends are rejected with `invalid_argument`, as is an amount above the spendable balance. The receiver (or the receiving organization's owner/admin/billing members) gets a `credits_received` notification.
 - `GET /api/organizations/{organization_id}/credits/balance`: read the organization credit balance, with the same `spendable_credits` and `allocated_credits` sections.
 - `GET /api/organizations/{organization_id}/credits/ledger`: list organization ledger entries. Requires billing permission on the organization.
 - `GET /api/organizations/{organization_id}/audit-events`: list audit events whose subject is the organization. Requires membership-management permission on the organization. Supports `limit` and `offset`.
-- `GET /api/collectibles`: list authenticated-user collectible holdings.
-- `POST /api/collectibles`: mint a collectible owned by the authenticated user.
-- `GET /api/collectibles/catalog`: list platform default collectibles.
-- `POST /api/collectibles/award`: platform-admin award of a catalog collectible to a user, team, or organization.
-- `POST /api/collectibles/{id}/transfer`: transfer a collectible to another user.
+- `GET /api/collectibles`: list authenticated-user collectible holdings. Collectible responses carry provenance: `catalog_slug` (the catalog entry a catalog-awarded instance came from; empty for custom mints), `edition_number` (the mint sequence number for edition instances; 0 when unnumbered), and `issuer_display_name` (the minting or awarding user, resolved on list reads). The `state` value `withdrawn` marks instances an admin removed from circulation.
+- `POST /api/collectibles`: mint a collectible owned by the authenticated user. `transfer_policy` is optional and defaults to freely tradeable (`transferable_between_users`).
+- `GET /api/collectibles/catalog`: list every collectible catalog entry with its lifecycle `state` (`available` or `withdrawn`), `max_editions` (1 for uniques, the run size for editions, 0 for uncapped badges), and `minted_count` (live, non-withdrawn instances). Withdrawn entries stay listed but can no longer be awarded.
+- `POST /api/collectibles/award`: platform-admin award of a catalog collectible to a user, team, or organization. Unique entries allow one live instance; edition entries are numbered against `max_editions` and refuse awards past the cap; withdrawn entries refuse awards.
+- `POST /api/collectibles/{collectible_id}/transfer`: transfer a collectible. `target_kind` is optional: `user` (the default) moves it to another user; `organization` donates it to an organization's trophy case. `recipient_id` is the matching user or organization id. The transfer policy is enforced in the store transaction.
 - `GET /api/organizations/{id}/collectibles`: list organization collectible holdings.
-- `POST /api/organizations/{organization_id}/collectibles/{id}/award`: award one of the organization's held collectibles to a user (`recipient_id`). Requires membership-management permission on the organization.
+- `POST /api/organizations/{organization_id}/collectibles/{id}/award`: award one of the organization's held collectibles to an active member (`recipient_id`). Requires the `manage_collectibles` permission on the organization.
+- `POST /api/organizations/{organization_id}/collectibles/{collectible_id}/transfer`: send one of the organization's held collectibles to any user (`recipient_id`), member or not. The acting member's `manage_collectibles` permission is verified inside the transfer transaction.
 - `GET /api/teams/{id}/collectibles`: list team collectible holdings.
 - `GET /api/notifications`: list authenticated-user notifications. Supports `state=unread`, `limit`, and `offset`. Each notification carries `actor_display_name` (empty for system actors) and `subject_title` (the subject task's title when the subject is a task, or the submission's task title when the subject is a submission; empty otherwise).
 - `POST /api/notifications/{notification_id}/read`: mark a notification read.
@@ -191,6 +191,11 @@ SHARECROP_WEBHOOK_SECRET=scrop_whsec_... deno run --allow-net --allow-env tools/
 - `POST /api/admin/platform-admins/{user_id}/revoke`: revoke a granted platform-admin role by lifecycle state.
 - `GET /api/admin/audit-events`: platform-admin audit event list. Supports `action`, `subject_kind`, `subject_id`, `limit`, and `offset`.
 - `POST /api/admin/credits/grants`: platform-admin manual credit grant. Request: `target_kind` (`user` or `organization`), `target_id`, `amount` (positive), `note` (required explanation, stored on the ledger entry), `idempotency_key`. The response returns `entry_id` and `amount`. Replaying the same idempotency key returns the original entry without double-crediting; a non-admin caller receives 403 `permission_denied`. The beneficiaries (the granted user, or the organization's owner/admin/billing members) receive a `credit_granted` notification.
+- `POST /api/admin/collectible-catalog`: platform-admin catalog entry creation. Request: `slug`, `name`, `kind` (`unique`, `edition`, or `badge`), `transfer_policy`, `art` (a sprite slug from the fixed art registry), and `max_editions` (required as 1 for `unique`, a positive run size for `edition`, and absent/0 for uncapped `badge`).
+- `POST /api/admin/collectible-catalog/{slug}/withdraw`: mark a catalog entry no longer awardable. Existing instances are unaffected; withdrawing an already-withdrawn entry answers 409 `conflict`.
+- `DELETE /api/admin/collectible-catalog/{slug}`: delete a withdrawn catalog entry that no live instance references. A still-available entry or one with live instances answers 409 `conflict`.
+- `POST /api/admin/collectibles/{collectible_id}/withdraw`: withdraw a catalog-minted instance from its holder (state `withdrawn`). The former holder receives a `collectible_withdrawn` notification. Escrowed instances (held as a task reward) are refused.
+- `DELETE /api/admin/collectibles/{collectible_id}`: hard-delete a withdrawn instance. Every other state answers 409 `conflict`.
 - `GET /api/admin/moderation/reports`: platform-admin moderation report list. Supports `state`, `limit`, and `offset`.
 - `POST /api/admin/moderation/reports/{report_id}/triage`: update moderation report `state` and `resolution_note`. Accepted states are `open`, `resolved`, and `dismissed`.
 - `GET /api/admin/privacy-requests`: platform-admin privacy request queue.
@@ -201,7 +206,7 @@ SHARECROP_WEBHOOK_SECRET=scrop_whsec_... deno run --allow-net --allow-env tools/
 
 - Pagination uses `limit` and `offset` where list handlers expose paging. `next_offset` is the offset of the next page, or 0 on the last page.
 - The pager-backed list responses for tasks (including a user's work and a team's work), notifications, the user and organization credits ledgers, task submissions, a user's own submissions, webhook deliveries, and the admin moderation report list also carry `total`: the count of every row matching the filter, ignoring `limit`/`offset`. `total` is additive; `next_offset` semantics are unchanged.
-- Idempotent mutations (task funding, submission accept/request-changes/reject, task refund, admin credit grants) treat a replayed `idempotency_key` as a replay: the response returns the original result, and no duplicate domain events, notifications, or webhook deliveries are recorded.
+- Idempotent mutations (task funding, submission accept/request-changes/reject, task refund, admin credit grants, peer credit sends) treat a replayed `idempotency_key` as a replay: the response returns the original result, and no duplicate domain events, notifications, or webhook deliveries are recorded.
 - Error responses share one shape: `{"error": "<description>", "code": "<error code>"}` with the ten codes enumerated in the generated OpenAPI `ErrorResponse` component schema.
 - Selector-backed browser flows use `query`, `limit`, and `offset` for users, organizations, standalone teams, and organization teams.
 - Task list endpoints support `state`, `participation_policy`, `query`, `task_type`, `sort`, `created_after`, `funded`, `limit`, and `offset` where the corresponding scope is exposed. Sort values are `newest`, `oldest`, `title_asc`, `title_desc`, `reward_desc`, and `reward_asc`.

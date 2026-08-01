@@ -72,37 +72,63 @@ Test gaps:
 - `tests/playwright/demo.spec.ts` and `tests/playwright/mobile.spec.ts` passed
   against the Go/WASM default demo on non-default port `29181`.
 
-Event-pipeline and agent-loop notes (post-hardening):
+Event-pipeline and economy notes (post-seam-fixes):
 
-- Host-side expiry sweeps (task/reservation expiry) still emit their events
-  post-commit, outside the expiry transaction - the one emission path not on
-  the in-transaction outbox. All service mutations are on the outbox.
 - Webhook secrets are stored as written; the dispatcher must compute HMACs.
   At-rest encryption needs a key-management decision. The dial-time SSRF
   guard rejects non-public addresses at delivery; the URL constructor only
   checks form.
-- Comment and reservation listings are newest-first (previously oldest-first,
-  changed when pagination landed); series detail embeds at most 100 tasks and
-  the newest 20 comments, with the paginated endpoints serving the rest.
+- Marketplace webhook expansion evaluates the task's state/visibility/filters
+  at dispatch time, not event time: a task that opens and is cancelled before
+  a crash-recovery sweep produces no marketplace deliveries. Deliberate
+  (do not advertise gone tasks), documented here because the semantics
+  depend on whether a crash intervened.
+- Webhook delivery is at-least-once across replicas (claim holds cover
+  worst-case batch time, but receivers must dedupe by the delivery-id
+  header — the reference receiver does).
+- The browser demo has no lifecycle runner, so request-path-recorded expiry
+  events appear in the demo feed but produce no inbox rows there; host
+  deployments dispatch them via the 30 s sweep.
+- Feed sentences for `credits_sent` and `collectible_withdrawn` use generic
+  fallbacks in some feed contexts ("Ren Okafor sent credits.", "A
+  collectible was withdrawn.") because the feed row carries no amount or
+  collectible name; the inbox sentences are specific. Cosmetic.
+- Send-credits success notes label user recipients by directory email (the
+  directory API exposes no display names) — a candidate read-model
+  enrichment.
+- `transfer_org_collectible` over MCP: the org-credential path reuses the
+  member-award flow (member-only recipients, no policy re-check) because the
+  in-store permission check needs an acting user; unifying needs an actor
+  union on the assets service.
+- REST path-parameter parsing still surfaces raw UUID-library error strings
+  in places (`invalid UUID length: N`); the uniform-message fix was
+  MCP-scoped. A root fix in the id-parsing boundary would cover both.
+- Org-credential submission listings skip sensitive-field access auditing
+  (the privacy service is user-keyed).
+- Existing collectible instances predating the DB catalog are not
+  back-linked to catalog entries (retro-linking could violate the new
+  uniqueness indexes); provenance and uniqueness guarantees apply from
+  migration 000051 forward.
 - The expiry input is `datetime-local` labeled UTC and does no timezone
   conversion (elm/time cannot read the local zone offset without a new
   dependency).
 - Registration is throttled per IP (capacity 5, ~12 min refill), which slows
-  but does not prevent signup-grant farming; grants remain the only
-  non-admin credit faucet and the sybil stance is otherwise open.
+  but does not prevent signup-grant farming; grants and peer transfers are
+  the only non-admin credit movements and the sybil stance is otherwise
+  open.
 - `site/demo/sharecrop-wasm-backend.wasm` and `seed-snapshot.b64` are
   gitignored build artifacts; a stale local copy breaks the demo silently
   until `deno task wasm:demo:build` is rerun (CI rebuilds them).
 - `tests/integration` mirrors two unexported dispatcher constants as
-  `dispatcherRunOnceCapacity` (claim batch 10 x max 50 batches per cycle);
-  changing those constants requires updating the fan-out scale test constant
-  (its comment points here).
-- The moderation reason enum is a closed set in three places (the shared
-  HTTP validator, the contracts enum, and the MCP tool schema); a new
-  category must be added to all three.
-- The 16px gnome favicon's tunic sliver can read as a mouth at that scale,
-  and the dozing-gnome empty state is mostly hat - accepted cosmetic trade-
-  offs after three art iterations, noted for a future art pass.
+  `dispatcherRunOnceCapacity`; changing those constants requires updating
+  the fan-out scale test constant.
+- The moderation reason enum is a closed set in three places (shared HTTP
+  validator, contracts enum, MCP tool schema); new categories must be added
+  to all three. The sprite art registry is a closed pair: `assets.
+  SpriteSlugs` (Go) and `Sprites.elm` slugs must be extended together.
+- The 16px gnome favicon's tunic sliver can read as a mouth at that scale;
+  the golden-coins sprite depends on its "credits" label at chip size —
+  accepted cosmetic trade-offs, noted for a future art pass.
 
 Known risks:
 

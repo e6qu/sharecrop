@@ -28,6 +28,9 @@ func sampleCollectible(t *testing.T) assets.Collectible {
 		OwnerID:        "owner-123",
 		OrganizationID: "",
 		Art:            "art-url",
+		Catalog:        assets.NoCatalogRef{},
+		Edition:        assets.NoEditionNumber{},
+		Issuer:         assets.NoIssuer{},
 	}
 }
 
@@ -51,8 +54,11 @@ func TestResultRoundTrips(t *testing.T) {
 	collectible := sampleCollectible(t)
 
 	// Create (accept/reject).
-	if _, matched := mustDecodeCreate(t, encodeCreateResult(assets.CreateStoreAccepted{})).(assets.CreateStoreAccepted); !matched {
+	created, createMatched := mustDecodeCreate(t, encodeCreateResult(assets.CreateStoreAccepted{Value: collectible})).(assets.CreateStoreAccepted)
+	if !createMatched {
 		t.Errorf("create accepted did not round-trip")
+	} else {
+		assertCollectibleEqual(t, created.Value, collectible)
 	}
 
 	// Fund (single collectible).
@@ -104,7 +110,7 @@ func TestResultRoundTrips(t *testing.T) {
 	}
 }
 
-func mustDecodeCreate(t *testing.T, wire acceptedRejectedWire) assets.CreateStoreResult {
+func mustDecodeCreate(t *testing.T, wire collectibleResultWire) assets.CreateStoreResult {
 	t.Helper()
 	result, err := decodeCreateResult(wire)
 	if err != nil {

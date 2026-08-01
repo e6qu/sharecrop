@@ -264,7 +264,8 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 	// ren, so mara has a real submission to accept/reject/request changes on,
 	// plus the same inbox notification the HTTP layer writes for a live
 	// submission. This is deliberately a *no-reward* task on its own (not the
-	// fraud task): mara's balance stays at exactly 70, and the fraud task
+	// fraud task): mara's balance stays predictable (95: the 100 signup grant,
+	// minus the 30 fraud-task funding, plus ren's 25-credit send), and the fraud task
 	// stays free of pending work so the demo's refund flow still applies to
 	// it. renSubject is already declared above (it owns task-support).
 	reviewTask := taskService.Create(ctx, task.CreateCommand{
@@ -344,55 +345,147 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 	if !matched {
 		return "seed reject note was rejected"
 	}
-	rejectResult := ledgerService.RejectSubmission(ctx, memberIDs["ren"], disputedCreated.Value.ID, disputedSubmitted.Value.ID, mustIdempotencyKey("seed-reject-disputed"), rejectNote.Value, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{})
+	rejectResult := ledgerService.RejectSubmission(ctx, ledger.UserReviewer{ID: memberIDs["ren"]}, disputedCreated.Value.ID, disputedSubmitted.Value.ID, mustIdempotencyKey("seed-reject-disputed"), rejectNote.Value, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{})
 	if _, matched := rejectResult.(ledger.SubmissionRejected); !matched {
 		return "seed reject of the disputed submission failed"
 	}
 
-	// task-approvals: an approval-required task owned by mara with a pending
-	// reservation request from sol, so the owner Approve/Decline controls
-	// have something real to act on.
-	approvalTask := taskService.Create(ctx, task.CreateCommand{
+	// task-reserved: a reservation-required task owned by mara that sol has
+	// already reserved (reserving is immediate now that the approval gate is
+	// gone), so the owner's reservation list and cancel control have
+	// something real to act on.
+	reservedTask := taskService.Create(ctx, task.CreateCommand{
 		Actor: mara, Owner: task.UserOwner{UserID: maraID},
 		Title:       seedTitle("Proofread 3 onboarding emails"),
 		Description: seedDescription("Check the drafts for tone, typos, and broken links before they go out."),
 		Type:        task.TaskTypeProductReview, Reference: task.ReferenceURL{},
-		Reward: task.NoRewardSpec{}, Participation: task.ParticipationPolicyApprovalRequired,
+		Reward: task.NoRewardSpec{}, Participation: task.ParticipationPolicyReservationRequired,
 		AssigneeScope: task.AssigneeScopeUser, ReservationTTL: task.DefaultReservationTTL(),
 		Visibility: task.PublicVisibility{}, Placement: task.StandalonePlacement{},
 		ResponseSchema: seedSchema(`{"kind":"freeform"}`),
 		Payload:        task.JSONDataPayload{Source: seedPayload(`{"drafts":["welcome.md","first-task.md","invite-team.md"]}`)},
 	})
-	approvalCreated, matched := approvalTask.(task.TaskCreated)
+	reservedCreated, matched := reservedTask.(task.TaskCreated)
 	if !matched {
-		return approvalTask.(task.CreateRejected).Reason.Description()
+		return reservedTask.(task.CreateRejected).Reason.Description()
 	}
-	if result := taskService.Open(ctx, mara, approvalCreated.Value.ID); !isTaskStateChanged(result) {
-		return "open task-approvals failed"
+	if result := taskService.Open(ctx, mara, reservedCreated.Value.ID); !isTaskStateChanged(result) {
+		return "open task-reserved failed"
 	}
 	solSubject := auth.UserSubject{ID: memberIDs["sol"]}
-	if reserveResult := taskService.Reserve(ctx, solSubject, approvalCreated.Value.ID); !isReservationCreated(reserveResult) {
-		return "seed approval reservation request failed"
+	if reserveResult := taskService.Reserve(ctx, solSubject, reservedCreated.Value.ID); !isReservationCreated(reserveResult) {
+		return "seed reservation failed"
 	}
 
-	// A collectible in mara's holdings, awarded from the default catalog the
-	// same way the admin award endpoint mints one, so the collectible pages
-	// have something to show without minting first. Transferable, so the
-	// demo trade flow also works on it.
-	entry, found := assets.CatalogBySlug("harvest-star")
-	if !found {
-		return "seed collectible slug is unknown"
-	}
-	collectibleNameResult := assets.NewCollectibleName(entry.Name)
-	collectibleName, matched := collectibleNameResult.(assets.CollectibleNameAccepted)
-	if !matched {
-		return "seed collectible name was rejected"
-	}
-	if mintResult := assetService.Mint(ctx, assets.CollectibleOwnerKindUser, maraID.String(), "", collectibleName.Value, entry.Kind, entry.Policy, entry.Art); !isCollectibleMinted(mintResult) {
+	// A collectible in mara's holdings, awarded from the DB-backed catalog
+	// the same way the admin award endpoint mints one, so the collectible
+	// pages have something to show without minting first. Transferable, so
+	// the demo trade flow also works on it.
+	if mintResult := assetService.AwardFromCatalog(ctx, maraID, "harvest-star", assets.CollectibleOwnerKindUser, maraID.String(), ""); !isCollectibleMinted(mintResult) {
 		return "seed collectible award failed"
 	}
 
+	// Catalog richness for the admin demo (mara is the platform admin):
+	// a fully-minted unique, a partially-minted edition, and a withdrawn
+	// entry, so the catalog gallery shows every state and count shape the
+	// admin management UI can render.
+	if err := assetService.AddCatalogEntry(ctx, assets.CatalogEntry{
+		Slug: mustCatalogSlug("founders-medal"), Name: mustCollectibleName("Founders' Medal"),
+		Kind: assets.CollectibleKindUnique, Policy: assets.TransferPolicyIssuerControlled,
+		Art: "first-harvest-trophy", State: assets.CatalogEntryStateAvailable,
+		Cap: assets.EditionCapOf{Limit: 1},
+	}); !isCatalogMutated(err) {
+		return "seed founders-medal catalog entry failed"
+	}
+	if mintResult := assetService.AwardFromCatalog(ctx, maraID, "founders-medal", assets.CollectibleOwnerKindUser, maraID.String(), ""); !isCollectibleMinted(mintResult) {
+		return "seed founders-medal award failed"
+	}
+	if err := assetService.AddCatalogEntry(ctx, assets.CatalogEntry{
+		Slug: mustCatalogSlug("harvest-festival-2026"), Name: mustCollectibleName("Harvest Festival 2026"),
+		Kind: assets.CollectibleKindEdition, Policy: assets.TransferPolicyTransferableBetweenUsers,
+		Art: "cornucopia", State: assets.CatalogEntryStateAvailable,
+		Cap: assets.EditionCapOf{Limit: 25},
+	}); !isCatalogMutated(err) {
+		return "seed harvest-festival catalog entry failed"
+	}
+	for _, label := range []string{"mara", "ren", "jules"} {
+		if mintResult := assetService.AwardFromCatalog(ctx, maraID, "harvest-festival-2026", assets.CollectibleOwnerKindUser, memberIDs[label].String(), ""); !isCollectibleMinted(mintResult) {
+			return "seed harvest-festival award failed"
+		}
+	}
+	if err := assetService.AddCatalogEntry(ctx, assets.CatalogEntry{
+		Slug: mustCatalogSlug("retired-scarecrow"), Name: mustCollectibleName("Retired Scarecrow"),
+		Kind: assets.CollectibleKindBadge, Policy: assets.TransferPolicyNonTransferableExceptPayout,
+		Art: "scarecrow", State: assets.CatalogEntryStateAvailable,
+		Cap: assets.NoEditionCap{},
+	}); !isCatalogMutated(err) {
+		return "seed retired-scarecrow catalog entry failed"
+	}
+	if err := assetService.WithdrawCatalogEntry(ctx, mustCatalogSlug("retired-scarecrow")); !isCatalogMutated(err) {
+		return "seed retired-scarecrow withdrawal failed"
+	}
+
+	// A withdrawn instance in mara's own holdings: award a rain-drop, then
+	// withdraw it, so the withdrawn state (and the admin Delete control) is
+	// visible without a live mutation first.
+	withdrawnMint := assetService.AwardFromCatalog(ctx, maraID, "rain-drop", assets.CollectibleOwnerKindUser, maraID.String(), "")
+	withdrawnMinted, withdrawnMatched := withdrawnMint.(assets.CollectibleMinted)
+	if !withdrawnMatched {
+		return "seed rain-drop award failed"
+	}
+	if result := assetService.WithdrawCollectible(ctx, maraID, withdrawnMinted.Value.ID); !isCollectibleWithdrawn(result) {
+		return "seed rain-drop withdrawal failed"
+	}
+
+	// A collectible owned by the Field Operations organization, so the
+	// org page's award and send-to-user controls have something to move.
+	if mintResult := assetService.AwardFromCatalog(ctx, maraID, "golden-egg", assets.CollectibleOwnerKindOrganization, organizationID.String(), organizationID.String()); !isCollectibleMinted(mintResult) {
+		return "seed organization collectible failed"
+	}
+
+	// A received peer credit send: ren thanks mara with 25 credits, so the
+	// ledger shows a peer_transfer row with its note and the inbox shows the
+	// credits_received notification.
+	sendNote := ledger.NewGrantNote("Thanks for the fraud-sweep review")
+	sendNoteAccepted, sendNoteMatched := sendNote.(ledger.GrantNoteAccepted)
+	if !sendNoteMatched {
+		return "seed transfer note was rejected"
+	}
+	sendResult := ledgerService.SendCredits(ctx, memberIDs["ren"], ledger.TransferFromSelf{}, ledger.TransferToUser{ID: maraID},
+		mustCreditAmount(25), ledger.TransferNoteProvided{Note: sendNoteAccepted.Value}, mustIdempotencyKey("seed-send-ren-mara"))
+	if _, matched := sendResult.(ledger.CreditsSent); !matched {
+		return "seed peer credit send failed"
+	}
+
 	return ""
+}
+
+func isCatalogMutated(result assets.CatalogMutationResult) bool {
+	_, matched := result.(assets.CatalogMutated)
+	return matched
+}
+
+func isCollectibleWithdrawn(result assets.WithdrawResult) bool {
+	_, matched := result.(assets.CollectibleWithdrawn)
+	return matched
+}
+
+func mustCatalogSlug(raw string) assets.CatalogSlug {
+	result := assets.NewCatalogSlug(raw)
+	accepted, matched := result.(assets.CatalogSlugAccepted)
+	if !matched {
+		panic("invalid seed catalog slug")
+	}
+	return accepted.Value
+}
+
+func mustCollectibleName(raw string) assets.CollectibleName {
+	result := assets.NewCollectibleName(raw)
+	accepted, matched := result.(assets.CollectibleNameAccepted)
+	if !matched {
+		panic("invalid seed collectible name")
+	}
+	return accepted.Value
 }
 
 func isReservationCreated(result task.ReservationResult) bool {

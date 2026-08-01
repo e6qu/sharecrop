@@ -10,8 +10,12 @@ if (elmCompiler === undefined || elmCompiler.length === 0) {
 
 await rejectRecursiveNpmShim(elmCompiler);
 
+// --optimize strips the Debug module and enables production codegen; the
+// demo bundle is a copy of this output, so both the app and the hosted demo
+// ship the optimized build (the sweep found "Compiled in DEV mode" in the
+// demo console before this flag).
 const command = new Deno.Command(elmCompiler, {
-  args: ["make", source, "--output", output],
+  args: ["make", source, "--optimize", "--output", output],
   stdout: "inherit",
   stderr: "inherit",
 });

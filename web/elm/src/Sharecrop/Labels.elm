@@ -1,6 +1,7 @@
 module Sharecrop.Labels exposing (..)
 
 import Http
+import Json.Decode as Decode
 import Sharecrop.Generated.Agent as Agent
 import Time
 import Sharecrop.Generated.Collectible as Collectible
@@ -81,6 +82,9 @@ collectibleStateLabel state =
         Collectible.CollectibleStateAwarded ->
             "awarded"
 
+        Collectible.CollectibleStateWithdrawn ->
+            "withdrawn"
+
 
 participationPolicyTag : Task.TaskParticipationPolicy -> String
 participationPolicyTag policy =
@@ -91,13 +95,10 @@ participationPolicyTag policy =
         Task.TaskParticipationPolicyReservationRequired ->
             "reservation_required"
 
-        Task.TaskParticipationPolicyApprovalRequired ->
-            "approval_required"
-
 
 participationUsesReservation : String -> Bool
 participationUsesReservation tag =
-    tag == "reservation_required" || tag == "approval_required"
+    tag == "reservation_required"
 
 
 participationPolicyLabel : Task.TaskParticipationPolicy -> String
@@ -110,9 +111,6 @@ participationPolicyLabel policy =
 
         Task.TaskParticipationPolicyReservationRequired ->
             "reservation required"
-
-        Task.TaskParticipationPolicyApprovalRequired ->
-            "approval required"
 
 
 assigneeScopeTag : Task.TaskAssigneeScope -> String
@@ -150,9 +148,6 @@ availabilityKindLabel kind =
         Task.TaskAvailabilityKindReserved ->
             "reserved"
 
-        Task.TaskAvailabilityKindAwaitingApproval ->
-            "awaiting approval"
-
         Task.TaskAvailabilityKindClosed ->
             -- Not a bare "closed": next to a draft's "open submissions"
             -- participation badge that read as a contradiction.
@@ -167,9 +162,6 @@ viewerActionLabel action =
 
         Task.TaskViewerActionReserve ->
             "reserve"
-
-        Task.TaskViewerActionRequestApproval ->
-            "request approval"
 
         Task.TaskViewerActionWait ->
             "wait"
@@ -218,6 +210,7 @@ allScopes =
     , Agent.AgentScopeNotificationsManage
     , Agent.AgentScopeUsersRead
     , Agent.AgentScopeLedgerRead
+    , Agent.AgentScopeLedgerWrite
     , Agent.AgentScopeModerationRead
     , Agent.AgentScopeModerationManage
     , Agent.AgentScopePrivacyRead
@@ -270,6 +263,9 @@ scopeTag scope =
 
         Agent.AgentScopeLedgerRead ->
             "ledger_read"
+
+        Agent.AgentScopeLedgerWrite ->
+            "ledger_write"
 
         Agent.AgentScopeModerationRead ->
             "moderation_read"
@@ -337,6 +333,9 @@ scopeLabel scope =
 
         Agent.AgentScopeLedgerRead ->
             "Read ledger"
+
+        Agent.AgentScopeLedgerWrite ->
+            "Send credits"
 
         Agent.AgentScopeModerationRead ->
             "Read moderation reports"
@@ -454,6 +453,9 @@ kindLabel kind =
         Ledger.LedgerEntryKindManualAdjustment ->
             "Manual adjustment"
 
+        Ledger.LedgerEntryKindPeerTransfer ->
+            "Credit send"
+
 
 {-| Human label for a notification kind, used as the compact heading of an
 inbox row (the full sentence comes from notificationSentence).
@@ -495,7 +497,9 @@ notificationKindLabel kind =
             "Series comment"
 
         Notification.NotificationKindReservationRequested ->
-            "Reservation requested"
+            -- Reserving is immediate (no approval gate), so the wire kind's
+            -- historical "requested" phrasing would misreport a done deal.
+            "Task reserved"
 
         Notification.NotificationKindReservationApproved ->
             "Reservation approved"
@@ -521,14 +525,22 @@ notificationKindLabel kind =
         Notification.NotificationKindCollectibleAwarded ->
             "Collectible awarded"
 
+        Notification.NotificationKindCollectibleWithdrawn ->
+            "Collectible withdrawn"
+
+        Notification.NotificationKindCreditsReceived ->
+            "Credits received"
+
 
 {-| An inbox row as one readable sentence: who did what to which subject,
 e.g. "Ren Okafor submitted a response to 'Weekly QA sweep'." Falls back to
 neutral nouns when the actor or subject title is blank (system events,
-redacted or deleted subjects).
+redacted or deleted subjects). The metadata JSON supplies the credit amount
+for money kinds ("Ren Okafor sent you 25 credits."), degrading to a
+plain "credits" when absent.
 -}
-notificationSentence : String -> String -> Notification.NotificationKind -> String
-notificationSentence actorName subjectTitle kind =
+notificationSentence : String -> String -> String -> Notification.NotificationKind -> String
+notificationSentence actorName subjectTitle metadataJSON kind =
     let
         actor =
             personOrSomeone actorName
@@ -538,6 +550,9 @@ notificationSentence actorName subjectTitle kind =
 
         series =
             titledOr "a series" subjectTitle
+
+        credits =
+            creditsPhrase metadataJSON
     in
     case kind of
         Notification.NotificationKindSubmissionCreated ->
@@ -574,7 +589,8 @@ notificationSentence actorName subjectTitle kind =
             actor ++ " commented on the series " ++ series ++ "."
 
         Notification.NotificationKindReservationRequested ->
-            actor ++ " requested a reservation on " ++ task ++ "."
+            -- Reserving is immediate now; "requested" would read as pending.
+            actor ++ " reserved " ++ task ++ "."
 
         Notification.NotificationKindReservationApproved ->
             actor ++ " approved a reservation on " ++ task ++ "."
@@ -592,13 +608,43 @@ notificationSentence actorName subjectTitle kind =
             "You received a payout for " ++ task ++ "."
 
         Notification.NotificationKindCreditGranted ->
-            actor ++ " granted you credits."
+            actor ++ " granted you " ++ credits ++ "."
 
         Notification.NotificationKindTipReceived ->
             actor ++ " sent you a tip for " ++ task ++ "."
 
         Notification.NotificationKindCollectibleAwarded ->
             "You were awarded " ++ titledOr "a collectible" subjectTitle ++ "."
+
+        Notification.NotificationKindCollectibleWithdrawn ->
+            withdrawingActor actorName ++ " withdrew " ++ titledOr "a collectible" subjectTitle ++ " from your inventory."
+
+        Notification.NotificationKindCreditsReceived ->
+            actor ++ " sent you " ++ credits ++ "."
+
+
+{-| Withdrawing a collectible is an admin act; a blank actor still reads as
+an authority ("An administrator withdrew…"), not an anonymous "Someone".
+-}
+withdrawingActor : String -> String
+withdrawingActor actorName =
+    if String.trim actorName == "" then
+        "An administrator"
+
+    else
+        String.trim actorName
+
+
+{-| "25 credits" when the event metadata carries the amount, else "credits".
+-}
+creditsPhrase : String -> String
+creditsPhrase metadataJSON =
+    case Decode.decodeString (Decode.field "amount" Decode.int) metadataJSON of
+        Ok amount ->
+            String.fromInt amount ++ " credits"
+
+        Err _ ->
+            "credits"
 
 
 {-| An activity-feed row as one readable sentence, built from the event's
@@ -633,7 +679,8 @@ eventSentence actorName taskTitle kind =
             actor ++ " commented on a series."
 
         Events.DomainEventKindReservationRequested ->
-            actor ++ " requested a reservation on " ++ task ++ "."
+            -- Reserving is immediate now; "requested" would read as pending.
+            actor ++ " reserved " ++ task ++ "."
 
         Events.DomainEventKindReservationApproved ->
             actor ++ " approved a reservation on " ++ task ++ "."
@@ -676,6 +723,12 @@ eventSentence actorName taskTitle kind =
 
         Events.DomainEventKindCollectibleAwarded ->
             actor ++ " was awarded a collectible."
+
+        Events.DomainEventKindCollectibleWithdrawn ->
+            "A collectible was withdrawn."
+
+        Events.DomainEventKindCreditsSent ->
+            actor ++ " sent credits."
 
 
 personOrSomeone : String -> String
@@ -731,7 +784,9 @@ domainEventKindLabel kind =
             "Series commented"
 
         Events.DomainEventKindReservationRequested ->
-            "Reservation requested"
+            -- Reserving is immediate (no approval gate); see the matching
+            -- notification-kind label.
+            "Task reserved"
 
         Events.DomainEventKindReservationApproved ->
             "Reservation approved"
@@ -774,6 +829,12 @@ domainEventKindLabel kind =
 
         Events.DomainEventKindCollectibleAwarded ->
             "Collectible awarded"
+
+        Events.DomainEventKindCollectibleWithdrawn ->
+            "Collectible withdrawn"
+
+        Events.DomainEventKindCreditsSent ->
+            "Credits sent"
 
 
 {-| The wire tag for a domain event kind - used for webhook checkbox testids
@@ -844,6 +905,12 @@ domainEventKindTag kind =
 
         Events.DomainEventKindCollectibleAwarded ->
             "collectible_awarded"
+
+        Events.DomainEventKindCollectibleWithdrawn ->
+            "collectible_withdrawn"
+
+        Events.DomainEventKindCreditsSent ->
+            "credits_sent"
 
 
 rewardLabel : String -> Int -> Int -> String
@@ -961,6 +1028,69 @@ countPhrase count unit =
 
     else
         String.fromInt count ++ " " ++ unit ++ "s ago"
+
+
+{-| A humanized absolute instant, e.g. "Sep 15, 2026, 17:00 UTC" — for
+expiry displays, where the exact calendar moment matters more than a
+relative phrase. Falls back to the raw timestamp when it does not parse.
+-}
+absoluteTimeLabel : String -> String
+absoluteTimeLabel raw =
+    case posixFromRFC3339 raw of
+        Nothing ->
+            raw
+
+        Just instant ->
+            monthShortName (Time.toMonth Time.utc instant)
+                ++ " "
+                ++ String.fromInt (Time.toDay Time.utc instant)
+                ++ ", "
+                ++ String.fromInt (Time.toYear Time.utc instant)
+                ++ ", "
+                ++ String.padLeft 2 '0' (String.fromInt (Time.toHour Time.utc instant))
+                ++ ":"
+                ++ String.padLeft 2 '0' (String.fromInt (Time.toMinute Time.utc instant))
+                ++ " UTC"
+
+
+monthShortName : Time.Month -> String
+monthShortName month =
+    case month of
+        Time.Jan ->
+            "Jan"
+
+        Time.Feb ->
+            "Feb"
+
+        Time.Mar ->
+            "Mar"
+
+        Time.Apr ->
+            "Apr"
+
+        Time.May ->
+            "May"
+
+        Time.Jun ->
+            "Jun"
+
+        Time.Jul ->
+            "Jul"
+
+        Time.Aug ->
+            "Aug"
+
+        Time.Sep ->
+            "Sep"
+
+        Time.Oct ->
+            "Oct"
+
+        Time.Nov ->
+            "Nov"
+
+        Time.Dec ->
+            "Dec"
 
 
 {-| Parses the RFC3339 instants the API emits ("2026-07-31T12:34:56Z",

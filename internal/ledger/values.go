@@ -142,6 +142,10 @@ var (
 	EntryKindTaskPayout       = EntryKind{value: "task_payout"}
 	EntryKindTaskTip          = EntryKind{value: "task_tip"}
 	EntryKindManualAdjustment = EntryKind{value: "manual_adjustment"}
+	// EntryKindPeerTransfer is a user-to-user / user-to-organization /
+	// organization-to-user credit send: one negative row on the sender's
+	// account and one positive row on the receiver's, written atomically.
+	EntryKindPeerTransfer = EntryKind{value: "peer_transfer"}
 )
 
 type EntryKindResult interface {
@@ -174,6 +178,8 @@ func ParseEntryKind(raw string) EntryKindResult {
 		return EntryKindAccepted{Value: EntryKindTaskTip}
 	case EntryKindManualAdjustment.value:
 		return EntryKindAccepted{Value: EntryKindManualAdjustment}
+	case EntryKindPeerTransfer.value:
+		return EntryKindAccepted{Value: EntryKindPeerTransfer}
 	default:
 		return EntryKindRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "ledger entry kind is invalid")}
 	}
@@ -289,6 +295,29 @@ func (NoCollectibleTipSelection) collectibleTipSelection() {}
 
 func (CollectibleTipSelected) collectibleTipSelection() {}
 
+// Reviewer identifies who performs a submission review: the acting user (the
+// task creator, or an organization member holding the review permission,
+// verified inside the review transaction), or an organization acting through
+// an org-wide credential, which may review submissions on its own
+// organization's tasks only. Organization reviewers cannot pay tips or ban
+// implementors: tips move personal credits and bans name a banning user, and
+// an organization credential is not a person.
+type Reviewer interface {
+	reviewer()
+}
+
+type UserReviewer struct {
+	ID core.UserID
+}
+
+type OrganizationReviewer struct {
+	ID core.OrganizationID
+}
+
+func (UserReviewer) reviewer() {}
+
+func (OrganizationReviewer) reviewer() {}
+
 type BanSelection interface {
 	banSelection()
 }
@@ -300,3 +329,54 @@ type BanImplementorSelection struct{}
 func (NoBanSelection) banSelection() {}
 
 func (BanImplementorSelection) banSelection() {}
+
+// TransferSource says whose spendable balance a peer transfer debits: the
+// acting user's own account, or an organization account the actor is
+// authorized to spend from (the billing permission, checked inside the
+// transfer transaction).
+type TransferSource interface {
+	transferSource()
+}
+
+type TransferFromSelf struct{}
+
+type TransferFromOrganization struct {
+	ID core.OrganizationID
+}
+
+func (TransferFromSelf) transferSource() {}
+
+func (TransferFromOrganization) transferSource() {}
+
+// TransferTarget says whose account a peer transfer credits.
+type TransferTarget interface {
+	transferTarget()
+}
+
+type TransferToUser struct {
+	ID core.UserID
+}
+
+type TransferToOrganization struct {
+	ID core.OrganizationID
+}
+
+func (TransferToUser) transferTarget() {}
+
+func (TransferToOrganization) transferTarget() {}
+
+// TransferNote is the optional message travelling with a peer transfer:
+// explicitly absent, or a validated note recorded on both ledger rows.
+type TransferNote interface {
+	transferNote()
+}
+
+type NoTransferNote struct{}
+
+type TransferNoteProvided struct {
+	Note GrantNote
+}
+
+func (NoTransferNote) transferNote() {}
+
+func (TransferNoteProvided) transferNote() {}

@@ -92,8 +92,6 @@ type TaskService interface {
 	Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
 	ReserveForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
 	ReserveForTeam(context.Context, auth.UserSubject, core.TaskID, core.TeamID) task.ReservationResult
-	ApproveReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
-	DeclineReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	ListReservations(context.Context, auth.Subject, core.TaskID, core.Page) task.ReservationsListResult
 }
@@ -116,13 +114,22 @@ type OrgCredentialService interface {
 }
 
 type AssetService interface {
-	Mint(context.Context, string, string, string, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult
+	Mint(context.Context, core.UserID, string, string, string, assets.CollectibleName, assets.CollectibleKind, assets.TransferPolicy, string) assets.MintResult
+	ListCatalog(context.Context) assets.CatalogListResult
+	AddCatalogEntry(context.Context, assets.CatalogEntry) assets.CatalogMutationResult
+	WithdrawCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult
+	DeleteCatalogEntry(context.Context, assets.CatalogSlug) assets.CatalogMutationResult
+	AwardFromCatalog(context.Context, core.UserID, string, string, string, string) assets.MintResult
+	WithdrawCollectible(context.Context, core.UserID, core.CollectibleID) assets.WithdrawResult
+	DeleteWithdrawnCollectible(context.Context, core.CollectibleID) assets.DeleteCollectibleResult
 	ListCollectibles(context.Context, core.UserID, core.Page) assets.ListResult
 	ListByOwner(context.Context, string, string, core.Page) assets.ListResult
 	FundReward(context.Context, core.UserID, core.TaskID, core.CollectibleID) assets.FundRewardResult
 	RefundReward(context.Context, core.UserID, core.TaskID) assets.RefundRewardResult
 	GiftCollectible(context.Context, core.UserID, core.UserID, core.CollectibleID) assets.GiftResult
 	AwardOrganizationCollectible(context.Context, core.OrganizationID, core.CollectibleID, core.UserID) assets.GiftResult
+	TransferCollectibleToOrganization(context.Context, core.UserID, core.OrganizationID, core.CollectibleID) assets.GiftResult
+	TransferCollectibleFromOrganization(context.Context, core.UserID, core.OrganizationID, core.UserID, core.CollectibleID) assets.GiftResult
 	TaskHeldCollectibles(context.Context, core.TaskID) assets.TaskHeldCollectiblesResult
 }
 
@@ -139,10 +146,10 @@ type SubmissionService interface {
 type LedgerService interface {
 	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
 	FundTaskFromOrganization(context.Context, core.UserID, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
-	AcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
-	ReviewAcceptSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult
-	RequestChanges(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult
-	RejectSubmission(context.Context, core.UserID, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
+	AcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
+	ReviewAcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult
+	RequestChanges(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult
+	RejectSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
 	TaskAllocatedCredits(context.Context, core.TaskID) ledger.TaskAllocatedResult
 	Balance(context.Context, core.UserID) ledger.BalanceResult
@@ -150,6 +157,7 @@ type LedgerService interface {
 	ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
 	ListOrganizationEntries(context.Context, core.OrganizationID, core.Page) ledger.ListEntriesResult
 	GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult
+	SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey) ledger.SendResult
 }
 
 type AuditService interface {
@@ -372,8 +380,6 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("GET /api/tasks/{task_id}/submissions", server.listTaskSubmissions)
 	mux.HandleFunc("POST /api/tasks/{task_id}/reservations", server.reserveTask)
 	mux.HandleFunc("GET /api/tasks/{task_id}/reservations", server.listTaskReservations)
-	mux.HandleFunc("POST /api/tasks/{task_id}/reservations/{reservation_id}/approve", server.approveTaskReservation)
-	mux.HandleFunc("POST /api/tasks/{task_id}/reservations/{reservation_id}/decline", server.declineTaskReservation)
 	mux.HandleFunc("POST /api/tasks/{task_id}/reservations/{reservation_id}/cancel", server.cancelTaskReservation)
 	mux.HandleFunc("GET /api/submission-receipts/{receipt_token}", server.findSubmissionReceipt)
 	mux.HandleFunc("GET /api/submissions/{submission_id}/comments", server.listSubmissionComments)
@@ -381,6 +387,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("GET /api/organizations/{organization_id}/credits/balance", server.organizationCreditsBalance)
 	mux.HandleFunc("GET /api/credits/balance", server.creditsBalance)
 	mux.HandleFunc("GET /api/credits/ledger", server.creditsLedger)
+	mux.HandleFunc("POST /api/credits/transfers", server.sendCredits)
 	mux.HandleFunc("POST /api/tasks/{task_id}/funding", server.fundTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/refund", server.refundTask)
 	mux.HandleFunc("POST /api/tasks/{task_id}/submissions/{submission_id}/accept", server.acceptSubmission)
@@ -408,6 +415,11 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("GET /api/collectibles/catalog", server.collectibleCatalog)
 	mux.HandleFunc("POST /api/collectibles/award", server.awardCollectible)
 	mux.HandleFunc("POST /api/collectibles/{collectible_id}/transfer", server.transferCollectible)
+	mux.HandleFunc("POST /api/admin/collectible-catalog", server.addCatalogEntry)
+	mux.HandleFunc("POST /api/admin/collectible-catalog/{slug}/withdraw", server.withdrawCatalogEntry)
+	mux.HandleFunc("DELETE /api/admin/collectible-catalog/{slug}", server.deleteCatalogEntry)
+	mux.HandleFunc("POST /api/admin/collectibles/{collectible_id}/withdraw", server.withdrawCollectible)
+	mux.HandleFunc("DELETE /api/admin/collectibles/{collectible_id}", server.deleteCollectible)
 	mux.HandleFunc("GET /api/admin/operations", server.operationsStatus)
 	mux.HandleFunc("GET /api/admin/platform-admins", server.listPlatformAdmins)
 	mux.HandleFunc("POST /api/admin/platform-admins", server.grantPlatformAdmin)
@@ -430,6 +442,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/notifications/{notification_id}/read", server.markNotificationRead)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/collectibles", server.listOrganizationCollectibles)
 	mux.HandleFunc("POST /api/organizations/{organization_id}/collectibles/{collectible_id}/award", server.awardOrganizationCollectible)
+	mux.HandleFunc("POST /api/organizations/{organization_id}/collectibles/{collectible_id}/transfer", server.transferOrganizationCollectible)
 	mux.HandleFunc("GET /api/teams/{team_id}/collectibles", server.listTeamCollectibles)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-reward", server.fundCollectibleReward)
 	mux.HandleFunc("POST /api/tasks/{task_id}/collectible-refund", server.refundCollectibleReward)
@@ -534,7 +547,8 @@ type reviewPathResult interface {
 }
 
 type reviewPathAccepted struct {
-	actor        auth.UserSubject
+	actor        auth.Subject
+	reviewer     ledger.Reviewer
 	taskID       core.TaskID
 	submissionID core.SubmissionID
 }

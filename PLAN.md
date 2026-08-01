@@ -2,7 +2,7 @@
 
 ## Product Thesis
 
-Sharecrop is a coordination layer where people, organizations, teams, scripts, and local AI agents can discover requested work, reserve or request approval for work when required, submit responses, and receive rewards when a requester accepts or partially rewards a result.
+Sharecrop is a coordination layer where people, organizations, teams, scripts, and local AI agents can discover requested work, reserve it directly when the task requires exclusivity, submit responses, and receive rewards when a requester accepts or partially rewards a result.
 
 The platform does not execute tasks itself. It provides the web UI, HTTP API, MCP interface, task discovery, response validation, submission tracking, scoped access tokens, escrow accounting, and payout workflow. Work happens outside the platform.
 
@@ -12,11 +12,11 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - Sharecrop is not a managed task runner.
 - REST/curl and MCP are both first-class interfaces.
 - A task may receive any number of submissions when its participation policy allows them.
-- Some tasks require an exclusive reservation or requester approval before submission.
+- Some tasks require an exclusive reservation before submission; reserving is a direct claim with no requester approval step (decided 2026-08-01, replacing the earlier approval-required policy).
 - A task may have at most one active assignee: one user or one team.
 - Only one submission can become the accepted result, but rejected work may receive a requester-selected partial reward.
 - Requesters can manually accept submissions.
-- Requesters can request changes, reject work, decline or cancel reservations, ban an implementor from a task, pay partial rewards, and add tips from their own balance or inventory.
+- Requesters can request changes, reject work, cancel active reservations, ban an implementor from a task, pay partial rewards, and add tips from their own balance or inventory.
 - Auto-accept can exist later, but must be constrained by validation, escrow, limits, and owner policy.
 - Anonymous workers are deferred until the anonymous worker identity and payout model is redesigned.
 - Task responses can be Sharecrop-schema validated or freeform.
@@ -31,7 +31,9 @@ The platform does not execute tasks itself. It provides the web UI, HTTP API, MC
 - Sharecrop credits are represented through an append-only ledger, not as a mutable balance field alone.
 - Task rewards are bundles that may contain Sharecrop credits, collectibles, both, or neither.
 - Sharecrop may sell platform-issued collectibles such as special emojis, graphics, badges, or other reward items.
-- Sharecrop collectibles are minted by platform admins only. User/org/per-project tokens, external wallets, and crypto integrations are out of scope.
+- The default collectible catalog is database-backed and admin-controlled: platform admins add entries, withdraw them from circulation, delete withdrawn entries, and withdraw or delete individual awarded instances. Uniqueness is engine-enforced (unique entries mint at most one live instance; editions are numbered against per-entry caps).
+- Users mint their own collectibles (unique per issuer and name); new mints default to transferable between users.
+- Users and organizations send credits and collectibles to each other directly (peer transfers, double-entry ledger records). User/org/per-project tokens, external wallets, and crypto integrations are out of scope.
 
 ## Software Stack
 
@@ -347,9 +349,9 @@ Examples of intended variants:
 - `VisibilityScope`: public, scoped users, scoped teams, scoped organizations, scoped organization users, scoped organization teams.
 - `RewardBundle`: empty reward, Sharecrop credits, Sharecrop collectibles, or Sharecrop credits plus collectibles.
 - `RewardAsset`: Sharecrop credits and admin-minted Sharecrop collectibles.
-- `ParticipationPolicy`: open submissions, reservation required, requester approval required.
+- `ParticipationPolicy`: open submissions, reservation required.
 - `AssigneeScope`: one user, one public Sharecrop team, one organization team in the same organization.
-- `ReservationState`: requested, active, declined, cancelled by requester, cancelled by worker, expired, submitted.
+- `ReservationState`: active, cancelled by requester, cancelled by worker, expired, submitted (requested/declined remain parseable for historical rows only).
 - `ReviewOutcome`: accept, request changes, reject with partial reward, reject without reward.
 - `ResponseSpec`: Sharecrop schema response, freeform response.
 - `PayoutTarget`: user credit account, organization credit account, team payout target where supported.
@@ -664,7 +666,7 @@ Participation policies:
 
 - Open submissions: any visible registered user can submit while the task is open.
 - Reservation required: a worker or eligible team must reserve the task before submitting.
-- Requester approval required: a worker or eligible team requests approval, and the requester approves exactly one active assignee before submission.
+- (Removed 2026-08-01) The requester-approval policy no longer exists; reservation-required tasks are claimed directly.
 
 Assignee scope:
 
@@ -689,7 +691,7 @@ Discovery rules:
 - Reserved tasks are hidden from default discovery for other workers.
 - Discovery can include reserved tasks when the client passes an explicit include-reserved option.
 - Reserved tasks remain visible and actionable to the active assignee.
-- Requesters can see their own reserved and pending-approval tasks.
+- Requesters can see their own reserved tasks.
 
 Task lifecycle:
 
@@ -845,7 +847,7 @@ Flow:
 2. Requester funds the credit portion from a user or organization credit account when credits are declared.
 3. The platform inserts task escrow ledger entries.
 4. Task becomes open.
-5. Workers submit directly, reserve, or request approval depending on the task participation policy.
+5. Workers submit directly or reserve first, depending on the task participation policy.
 6. Requester accepts one valid submission, requests changes, rejects it, or rejects it with a partial reward.
 7. Platform inserts task payout ledger entries for accepted, partial, or tip credit payouts.
 8. Task reward status records paid, partially paid, refunded, or retained reward outcomes.
@@ -1054,7 +1056,7 @@ Important flows:
 - View task detail.
 - View task availability and reservation status.
 - Include reserved tasks in discovery with an explicit checkbox.
-- Reserve a task or request approval where required.
+- Reserve a task where required.
 - Submit response.
 - Create task.
 - Configure reward bundles containing credits, collectibles, both, or neither.
@@ -1774,7 +1776,7 @@ Tasks:
 - Add task-local implementor ban types and migrations.
 - Add reservation expiry release logic.
 - Add task availability and viewer-action read models.
-- Add HTTP APIs for reserve, request approval, approve, decline, cancel, and list reservations.
+- Add HTTP APIs for reserve, cancel, and list reservations (approve/decline existed historically and were removed with the approval policy).
 - Update task list/detail responses and discovery filters for availability and include-reserved behavior.
 - Add unit and HTTP end-to-end coverage for reservation and approval flows. Browser coverage follows when the browser workflow is added.
 

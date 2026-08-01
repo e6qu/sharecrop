@@ -20,29 +20,29 @@ This document maps the current product surface to user-facing flows for the brow
 - As a requester, I can attach an eligible collectible to a task reward.
 - As a requester, I can open a funded task for discovery.
 - As a requester, I can make a task public or keep it scoped to a user, organization, team, organization users, or organization team.
-- As a requester, I can require an exclusive reservation before work is submitted.
-- As a requester, I can require approval before an implementor can work.
-- As a requester, I can review reservation requests, approve one implementor, decline requests, or cancel an active reservation.
+- As a requester, I can require an exclusive reservation before work is submitted. Reservations are active the moment a worker takes one — there is no approval step for me to run — and I can cancel an active reservation to free the task.
 - As a requester, I can view submitted responses and validation errors.
 - As a requester, I can accept a submission with a full or partial credit payout and an optional credit tip.
 - As a requester, I can request changes without releasing the task to other implementors.
 - As a requester, I can reject a submission with notes, optional partial credit payout, optional credit tip, and optional task-local implementor ban.
 - As a requester, I can refund a task when its reward is still held.
 - As a requester, I can tip a collectible when accepting a submission if the collectible is eligible for transfer.
+- As a credit holder, I can send credits from my own balance to another user or to an organization, with an optional note and a safe-to-retry idempotency key, and the receiver is notified with a `credits_received` notification.
+- As a collectible holder, I can gift a tradeable collectible to another user or donate it to an organization's trophy case.
 
 ## Implementor
 
 - As an implementor, I can discover public tasks that are open and available to me.
 - As an implementor, I can choose whether reserved tasks are included in discovery.
 - As an implementor, I can view task instructions, response schema, reward, participation policy, and availability.
-- As an implementor, I can reserve a task when the policy requires reservation.
-- As an implementor, I can request approval when the policy requires requester approval.
+- As an implementor, I can reserve a task when the policy requires reservation; the reservation is active immediately and I proceed straight to submitting, without waiting for requester approval.
 - As an implementor, I can submit a response when I am eligible.
 - As an implementor, I can revise work after changes are requested when the requester keeps my reservation active.
 - As an implementor, I can see my task-local submission status, review notes, validation errors, response body, and submission comments.
 - As an implementor, I receive inbox notifications when a reviewer comments on my submission.
 - As an implementor, when the requester accepts a competing submission, my still-pending submission moves to the terminal `superseded` state and I receive a `submission_superseded` notification naming the task, so I know to stop working and look for other tasks.
 - As an implementor, I can see whether a task pays credits, collectibles, both, or no reward.
+- As an implementor, I can contest a rejected review by filing a moderation report with reason `dispute` on my submission, so a platform admin can triage the disagreement instead of it ending with the requester's decision.
 
 ## Organization Operator
 
@@ -50,7 +50,9 @@ This document maps the current product surface to user-facing flows for the brow
 - As an organization operator, I can provision members with selected roles, update member roles, and deactivate members.
 - As an organization operator with publisher permission, I can publish organization-owned tasks publicly.
 - As an organization operator with reviewer permission, I can review organization task submissions through the browser and API.
-- As an organization operator with billing permission, I can fund organization-owned task rewards from the organization credit account.
+- As an organization operator with billing permission, I can fund organization-owned task rewards from the organization credit account, and I can send organization credits to a user (for example a payout outside a task).
+- As an organization operator with the manage-collectibles permission, I can award an organization-held collectible to an active member or send it to any user.
+- As an organization operator, I can mint an org-wide credential that lists and reviews submissions on the organization's own tasks over REST when it holds the `submissions_read` / `submissions_review` scopes.
 - As a team member, I can use the team detail page to scan review, ready-for-team, and assigned-to-team work sections.
 
 ## Agent Operator
@@ -69,6 +71,9 @@ This document maps the current product surface to user-facing flows for the brow
 
 - As a platform admin, I can grant credits to a user or organization account with a required note and an idempotency key, so support adjustments are explained, auditable, and safe to retry.
 - As a platform admin, I can see the grant note in the beneficiary's ledger, and the beneficiary is notified with a `credit_granted` notification.
+- As a platform admin, I can add a collectible catalog entry (badge, capped edition run, or one-of-one unique) using art from the fixed sprite registry, and award numbered instances from it.
+- As a platform admin, I can withdraw a catalog entry so no further instances are awarded while existing holders keep theirs, and delete the entry once it is withdrawn and no live instance remains.
+- As a platform admin, I can withdraw a specific collectible instance from its holder (who is notified with a `collectible_withdrawn` notification) and hard-delete it once withdrawn.
 
 ## Platform Reviewer
 

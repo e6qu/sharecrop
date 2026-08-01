@@ -154,7 +154,6 @@ taskVisibilityKindEncoder taskVisibilityKind =
 type TaskParticipationPolicy
     = TaskParticipationPolicyOpen
     | TaskParticipationPolicyReservationRequired
-    | TaskParticipationPolicyApprovalRequired
 
 taskParticipationPolicyDecoder : Decoder TaskParticipationPolicy
 taskParticipationPolicyDecoder =
@@ -168,9 +167,6 @@ taskParticipationPolicyDecoder =
                     "reservation_required" ->
                         Decode.succeed TaskParticipationPolicyReservationRequired
 
-                    "approval_required" ->
-                        Decode.succeed TaskParticipationPolicyApprovalRequired
-
                     _ ->
                         Decode.fail "invalid TaskParticipationPolicy"
             )
@@ -183,9 +179,6 @@ taskParticipationPolicyEncoder taskParticipationPolicy =
 
         TaskParticipationPolicyReservationRequired ->
             Encode.string "reservation_required"
-
-        TaskParticipationPolicyApprovalRequired ->
-            Encode.string "approval_required"
 
 
 type TaskAssigneeScope
@@ -228,7 +221,6 @@ taskAssigneeScopeEncoder taskAssigneeScope =
 type TaskAvailabilityKind
     = TaskAvailabilityKindAvailable
     | TaskAvailabilityKindReserved
-    | TaskAvailabilityKindAwaitingApproval
     | TaskAvailabilityKindClosed
 
 taskAvailabilityKindDecoder : Decoder TaskAvailabilityKind
@@ -242,9 +234,6 @@ taskAvailabilityKindDecoder =
 
                     "reserved" ->
                         Decode.succeed TaskAvailabilityKindReserved
-
-                    "awaiting_approval" ->
-                        Decode.succeed TaskAvailabilityKindAwaitingApproval
 
                     "closed" ->
                         Decode.succeed TaskAvailabilityKindClosed
@@ -262,9 +251,6 @@ taskAvailabilityKindEncoder taskAvailabilityKind =
         TaskAvailabilityKindReserved ->
             Encode.string "reserved"
 
-        TaskAvailabilityKindAwaitingApproval ->
-            Encode.string "awaiting_approval"
-
         TaskAvailabilityKindClosed ->
             Encode.string "closed"
 
@@ -272,7 +258,6 @@ taskAvailabilityKindEncoder taskAvailabilityKind =
 type TaskViewerAction
     = TaskViewerActionSubmit
     | TaskViewerActionReserve
-    | TaskViewerActionRequestApproval
     | TaskViewerActionWait
     | TaskViewerActionNone
 
@@ -287,9 +272,6 @@ taskViewerActionDecoder =
 
                     "reserve" ->
                         Decode.succeed TaskViewerActionReserve
-
-                    "request_approval" ->
-                        Decode.succeed TaskViewerActionRequestApproval
 
                     "wait" ->
                         Decode.succeed TaskViewerActionWait
@@ -309,9 +291,6 @@ taskViewerActionEncoder taskViewerAction =
 
         TaskViewerActionReserve ->
             Encode.string "reserve"
-
-        TaskViewerActionRequestApproval ->
-            Encode.string "request_approval"
 
         TaskViewerActionWait ->
             Encode.string "wait"

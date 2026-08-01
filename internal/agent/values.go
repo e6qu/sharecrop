@@ -38,6 +38,7 @@ var (
 	ScopeNotificationsManage = Scope{value: "notifications_manage"}
 	ScopeUsersRead           = Scope{value: "users_read"}
 	ScopeLedgerRead          = Scope{value: "ledger_read"}
+	ScopeLedgerWrite         = Scope{value: "ledger_write"}
 	ScopeModerationRead      = Scope{value: "moderation_read"}
 	ScopeModerationManage    = Scope{value: "moderation_manage"}
 	ScopePrivacyRead         = Scope{value: "privacy_read"}
@@ -56,7 +57,7 @@ var allScopes = []Scope{
 	ScopeCollectiblesRead, ScopeCollectiblesManage,
 	ScopeNotificationsRead, ScopeNotificationsManage,
 	ScopeUsersRead,
-	ScopeLedgerRead,
+	ScopeLedgerRead, ScopeLedgerWrite,
 	ScopeModerationRead, ScopeModerationManage,
 	ScopePrivacyRead, ScopePrivacyManage,
 	ScopePlatformAdmin,

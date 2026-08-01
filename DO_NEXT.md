@@ -14,21 +14,28 @@ continuity files if task scope changes.
    implementing. The WASI bridge still cannot stream; native mode already
    pushes.
 
-2. **Remaining durability edges.** Host-side expiry sweeps still emit their
-   events post-commit (outside the expiry transaction) — the one emission
-   path not yet on the outbox. Webhook secrets are stored as written because
-   HMAC needs the plaintext; at-rest encryption needs a key-management
-   decision.
+2. **Remaining durability edges.** Webhook secrets are stored as written
+   because HMAC needs the plaintext; at-rest encryption needs a
+   key-management decision. Every emission path is now on the transactional
+   outbox.
 
 3. **Deliberate product decisions still open.** Sybil stance for signup
-   grants (per-IP throttle is the only guard); auto-accept policy
-   (validation + escrow + limits exist as building blocks); collectible
-   scarcity (anyone can mint); API versioning (`/v1`); socket-mode webhooks
-   for local agents (outbound connection, Slack-style) — gated on the edge
-   decision in item 1, with agent event polling/long-poll as the shipped
-   interim; local-timezone expiry input (needs a JS port or dependency).
+   grants (per-IP throttle is the only guard; peer transfers make farmed
+   credits consolidatable); auto-accept policy (validation + escrow +
+   limits exist as building blocks); API versioning (`/v1`); socket-mode
+   webhooks for local agents — gated on the edge decision in item 1, with
+   agent event polling/long-poll as the shipped interim; local-timezone
+   expiry input (needs a JS port or dependency).
 
-4. **Maintain the AWS deployment.** The Terraform in `deploy/terraform/`
+4. **Economy polish follow-ups.** Directory read models expose no display
+   names (send-success notes label users by email); feed sentences for
+   credits_sent/collectible_withdrawn use generic fallbacks (no amount or
+   collectible name on feed rows); an assets-service actor union would
+   unify the org-credential collectible-transfer path with the user path;
+   a root fix in the id-parsing boundary would give REST the same uniform
+   invalid-id messages MCP now has.
+
+5. **Maintain the AWS deployment.** The Terraform in `deploy/terraform/`
    provisions private Amazon ECS Fargate tasks and an Amazon API Gateway HTTP
    API private integration through AWS Cloud Map in an existing VPC. Keep the
    API route throttles, access logs, container health checks, private task
@@ -58,19 +65,19 @@ continuity files if task scope changes.
    while preserving at most 20 complete release triplets.
    See [docs/deployment.md](./docs/deployment.md).
 
-5. Keep expanding shared scenario parity as new user-visible API surfaces are
+6. Keep expanding shared scenario parity as new user-visible API surfaces are
    added, and keep running it against both SQL engines and the real backend as
    behavior changes.
 
-6. Keep expanding generated/fixture-level HTTP contract coverage as the API
+7. Keep expanding generated/fixture-level HTTP contract coverage as the API
    surface grows.
 
-7. Audit remaining raw-ID browser flows and replace high-traffic fields with
+8. Audit remaining raw-ID browser flows and replace high-traffic fields with
    selectors where directory data exists. No confirmed high-traffic raw-ID input
    remains after the latest audit in
    [docs/raw_id_browser_flow_audit.md](./docs/raw_id_browser_flow_audit.md).
 
-8. Do not add anonymous worker identity or provider email delivery unless the
+9. Do not add anonymous worker identity or provider email delivery unless the
    product direction changes. Registered-user submissions remain the model;
    account and organization setup stays admin/org-admin driven.
 
@@ -80,6 +87,15 @@ UI minors queue:
   continue replacing raw-id fields as directory-backed selectors become available.
 
 Recently finished (details in [WHAT_WE_DID.md](./WHAT_WE_DID.md)):
+
+- Economy and outbox seams: commit-ordered event feeds (fence lock), all
+  emission on the outbox, fan-out-gated dispatch with a terminal
+  dispatch_failed state, direct reservations (approval gate removed),
+  peer-to-peer credit and collectible transfers, the DB-backed
+  admin-controlled collectible catalog with engine-enforced uniqueness,
+  org-credential reviewing, honest openapi required lists and query
+  parameters, golden-coins credit iconography, API-failure load-error
+  states, and optimized bundles.
 
 - Agent loop hardening: the in-transaction event outbox with idempotent
   dispatch and crash-recovery sweep, replay-aware emission, superseded
