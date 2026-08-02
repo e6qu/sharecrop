@@ -65,7 +65,7 @@ func TestServiceReserveCreatesUserReservation(t *testing.T) {
 	created := service.Create(context.Background(), command).(TaskCreated)
 	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
-	result := service.Reserve(context.Background(), worker, created.Value.ID)
+	result := service.Reserve(context.Background(), worker, WorkerIsUser{}, created.Value.ID)
 	reserved, matched := result.(ReservationCreated)
 	if !matched {
 		t.Fatalf("result = %T, want ReservationCreated", result)
@@ -89,7 +89,7 @@ func TestServiceReserveIssuesTaskScopedWorkerCredentialWhenImmediatelyActive(t *
 	created := service.Create(context.Background(), command).(TaskCreated)
 	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
-	result := service.Reserve(context.Background(), worker, created.Value.ID)
+	result := service.Reserve(context.Background(), worker, WorkerIsUser{}, created.Value.ID)
 	reserved, matched := result.(ReservationCreated)
 	if !matched {
 		t.Fatalf("result = %T, want ReservationCreated", result)
@@ -119,7 +119,7 @@ func TestServiceReserveYieldsActiveReservationWithCredential(t *testing.T) {
 	created := service.Create(context.Background(), command).(TaskCreated)
 	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
-	reserved := service.Reserve(context.Background(), worker, created.Value.ID).(ReservationCreated)
+	reserved := service.Reserve(context.Background(), worker, WorkerIsUser{}, created.Value.ID).(ReservationCreated)
 	if reserved.Value.State != ReservationStateActive {
 		t.Fatalf("reservation state = %s, want active", reserved.Value.State.String())
 	}
@@ -139,7 +139,7 @@ func TestServiceReserveRejectsRequester(t *testing.T) {
 	created := service.Create(context.Background(), command).(TaskCreated)
 	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
-	result := service.Reserve(context.Background(), requester, created.Value.ID)
+	result := service.Reserve(context.Background(), requester, WorkerIsUser{}, created.Value.ID)
 	if _, matched := result.(ReservationRejected); !matched {
 		t.Fatalf("result = %T, want ReservationRejected", result)
 	}
@@ -159,7 +159,7 @@ func TestServiceReserveCreatesOrganizationTeamReservation(t *testing.T) {
 	created := service.Create(context.Background(), command).(TaskCreated)
 	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
-	result := service.ReserveForOrganizationTeam(context.Background(), worker, created.Value.ID, organizationID, teamID)
+	result := service.ReserveForOrganizationTeam(context.Background(), worker, WorkerIsUser{}, created.Value.ID, organizationID, teamID)
 	reserved, matched := result.(ReservationCreated)
 	if !matched {
 		t.Fatalf("result = %T, want ReservationCreated", result)
@@ -183,7 +183,7 @@ func TestServiceReserveRejectsUserReservationForOrganizationTeamAssigneeScope(t 
 	created := service.Create(context.Background(), command).(TaskCreated)
 	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
-	result := service.Reserve(context.Background(), worker, created.Value.ID)
+	result := service.Reserve(context.Background(), worker, WorkerIsUser{}, created.Value.ID)
 	if _, matched := result.(ReservationRejected); !matched {
 		t.Fatalf("result = %T, want ReservationRejected", result)
 	}
@@ -199,7 +199,7 @@ func TestServiceReserveRejectsOrganizationTeamNonMember(t *testing.T) {
 	created := service.Create(context.Background(), command).(TaskCreated)
 	store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
 
-	result := service.ReserveForOrganizationTeam(context.Background(), worker, created.Value.ID, testOrganizationID(t), testTeamID(t))
+	result := service.ReserveForOrganizationTeam(context.Background(), worker, WorkerIsUser{}, created.Value.ID, testOrganizationID(t), testTeamID(t))
 	if _, matched := result.(ReservationRejected); !matched {
 		t.Fatalf("result = %T, want ReservationRejected", result)
 	}
@@ -219,7 +219,7 @@ func TestServiceCancelReservationRecordsActorVariant(t *testing.T) {
 		command := testCreateCommand(t, requester, UserOwner{UserID: requester.ID}, PublicVisibility{})
 		created := service.Create(context.Background(), command).(TaskCreated)
 		store.ChangeTaskState(context.Background(), created.Value.ID, StateOpen, event.NoEvent{})
-		reserved := service.Reserve(context.Background(), worker, created.Value.ID).(ReservationCreated)
+		reserved := service.Reserve(context.Background(), worker, WorkerIsUser{}, created.Value.ID).(ReservationCreated)
 		return service, store, requester, worker, created.Value.ID, reserved.Value.ID
 	}
 
@@ -305,6 +305,10 @@ type taskMemoryStore struct {
 	// events, when set, captures the drafts the store "recorded" inside its
 	// mutations, so emission tests can assert on them.
 	events *eventtest.CapturingStore
+	// lastReservationOrigin captures the origin the service handed the store
+	// on the most recent CreateReservation, so budget-plumbing tests can
+	// assert what would be consumed in the store transaction.
+	lastReservationOrigin ReservationOrigin
 }
 
 // record captures a recorded draft when a sink is wired; nil-safe for tests
@@ -389,6 +393,7 @@ func (store *taskMemoryStore) ListTasks(_ context.Context, _ ListScope, _ ListFi
 }
 
 func (store *taskMemoryStore) CreateReservation(_ context.Context, reservationID core.TaskReservationID, command ReservationCommand) CreateReservationStoreResult {
+	store.lastReservationOrigin = command.Origin
 	value := Reservation{
 		ID:          reservationID,
 		TaskID:      command.TaskID,

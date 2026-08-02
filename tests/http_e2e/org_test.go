@@ -350,6 +350,11 @@ func containsString(values []string, want string) bool {
 	return false
 }
 
+// registerUserWithEmail registers an account and, when the server delivers
+// account tokens over the API (the harness default), completes email
+// verification so the account holds its 100-credit signup grant. Under log
+// delivery the verification step is skipped and the account stays unverified
+// with a zero balance.
 func registerUserWithEmail(t *testing.T, server *httptest.Server, email string) authHTTPResponse {
 	t.Helper()
 	response := postAuthJSON(t, server.URL+"/api/auth/register", authHTTPRequest{
@@ -358,7 +363,45 @@ func registerUserWithEmail(t *testing.T, server *httptest.Server, email string) 
 	}, nil)
 	defer response.Body.Close()
 	assertStatus(t, response, http.StatusCreated)
+	registered := decodeAuthHTTPResponse(t, response)
+	verifyRegisteredUser(t, server, registered)
+	return registered
+}
+
+// registerUnverifiedUserWithEmail registers an account without completing
+// email verification: it holds no signup grant until it verifies.
+func registerUnverifiedUserWithEmail(t *testing.T, server *httptest.Server, email string) authHTTPResponse {
+	t.Helper()
+	response := postAuthJSON(t, server.URL+"/api/auth/register", authHTTPRequest{
+		Email:    email,
+		Password: "correct horse battery staple",
+	}, nil)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusCreated)
 	return decodeAuthHTTPResponse(t, response)
+}
+
+// verifyRegisteredUser drives the email-verification flow over the API. With
+// log token delivery the token never reaches the response, so verification is
+// skipped (the account stays unverified, mirroring a user who never clicks
+// the link).
+func verifyRegisteredUser(t *testing.T, server *httptest.Server, user authHTTPResponse) {
+	t.Helper()
+	requestResponse := postJSONWithBearer(t, server.URL+"/api/account/email-verification", []byte(`{}`), user.AccessToken)
+	defer requestResponse.Body.Close()
+	assertStatus(t, requestResponse, http.StatusCreated)
+	var issued struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(requestResponse.Body).Decode(&issued); err != nil {
+		t.Fatalf("decode verification token response: %v", err)
+	}
+	if issued.Token == "" {
+		return
+	}
+	confirm := postJSONWithBearer(t, server.URL+"/api/auth/email-verification/confirm", []byte(`{"token":"`+issued.Token+`"}`), user.AccessToken)
+	defer confirm.Body.Close()
+	assertStatus(t, confirm, http.StatusOK)
 }
 
 func provisionOrganizationMember(t *testing.T, server *httptest.Server, accessToken string, organizationID string, email string, rolesJSON string) {

@@ -70,7 +70,7 @@ func (server Server) acceptSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.ledgerService.ReviewAcceptSubmission(r.Context(), path.reviewer, path.taskID, path.submissionID, key.Value, creditSelection.value, tipSelection.value, collectibleTip)
+	result := server.ledgerService.ReviewAcceptSubmission(r.Context(), path.reviewer, path.taskID, path.submissionID, key.Value, creditSelection.value, tipSelection.value, collectibleTip, ledger.SpendByUser{})
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
 		writeDomainError(w, result.(ledger.AcceptRejected).Reason)
@@ -183,7 +183,7 @@ func (server Server) rejectSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.ledgerService.RejectSubmission(r.Context(), path.reviewer, path.taskID, path.submissionID, key.Value, note.Value, creditSelection.value, tipSelection.value, banSelection)
+	result := server.ledgerService.RejectSubmission(r.Context(), path.reviewer, path.taskID, path.submissionID, key.Value, note.Value, creditSelection.value, tipSelection.value, banSelection, ledger.SpendByUser{})
 	rejected, matched := result.(ledger.SubmissionRejected)
 	if !matched {
 		writeDomainError(w, result.(ledger.RejectRejected).Reason)

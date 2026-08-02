@@ -55,6 +55,11 @@ type Stores struct {
 	SubjectRateLimiter      httpserver.RateLimiter
 	RegistrationRateLimiter httpserver.RateLimiter
 	MCPSessions             httpserver.MCPSessionPersistence
+	// OpsCounters is the operations counters reader. The browser demo passes
+	// its SQLite-backed store; the WASI app guest passes the explicit
+	// unavailable reader because the counters store is host-only and the host
+	// serves the route natively.
+	OpsCounters httpserver.OpsCountersReader
 }
 
 // domainStores maps the flat store set onto appgraph's domain store set.
@@ -96,6 +101,7 @@ func New(secret auth.AccessTokenSecret, stores Stores) http.Handler {
 	runtime.SubjectRateLimiter = stores.SubjectRateLimiter
 	runtime.RegistrationRateLimiter = stores.RegistrationRateLimiter
 	runtime.MCPSessions = httpserver.NewPersistedMCPHTTPSessionStore(stores.MCPSessions)
+	runtime.OpsCounters = stores.OpsCounters
 
 	return httpserver.NewWithRuntimeState(
 		fstest.MapFS{},

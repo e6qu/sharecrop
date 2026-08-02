@@ -23,9 +23,9 @@ func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *htt
 	}
 
 	actorResult := server.requireWorkerSubject(r, agent.ScopeSubmissionsWrite, taskIDAccepted.value)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actor, actorMatched := actorResult.(workerSubjectAccepted)
 	if !actorMatched {
-		rejected := actorResult.(userSubjectRejected)
+		rejected := actorResult.(workerSubjectRejected)
 		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, rejected.reason)
 		return
 	}
@@ -38,9 +38,9 @@ func (server Server) createAuthenticatedSubmission(w http.ResponseWriter, r *htt
 		return
 	}
 
-	server.submitResponse(w, r, requestAccepted.command)
+	server.submitResponse(w, r, actor.origin, requestAccepted.command)
 }
-func (server Server) submitResponse(w http.ResponseWriter, r *http.Request, command submission.SubmitCommand) {
+func (server Server) submitResponse(w http.ResponseWriter, r *http.Request, origin task.WorkerOrigin, command submission.SubmitCommand) {
 	// The Get gates task visibility for the submitter before the mutation; the
 	// owner's inbox notification is fanned out by the submission service's
 	// event emission.
@@ -51,7 +51,7 @@ func (server Server) submitResponse(w http.ResponseWriter, r *http.Request, comm
 		return
 	}
 
-	result := server.submissionService.Submit(r.Context(), command)
+	result := server.submissionService.Submit(r.Context(), origin, command)
 	created, matched := result.(submission.SubmissionCreated)
 	if !matched {
 		rejected := result.(submission.SubmitRejected)

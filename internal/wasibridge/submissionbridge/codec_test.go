@@ -147,3 +147,32 @@ func TestSubmissionResultRoundTrips(t *testing.T) {
 		t.Errorf("listed submission mismatch: %s", diff)
 	}
 }
+
+// TestWorkBudgetChargeRoundTrip pins the submit-command budget codec, and
+// that a missing charge fails closed at decode.
+func TestWorkBudgetChargeRoundTrip(t *testing.T) {
+	none, err := decodeWorkBudgetCharge(encodeWorkBudgetCharge(task.NoWorkBudgetCharge{}))
+	if err != nil {
+		t.Fatalf("decode no-charge: %v", err)
+	}
+	if _, matched := none.(task.NoWorkBudgetCharge); !matched {
+		t.Fatalf("no-charge = %T", none)
+	}
+
+	credentialID, matched := core.NewAgentCredentialID().(core.AgentCredentialIDCreated)
+	if !matched {
+		t.Fatalf("credential id rejected")
+	}
+	restored, err := decodeWorkBudgetCharge(encodeWorkBudgetCharge(task.ChargeDailyTaskBudget{CredentialID: credentialID.Value, DailyTaskLimit: 3}))
+	if err != nil {
+		t.Fatalf("decode charge: %v", err)
+	}
+	charge, chargeMatched := restored.(task.ChargeDailyTaskBudget)
+	if !chargeMatched || charge.CredentialID != credentialID.Value || charge.DailyTaskLimit != 3 {
+		t.Fatalf("charge did not round-trip: %#v", restored)
+	}
+
+	if _, err := decodeWorkBudgetCharge(workBudgetChargeWire{}); err == nil {
+		t.Fatalf("missing charge kind was decoded")
+	}
+}

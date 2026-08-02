@@ -60,5 +60,54 @@ func CredentialDiff(got, want agent.Credential) string {
 	if got.TaskID != nil && *got.TaskID != *want.TaskID {
 		return fmt.Sprintf("task_id: %s != %s", got.TaskID, want.TaskID)
 	}
+	if diff := WorkPolicyDiff(got.WorkPolicy, want.WorkPolicy); diff != "" {
+		return diff
+	}
+	return ""
+}
+
+// WorkPolicyDiff compares two work policies (a missing policy compares equal
+// to the disabled default), returning the first difference or "".
+func WorkPolicyDiff(got, want agent.WorkPolicy) string {
+	if agent.WorkPolicyState(got) != agent.WorkPolicyState(want) {
+		return fmt.Sprintf("work policy state: %s != %s", agent.WorkPolicyState(got), agent.WorkPolicyState(want))
+	}
+	gotEnabled, gotIsEnabled := got.(agent.WorkPolicyEnabled)
+	wantEnabled, wantIsEnabled := want.(agent.WorkPolicyEnabled)
+	if !gotIsEnabled || !wantIsEnabled {
+		return ""
+	}
+	gotAllowances, wantAllowances := gotEnabled.Allowances, wantEnabled.Allowances
+	if gotAllowances.MaxTasksPerDay.Int64() != wantAllowances.MaxTasksPerDay.Int64() {
+		return fmt.Sprintf("max tasks per day: %d != %d", gotAllowances.MaxTasksPerDay.Int64(), wantAllowances.MaxTasksPerDay.Int64())
+	}
+	if fmt.Sprintf("%#v", gotAllowances.ConcurrentReservations) != fmt.Sprintf("%#v", wantAllowances.ConcurrentReservations) {
+		return fmt.Sprintf("concurrent reservations: %#v != %#v", gotAllowances.ConcurrentReservations, wantAllowances.ConcurrentReservations)
+	}
+	if fmt.Sprintf("%#v", gotAllowances.DailySpend) != fmt.Sprintf("%#v", wantAllowances.DailySpend) {
+		return fmt.Sprintf("daily spend: %#v != %#v", gotAllowances.DailySpend, wantAllowances.DailySpend)
+	}
+	if fmt.Sprintf("%#v", gotAllowances.RewardFloor) != fmt.Sprintf("%#v", wantAllowances.RewardFloor) {
+		return fmt.Sprintf("reward floor: %#v != %#v", gotAllowances.RewardFloor, wantAllowances.RewardFloor)
+	}
+	if fmt.Sprintf("%#v", gotAllowances.TokenBudget) != fmt.Sprintf("%#v", wantAllowances.TokenBudget) {
+		return fmt.Sprintf("token budget: %#v != %#v", gotAllowances.TokenBudget, wantAllowances.TokenBudget)
+	}
+	gotTypes, gotLimited := gotAllowances.TaskTypes.(agent.TaskTypesLimited)
+	wantTypes, wantLimited := wantAllowances.TaskTypes.(agent.TaskTypesLimited)
+	if gotLimited != wantLimited {
+		return fmt.Sprintf("task type restriction presence: %T != %T", gotAllowances.TaskTypes, wantAllowances.TaskTypes)
+	}
+	if gotLimited {
+		gotValues, wantValues := gotTypes.Values(), wantTypes.Values()
+		if len(gotValues) != len(wantValues) {
+			return fmt.Sprintf("task type count: %d != %d", len(gotValues), len(wantValues))
+		}
+		for index := range wantValues {
+			if gotValues[index] != wantValues[index] {
+				return fmt.Sprintf("task type %d: %s != %s", index, gotValues[index].String(), wantValues[index].String())
+			}
+		}
+	}
 	return ""
 }

@@ -5,14 +5,22 @@ import {
   type TaskBody,
   taskRequest,
   uniqueEmail,
+  verifyAccountByApi,
+  verifyAccountWithToken,
 } from "./helpers.ts";
 
-test("registering shows the signup grant balance and ledger entry", async ({ page }) => {
+test("registering shows the signup grant balance and ledger entry", async ({ page, request }) => {
+  const email = uniqueEmail("ui-signup");
   await page.goto("/");
-  await page.getByTestId("email").fill(uniqueEmail("ui-signup"));
+  await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
   await page.getByTestId("register").click();
 
+  // Registration alone holds no credits; the signup grant lands at email
+  // verification.
+  await expect(page.getByTestId("balance")).toHaveText("0 credits");
+  await verifyAccountByApi(request, email);
+  await page.reload();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
   await expect(page.getByTestId("ledger")).toContainText("Signup grant");
 });
@@ -25,6 +33,7 @@ test("funding a task escrows credits and lowers the balance", async ({ page, req
   });
   expect(registerResponse.ok()).toBeTruthy();
   const registerBody = (await registerResponse.json()) as AuthBody;
+  await verifyAccountWithToken(request, registerBody.access_token);
 
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${registerBody.access_token}` },
@@ -77,11 +86,15 @@ test("creating a task opens it in the UI and updates the URL", async ({ page }) 
   await expect(page).toHaveURL(/#\/tasks\/.+/);
 });
 
-test("a task created with no declared reward is still fundable by its creator", async ({ page }) => {
+test("a task created with no declared reward is still fundable by its creator", async ({ page, request }) => {
+  const email = uniqueEmail("ui-fund-none");
   await page.goto("/");
-  await page.getByTestId("email").fill(uniqueEmail("ui-fund-none"));
+  await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
   await page.getByTestId("register").click();
+  await expect(page.getByTestId("balance")).toHaveText("0 credits");
+  await verifyAccountByApi(request, email);
+  await page.reload();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-tasks").click();
@@ -121,6 +134,7 @@ test("the fund panel does not appear on an already-funded, open task", async ({ 
   });
   expect(registerResponse.ok()).toBeTruthy();
   const registerBody = (await registerResponse.json()) as AuthBody;
+  await verifyAccountWithToken(request, registerBody.access_token);
 
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${registerBody.access_token}` },

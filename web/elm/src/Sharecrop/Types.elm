@@ -138,11 +138,27 @@ loadedNone =
     { items = [], failure = Nothing }
 
 
+{-| The admin operations counters. This is one record rather than a list, so
+it does not use `Loaded`, but it follows the same rule: a failed or refused
+read is a state of its own and is never rendered as zeros.
+
+`OpsCountersUnavailable` is the honest answer for a runtime whose host does
+not keep the counters store (the API answers `unavailable`); the string is
+whatever explanation the API gave.
+
+-}
+type OpsCounters
+    = OpsCountersPending
+    | OpsCountersLoaded Admin.OperationsCountersResponse
+    | OpsCountersUnavailable String
+
+
 type alias LoggedInModel =
     { accessToken : String
     , subjectId : String
     , username : String
     , displayName : String
+    , emailVerificationState : String
     , now : Time.Posix
     , isAdmin : Bool
     , page : Page
@@ -212,6 +228,15 @@ type alias LoggedInModel =
     , credentials : Loaded Agent.AgentCredentialResponse
     , newCredential : Maybe Agent.AgentCredentialCreatedResponse
     , agentMessage : Maybe Note
+    , workPolicyEditing : Maybe String
+    , workPolicyTasksPerDay : String
+    , workPolicyMaxConcurrent : String
+    , workPolicyMaxCredits : String
+    , workPolicyTaskTypes : List String
+    , workPolicyMinReward : String
+    , workPolicyTokenBudget : String
+    , workPolicyTokenNote : String
+    , workPolicyMessage : Maybe Note
     , discoveryTasks : Loaded Task.TaskListItemResponse
     , discoveryIncludeReserved : Bool
     , discoveryFundedOnly : Bool
@@ -382,6 +407,7 @@ type alias LoggedInModel =
     , orgTeamOffset : Int
     , orgTeamNextOffset : Int
     , operations : Maybe Admin.OperationsResponse
+    , opsCounters : OpsCounters
     , auditEvents : List Admin.AuditEventResponse
     , auditEventsOffset : Int
     , auditEventsNextOffset : Int
@@ -565,6 +591,19 @@ type Msg
     | CopyClicked String
     | RevokeClicked String
     | AgentRevoked (Result Http.Error Agent.AgentCredentialResponse)
+    | AllowWorkSeekingClicked Agent.AgentCredentialResponse
+    | EditWorkPolicyClicked Agent.AgentCredentialResponse
+    | CloseWorkPolicyClicked
+    | WorkPolicyTasksPerDayChanged String
+    | WorkPolicyMaxConcurrentChanged String
+    | WorkPolicyMaxCreditsChanged String
+    | ToggleWorkPolicyTaskType String
+    | WorkPolicyMinRewardChanged String
+    | WorkPolicyTokenBudgetChanged String
+    | WorkPolicyTokenNoteChanged String
+    | SaveWorkPolicyClicked String
+    | StopWorkSeekingClicked String
+    | WorkPolicyConfigured (Result Http.Error Agent.AgentCredentialResponse)
     | OrgCredentialsReceived (Result Http.Error Agent.OrgCredentialsResponse)
     | OrgCredentialLabelChanged String
     | ToggleOrgCredentialScope Agent.AgentScope
@@ -801,6 +840,7 @@ type Msg
     | SessionRefreshed (Result Http.Error Auth.AuthResponse)
     | SessionEnded
     | OperationsReceived (Result Http.Error Admin.OperationsResponse)
+    | OpsCountersReceived (Result Http.Error Admin.OperationsCountersResponse)
     | AuditEventsReceived (Result Http.Error Admin.AuditEventsResponse)
     | PreviousAuditEventsPageClicked
     | NextAuditEventsPageClicked
@@ -917,6 +957,15 @@ pageToPath page =
 
         NotFoundPage ->
             "/not-found"
+
+
+{-| The `email_verification_state` value carried by an account that has not
+verified its email address yet. The signup grant is written at first
+verification, so an account in this state genuinely holds no credits.
+-}
+emailUnverifiedState : String
+emailUnverifiedState =
+    "unverified"
 
 
 visibilityPublicTag : String

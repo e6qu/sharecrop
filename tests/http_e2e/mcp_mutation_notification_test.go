@@ -23,7 +23,7 @@ func TestMCPMutationProducesOwnerNotification(t *testing.T) {
 	task := createPublicUserTask(t, server, owner)
 	openTask(t, server, owner.AccessToken, task.ID)
 
-	workerAgent := createAgentCredential(t, server, worker.AccessToken, []string{"tasks_read", "submissions_write"})
+	workerAgent := createWorkSeekingAgentCredential(t, server, worker, []string{"tasks_read", "submissions_write"})
 	workerSession := initializeMCPSession(t, server, workerAgent)
 	submit := toolText(t, decodeRPC(t, mcpCall(t, server, workerAgent, workerSession, `1`, "sharecrop.submit_response", `{"task_id":"`+task.ID+`","response_json":"{\"answer\":\"done\"}"}`)))
 	if !strings.Contains(submit, "receipt_token") {

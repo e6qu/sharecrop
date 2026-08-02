@@ -41,6 +41,49 @@ operationsResponseEncoder operationsResponse =
         , ( "secure_cookies", Encode.string operationsResponse.secureCookies )
         ]
 
+type alias OperationsCountersResponse =
+    { outboxRecordedBacklog : Int
+    , outboxDispatchFailed : Int
+    , webhookDeliveriesPending : Int
+    , webhookDeliveriesDead : Int
+    , oldestPendingWebhookAgeSeconds : Int
+    , signupGrantsToday : Int
+    , peerTransfersToday : Int
+    , peerTransferCreditsToday : Int
+    , budgetRefusalsToday : Int
+    }
+
+operationsCountersResponseDecoder : Decoder OperationsCountersResponse
+operationsCountersResponseDecoder =
+    Decode.map8 OperationsCountersResponse
+        (Decode.field "outbox_recorded_backlog" Decode.int)
+        (Decode.field "outbox_dispatch_failed" Decode.int)
+        (Decode.field "webhook_deliveries_pending" Decode.int)
+        (Decode.field "webhook_deliveries_dead" Decode.int)
+        (Decode.field "oldest_pending_webhook_age_seconds" Decode.int)
+        (Decode.field "signup_grants_today" Decode.int)
+        (Decode.field "peer_transfers_today" Decode.int)
+        (Decode.field "peer_transfer_credits_today" Decode.int)
+        |> Decode.andThen
+            (\finish ->
+                Decode.map finish
+                    (Decode.field "budget_refusals_today" Decode.int)
+            )
+
+operationsCountersResponseEncoder : OperationsCountersResponse -> Encode.Value
+operationsCountersResponseEncoder operationsCountersResponse =
+    Encode.object
+        [ ( "outbox_recorded_backlog", Encode.int operationsCountersResponse.outboxRecordedBacklog )
+        , ( "outbox_dispatch_failed", Encode.int operationsCountersResponse.outboxDispatchFailed )
+        , ( "webhook_deliveries_pending", Encode.int operationsCountersResponse.webhookDeliveriesPending )
+        , ( "webhook_deliveries_dead", Encode.int operationsCountersResponse.webhookDeliveriesDead )
+        , ( "oldest_pending_webhook_age_seconds", Encode.int operationsCountersResponse.oldestPendingWebhookAgeSeconds )
+        , ( "signup_grants_today", Encode.int operationsCountersResponse.signupGrantsToday )
+        , ( "peer_transfers_today", Encode.int operationsCountersResponse.peerTransfersToday )
+        , ( "peer_transfer_credits_today", Encode.int operationsCountersResponse.peerTransferCreditsToday )
+        , ( "budget_refusals_today", Encode.int operationsCountersResponse.budgetRefusalsToday )
+        ]
+
 type alias AuditEventResponse =
     { id : String
     , actorUserID : String

@@ -68,6 +68,26 @@ func TestAgentBridgeDualRun(t *testing.T) {
 		}
 	})
 
+	t.Run("work activity matches a direct call", func(t *testing.T) {
+		viaBridge, matched := bridgeStore.ReadWorkActivity(ctx, owner).(agent.WorkActivityStoreListed)
+		if !matched {
+			t.Fatalf("bridge ReadWorkActivity did not list")
+		}
+		direct, directMatched := dbStore.ReadWorkActivity(ctx, owner).(agent.WorkActivityStoreListed)
+		if !directMatched {
+			t.Fatalf("direct ReadWorkActivity did not list")
+		}
+		if len(viaBridge.Values) != len(direct.Values) || len(viaBridge.Values) != 1 {
+			t.Fatalf("activity counts: bridge %d, direct %d, want 1", len(viaBridge.Values), len(direct.Values))
+		}
+		if viaBridge.Values[0] != direct.Values[0] {
+			t.Errorf("activity mismatch: bridge %+v, direct %+v", viaBridge.Values[0], direct.Values[0])
+		}
+		if viaBridge.Values[0].CredentialID != credential.ID {
+			t.Errorf("activity credential = %s, want %s", viaBridge.Values[0].CredentialID, credential.ID)
+		}
+	})
+
 	t.Run("revoke through the bridge", func(t *testing.T) {
 		revoked, matched := bridgeStore.RevokeCredential(ctx, owner, credential.ID).(agent.RevokeStoreRevoked)
 		if !matched {

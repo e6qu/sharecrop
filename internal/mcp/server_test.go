@@ -278,6 +278,25 @@ type fakeServices struct {
 	catalogListings []assets.CatalogListing
 	// collectibles is what ListCollectibles serves.
 	collectibles []assets.Collectible
+	// workActivity is the calling credential's consumption for today, as
+	// AgentWorkActivity serves it; the zero value means nothing consumed.
+	workActivity agent.CredentialWorkActivity
+	// rejectWorkActivity makes the activity read fail, so the budget tool's
+	// rejection path is observable.
+	rejectWorkActivity bool
+}
+
+// AgentWorkActivity serves the one credential's consumption the budget tool
+// asks for. The fake mirrors the adapter's narrowing: an unknown credential
+// reads as an empty listing (nothing consumed today).
+func (services fakeServices) AgentWorkActivity(_ context.Context, _ core.UserID, credentialID core.AgentCredentialID) agent.WorkActivityResult {
+	if services.rejectWorkActivity {
+		return agent.WorkActivityRejected{Reason: core.NewDomainError(core.ErrorCodeUnavailable, "work activity read failed")}
+	}
+	if services.workActivity.CredentialID != credentialID {
+		return agent.WorkActivityListed{Values: []agent.CredentialWorkActivity{}}
+	}
+	return agent.WorkActivityListed{Values: []agent.CredentialWorkActivity{services.workActivity}}
 }
 
 func (services fakeServices) ListTasks(_ context.Context, _ auth.Subject, _ task.ListScope, _ task.ListFilters, page core.Page) task.ListResult {
@@ -354,7 +373,7 @@ func (services fakeServices) CancelTask(_ context.Context, subject auth.Subject,
 	}}
 }
 
-func (services fakeServices) FundTask(_ context.Context, funder core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
+func (services fakeServices) FundTask(_ context.Context, funder core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey, _ ledger.SpendOrigin) ledger.FundResult {
 	return ledger.TaskFunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: amount}}
 }
 
@@ -373,7 +392,7 @@ func fakeUserID(subject auth.Subject) core.UserID {
 	return core.UserID{}
 }
 
-func (services fakeServices) SubmitResponse(_ context.Context, command submission.SubmitCommand) submission.SubmitResult {
+func (services fakeServices) SubmitResponse(_ context.Context, _ task.WorkerOrigin, command submission.SubmitCommand) submission.SubmitResult {
 	submissionID := core.NewSubmissionID().(core.SubmissionIDCreated)
 	token := submission.NewReceiptTokenPlain().(submission.ReceiptTokenPlainAccepted)
 	state := submission.StateSubmitted
@@ -419,7 +438,7 @@ func (services fakeServices) ListTaskSubmissions(_ context.Context, _ auth.Subje
 	return submission.SubmissionsListed{Values: []submission.Submission{}}
 }
 
-func (services fakeServices) ReviewAcceptSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.CollectibleTipSelection) ledger.AcceptResult {
+func (services fakeServices) ReviewAcceptSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.CollectibleTipSelection, _ ledger.SpendOrigin) ledger.AcceptResult {
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
@@ -427,7 +446,7 @@ func (services fakeServices) RequestChanges(_ context.Context, _ ledger.Reviewer
 	return ledger.ChangesRequested{TaskID: taskID, SubmissionID: submissionID, ReviewNote: note.String()}
 }
 
-func (services fakeServices) RejectSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ submission.ReviewNote, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.BanSelection) ledger.RejectResult {
+func (services fakeServices) RejectSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ submission.ReviewNote, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.BanSelection, _ ledger.SpendOrigin) ledger.RejectResult {
 	return ledger.SubmissionRejected{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
@@ -510,7 +529,7 @@ func (services fakeServices) UnpublishTask(_ context.Context, subject auth.Subje
 	return task.TaskStateChanged{Value: task.Task{ID: taskID, Owner: task.UserOwner{UserID: userID}, State: task.StateDraft, CreatedBy: userID}}
 }
 
-func (services fakeServices) ReserveTask(_ context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationResult {
+func (services fakeServices) ReserveTask(_ context.Context, subject auth.UserSubject, _ task.WorkerOrigin, taskID core.TaskID) task.ReservationResult {
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationCreated{Value: task.Reservation{
 		ID:          reservationID.Value,
@@ -521,7 +540,7 @@ func (services fakeServices) ReserveTask(_ context.Context, subject auth.UserSub
 	}}
 }
 
-func (services fakeServices) ReserveTaskForOrganizationTeam(_ context.Context, subject auth.UserSubject, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) task.ReservationResult {
+func (services fakeServices) ReserveTaskForOrganizationTeam(_ context.Context, subject auth.UserSubject, _ task.WorkerOrigin, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) task.ReservationResult {
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationCreated{Value: task.Reservation{
 		ID:          reservationID.Value,
@@ -728,7 +747,7 @@ func (services fakeServices) GrantCredits(_ context.Context, _ core.UserID, _ le
 	return ledger.CreditsGranted{EntryID: entryID.Value, Amount: amount}
 }
 
-func (services fakeServices) SendCredits(_ context.Context, _ core.UserID, _ ledger.TransferSource, _ ledger.TransferTarget, amount ledger.CreditAmount, _ ledger.TransferNote, _ ledger.IdempotencyKey) ledger.SendResult {
+func (services fakeServices) SendCredits(_ context.Context, _ core.UserID, _ ledger.TransferSource, _ ledger.TransferTarget, amount ledger.CreditAmount, _ ledger.TransferNote, _ ledger.IdempotencyKey, _ ledger.SpendOrigin) ledger.SendResult {
 	entryID := core.NewLedgerEntryID().(core.LedgerEntryIDCreated)
 	return ledger.CreditsSent{DebitEntryID: entryID.Value, Amount: amount, Execution: ledger.FirstExecution{}}
 }

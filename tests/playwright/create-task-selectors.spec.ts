@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { type AuthBody, password, uniqueEmail } from "./helpers.ts";
+import {
+  type AuthBody,
+  password,
+  uniqueEmail,
+  verifyAccountWithToken,
+} from "./helpers.ts";
 import { selectorRewardScenario } from "./scenarios.ts";
 
 interface CollectibleBody {
@@ -19,12 +24,14 @@ test("task creation uses directory selectors and funds selected collectible rewa
   });
   expect(ownerResponse.ok()).toBeTruthy();
   const owner = (await ownerResponse.json()) as AuthBody;
+  await verifyAccountWithToken(request, owner.access_token);
 
   const targetResponse = await request.post("/api/auth/register", {
     data: { email: targetEmail, password },
   });
   expect(targetResponse.ok()).toBeTruthy();
   const target = (await targetResponse.json()) as AuthBody;
+  await verifyAccountWithToken(request, target.access_token);
 
   const teamName =
     `${selectorRewardScenario.teamNamePrefix} ${crypto.randomUUID()}`;

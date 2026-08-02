@@ -76,8 +76,11 @@ func (store AuthStore) CreateUserCredential(ctx context.Context, id core.UserID,
 		return auth.StoreUserRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "insert password credential failed")}
 	}
 
-	grantResult := insertSignupGrant(ctx, tx, id)
-	if rejected, matched := grantResult.(signupGrantRejected); matched {
+	// The credit account exists from registration (so balance reads work),
+	// but it stays empty: the signup grant is written when the account first
+	// becomes verified (see ConsumeAccountToken).
+	accountResult := insertUserCreditAccount(ctx, tx, id)
+	if rejected, matched := accountResult.(signupGrantRejected); matched {
 		return auth.StoreUserRejected{Reason: rejected.reason}
 	}
 
@@ -162,7 +165,7 @@ func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Pa
 	// '%'/'_' is matched literally (as the browser-store substring match
 	// does) rather than expanding into an expensive wildcard scan.
 	rows, err := store.db.Query(ctx, `
-		select id::text, email, `+userDisplayNameSQL+`, status
+		select id::text, email, `+userDisplayNameSQL+`, status, email_verification_state
 		from users
 		where status = 'active'
 		and ($1 = '' or email ilike '%' || replace(replace(replace($1, '\', '\\'), '%', '\%'), '_', '\_') || '%' or id::text = $1)
@@ -180,7 +183,8 @@ func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Pa
 		var rawEmail string
 		var rawDisplayName string
 		var status string
-		if err := rows.Scan(&rawID, &rawEmail, &rawDisplayName, &status); err != nil {
+		var rawVerificationState string
+		if err := rows.Scan(&rawID, &rawEmail, &rawDisplayName, &status, &rawVerificationState); err != nil {
 			return auth.UserDirectoryRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "scan user directory failed")}
 		}
 		idResult := core.ParseUserID(rawID)
@@ -198,7 +202,12 @@ func (store AuthStore) ListUsers(ctx context.Context, query string, page core.Pa
 		if !nameMatched {
 			return auth.UserDirectoryRejected{Reason: nameResult.(auth.DisplayNameRejected).Reason}
 		}
-		values = append(values, auth.UserDirectoryEntry{ID: id.Value, Email: email.Value, DisplayName: name.Value, Status: status})
+		verificationResult := auth.ParseEmailVerificationState(rawVerificationState)
+		verification, verificationMatched := verificationResult.(auth.EmailVerificationStateAccepted)
+		if !verificationMatched {
+			return auth.UserDirectoryRejected{Reason: verificationResult.(auth.EmailVerificationStateRejected).Reason}
+		}
+		values = append(values, auth.UserDirectoryEntry{ID: id.Value, Email: email.Value, DisplayName: name.Value, Status: status, VerificationState: verification.Value})
 	}
 	if rows.Err() != nil {
 		return auth.UserDirectoryRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "read user directory failed")}
@@ -457,8 +466,16 @@ func (store AuthStore) ConsumeAccountToken(ctx context.Context, kind auth.Accoun
 		return auth.AccountTokenConsumeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "consume account token failed")}
 	}
 	if kind == auth.AccountTokenKindEmailVerification {
-		if _, err := tx.Exec(ctx, "update users set email_verified_at = $2 where id = $1", rawUserID, now); err != nil {
+		if _, err := tx.Exec(ctx, "update users set email_verified_at = $2, email_verification_state = 'verified' where id = $1", rawUserID, now); err != nil {
 			return auth.AccountTokenConsumeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "mark email verified failed")}
+		}
+		// The signup grant lands on first verification, inside the consume
+		// transaction. The per-account "signup_grant:<user>" idempotency key
+		// makes a re-verification (or a pre-migration account that was
+		// granted at registration) a no-op.
+		grantResult := insertSignupGrantOnVerification(ctx, tx, rawUserID)
+		if rejected, matched := grantResult.(signupGrantRejected); matched {
+			return auth.AccountTokenConsumeRejected{Reason: rejected.reason}
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -574,13 +591,41 @@ func (signupGrantInserted) signupGrantResult() {}
 
 func (signupGrantRejected) signupGrantResult() {}
 
-// insertSignupGrant creates the user's credit account and the signup grant
-// ledger entry inside the user-creation transaction.
-func insertSignupGrant(ctx context.Context, tx Tx, userID core.UserID) signupGrantResult {
+// insertUserCreditAccount creates the user's empty credit account inside the
+// user-creation transaction. The signup grant itself is written by
+// insertSignupGrantOnVerification when the account first verifies.
+func insertUserCreditAccount(ctx context.Context, tx Tx, userID core.UserID) signupGrantResult {
 	accountResult := core.NewCreditAccountID()
 	account, accountMatched := accountResult.(core.CreditAccountIDCreated)
 	if !accountMatched {
 		return signupGrantRejected{reason: accountResult.(core.CreditAccountIDRejected).Reason}
+	}
+
+	if _, err := tx.Exec(ctx, "insert into credit_accounts (id, owner_kind, user_id) values ($1, 'user', $2)", account.Value.String(), userID.String()); err != nil {
+		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert credit account failed")}
+	}
+
+	return signupGrantInserted{}
+}
+
+// insertSignupGrantOnVerification writes the signup grant ledger entry inside
+// the email-verification transaction, exactly once per account: the credit
+// account row is locked, then the per-account "signup_grant:<user>"
+// idempotency key is probed so a re-verification (or an account granted at
+// registration before the verification gate existed) records nothing.
+func insertSignupGrantOnVerification(ctx context.Context, tx Tx, rawUserID string) signupGrantResult {
+	var accountID string
+	if err := tx.QueryRow(ctx, "select id::text from credit_accounts where owner_kind = 'user' and user_id = $1 for update", rawUserID).Scan(&accountID); err != nil {
+		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "load credit account for signup grant failed")}
+	}
+
+	idempotencyKey := "signup_grant:" + rawUserID
+	var alreadyGranted bool
+	if err := tx.QueryRow(ctx, "select exists(select 1 from ledger_entries where account_id = $1 and idempotency_key = $2)", accountID, idempotencyKey).Scan(&alreadyGranted); err != nil {
+		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "probe signup grant failed")}
+	}
+	if alreadyGranted {
+		return signupGrantInserted{}
 	}
 
 	entryResult := core.NewLedgerEntryID()
@@ -589,14 +634,10 @@ func insertSignupGrant(ctx context.Context, tx Tx, userID core.UserID) signupGra
 		return signupGrantRejected{reason: entryResult.(core.LedgerEntryIDRejected).Reason}
 	}
 
-	if _, err := tx.Exec(ctx, "insert into credit_accounts (id, owner_kind, user_id) values ($1, 'user', $2)", account.Value.String(), userID.String()); err != nil {
-		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert credit account failed")}
-	}
-
 	_, err := tx.Exec(ctx, `
 		insert into ledger_entries (id, account_id, kind, amount, idempotency_key)
 		values ($1, $2, 'signup_grant', $3, $4)
-	`, entry.Value.String(), account.Value.String(), ledger.SignupGrantAmount().Int64(), "signup_grant:"+userID.String())
+	`, entry.Value.String(), accountID, ledger.SignupGrantAmount().Int64(), idempotencyKey)
 	if err != nil {
 		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert signup grant ledger entry failed")}
 	}
@@ -604,23 +645,38 @@ func insertSignupGrant(ctx context.Context, tx Tx, userID core.UserID) signupGra
 	return signupGrantInserted{}
 }
 
-// insertOrganizationCreditGrant creates an organization credit account and its
-// initial grant inside the organization-creation transaction.
-func insertOrganizationCreditGrant(ctx context.Context, tx Tx, organizationID core.OrganizationID) signupGrantResult {
+// insertOrganizationCreditGrant creates an organization credit account inside
+// the organization-creation transaction, and writes the initial grant only
+// when the creating user is verified (the sybil gate: an organization created
+// by an unverified user gets an account but no grant, and the grant is not
+// written retroactively when the creator verifies later).
+func insertOrganizationCreditGrant(ctx context.Context, tx Tx, organizationID core.OrganizationID, createdBy core.UserID) signupGrantResult {
 	accountResult := core.NewCreditAccountID()
 	account, accountMatched := accountResult.(core.CreditAccountIDCreated)
 	if !accountMatched {
 		return signupGrantRejected{reason: accountResult.(core.CreditAccountIDRejected).Reason}
 	}
 
+	if _, err := tx.Exec(ctx, "insert into credit_accounts (id, owner_kind, organization_id) values ($1, 'organization', $2)", account.Value.String(), organizationID.String()); err != nil {
+		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert organization credit account failed")}
+	}
+
+	var rawCreatorState string
+	if err := tx.QueryRow(ctx, "select email_verification_state from users where id = $1", createdBy.String()).Scan(&rawCreatorState); err != nil {
+		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "load organization creator verification state failed")}
+	}
+	creatorState, stateMatched := auth.ParseEmailVerificationState(rawCreatorState).(auth.EmailVerificationStateAccepted)
+	if !stateMatched {
+		return signupGrantRejected{reason: auth.ParseEmailVerificationState(rawCreatorState).(auth.EmailVerificationStateRejected).Reason}
+	}
+	if creatorState.Value != auth.EmailVerified {
+		return signupGrantInserted{}
+	}
+
 	entryResult := core.NewLedgerEntryID()
 	entry, entryMatched := entryResult.(core.LedgerEntryIDCreated)
 	if !entryMatched {
 		return signupGrantRejected{reason: entryResult.(core.LedgerEntryIDRejected).Reason}
-	}
-
-	if _, err := tx.Exec(ctx, "insert into credit_accounts (id, owner_kind, organization_id) values ($1, 'organization', $2)", account.Value.String(), organizationID.String()); err != nil {
-		return signupGrantRejected{reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert organization credit account failed")}
 	}
 
 	_, err := tx.Exec(ctx, `

@@ -4,7 +4,9 @@ package http_e2e_test
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +27,7 @@ func TestMCPAgentDiscoverSubmitAcceptFlow(t *testing.T) {
 	openTask(t, server, owner.AccessToken, task.ID)
 
 	ownerAgent := createAgentCredential(t, server, owner.AccessToken, []string{"tasks_read", "submissions_read", "submissions_review"})
-	workerAgent := createAgentCredential(t, server, worker.AccessToken, []string{"tasks_read", "submissions_write", "submissions_read"})
+	workerAgent := createWorkSeekingAgentCredential(t, server, worker, []string{"tasks_read", "submissions_write", "submissions_read"})
 	ownerSession := initializeMCPSession(t, server, ownerAgent)
 	workerSession := initializeMCPSession(t, server, workerAgent)
 
@@ -92,7 +94,7 @@ func TestMCPAgentCreatesFundsOpensWorkableTask(t *testing.T) {
 	worker := registerUser(t, server, "mcp-picker")
 
 	ownerAgent := createAgentCredential(t, server, owner.AccessToken, []string{"tasks_read", "tasks_write"})
-	workerAgent := createAgentCredential(t, server, worker.AccessToken, []string{"tasks_read", "submissions_write", "submissions_read"})
+	workerAgent := createWorkSeekingAgentCredential(t, server, worker, []string{"tasks_read", "submissions_write", "submissions_read"})
 	ownerSession := initializeMCPSession(t, server, ownerAgent)
 	workerSession := initializeMCPSession(t, server, workerAgent)
 
@@ -185,7 +187,7 @@ func TestMCPReservationTools(t *testing.T) {
 	openTask(t, server, owner.AccessToken, taskBody.ID)
 
 	ownerAgent := createAgentCredential(t, server, owner.AccessToken, []string{"submissions_read", "submissions_review"})
-	workerAgent := createAgentCredential(t, server, worker.AccessToken, []string{"submissions_write"})
+	workerAgent := createWorkSeekingAgentCredential(t, server, worker, []string{"submissions_write"})
 	ownerSession := initializeMCPSession(t, server, ownerAgent)
 	workerSession := initializeMCPSession(t, server, workerAgent)
 
@@ -464,6 +466,49 @@ func createAgentCredential(t *testing.T, server *httptest.Server, accessToken st
 	return createAgentCredentialResponse(t, server, accessToken, scopes).Secret
 }
 
+// e2eWorkSeekingDailyBudget is the generous daily task budget the e2e worker
+// credentials are enabled with: high enough that only the dedicated budget
+// tests ever exhaust a budget.
+const e2eWorkSeekingDailyBudget = 100
+
+// createWorkSeekingAgentCredential mints a credential and enables
+// work-seeking on it with a generous daily task budget. Every credential is
+// minted work_seeking_disabled, so worker flows (reserve, direct submission)
+// must opt in through the work-policy endpoint.
+func createWorkSeekingAgentCredential(t *testing.T, server *httptest.Server, user authHTTPResponse, scopes []string) string {
+	t.Helper()
+	created := createAgentCredentialResponse(t, server, user.AccessToken, scopes)
+	enableWorkSeeking(t, server, user, created.Credential.ID, e2eWorkSeekingDailyBudget)
+	return created.Secret
+}
+
+// enableWorkSeeking enables work-seeking over the REST work-policy endpoint
+// with the given daily task budget and no other allowances (unlimited
+// concurrency and spend, every task type, no reward floor).
+func enableWorkSeeking(t *testing.T, server *httptest.Server, user authHTTPResponse, credentialID string, dailyTasks int64) {
+	t.Helper()
+	body := fmt.Sprintf(`{"work_seeking":"work_seeking_enabled","max_tasks_per_day":%d}`, dailyTasks)
+	response := putJSONWithBearer(t, server.URL+"/api/agent-credentials/"+credentialID+"/work-policy", []byte(body), user.AccessToken)
+	defer response.Body.Close()
+	assertStatus(t, response, http.StatusOK)
+}
+
+// putJSONWithBearer issues an authenticated JSON PUT.
+func putJSONWithBearer(t *testing.T, url string, encoded []byte, accessToken string) *http.Response {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+accessToken)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("put json: %v", err)
+	}
+	return response
+}
+
 func initializeMCPSession(t *testing.T, server *httptest.Server, agentToken string) string {
 	t.Helper()
 	response := mcpRequest(t, server, agentToken, "", `1`, "initialize", `{}`)
@@ -721,7 +766,7 @@ func TestRESTAcceptsAgentToken(t *testing.T) {
 	openTask(t, server, owner.AccessToken, task.ID)
 
 	// A worker's agent token (not the user JWT) can drive the worker REST loop.
-	workerToken := createAgentCredential(t, server, worker.AccessToken, []string{"tasks_read", "submissions_write"})
+	workerToken := createWorkSeekingAgentCredential(t, server, worker, []string{"tasks_read", "submissions_write"})
 
 	getResponse := getWithBearer(t, server.URL+"/api/tasks/"+task.ID, workerToken)
 	defer getResponse.Body.Close()

@@ -19,7 +19,7 @@ func TestSubmissionCreatesReceipt(t *testing.T) {
 	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
-	result := service.Submit(context.Background(), command)
+	result := service.Submit(context.Background(), task.WorkerIsUser{}, command)
 	created, matched := result.(SubmissionCreated)
 	if !matched {
 		t.Fatalf("result = %T, want SubmissionCreated", result)
@@ -35,7 +35,7 @@ func TestInvalidSubmissionIsRecordedWithValidationErrors(t *testing.T) {
 	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":12}`)
 
-	result := service.Submit(context.Background(), command)
+	result := service.Submit(context.Background(), task.WorkerIsUser{}, command)
 	created, matched := result.(SubmissionCreated)
 	if !matched {
 		t.Fatalf("result = %T, want SubmissionCreated", result)
@@ -58,7 +58,7 @@ func TestReceiptStatusRedactsSensitiveFields(t *testing.T) {
 	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"email":"person@example.com"}`)
 
-	result := service.Submit(context.Background(), command)
+	result := service.Submit(context.Background(), task.WorkerIsUser{}, command)
 	created := result.(SubmissionCreated)
 
 	statusResult := service.FindByReceipt(context.Background(), created.ReceiptToken)
@@ -81,7 +81,7 @@ func TestSubmitRejectsClosedTask(t *testing.T) {
 	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
-	result := service.Submit(context.Background(), command)
+	result := service.Submit(context.Background(), task.WorkerIsUser{}, command)
 	if _, matched := result.(SubmitRejected); !matched {
 		t.Fatalf("result = %T, want SubmitRejected", result)
 	}
@@ -94,7 +94,7 @@ func TestSubmitRejectsIneligibleReservation(t *testing.T) {
 	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
-	result := service.Submit(context.Background(), command)
+	result := service.Submit(context.Background(), task.WorkerIsUser{}, command)
 	if _, matched := result.(SubmitRejected); !matched {
 		t.Fatalf("result = %T, want SubmitRejected", result)
 	}
@@ -112,7 +112,7 @@ func TestSubmitRejectsTaskHiddenFromSubmitter(t *testing.T) {
 	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
-	result := service.Submit(context.Background(), command)
+	result := service.Submit(context.Background(), task.WorkerIsUser{}, command)
 	if _, matched := result.(SubmitRejected); !matched {
 		t.Fatalf("result = %T, want SubmitRejected", result)
 	}
@@ -125,7 +125,7 @@ func TestOrganizationReviewerCanListSubmissions(t *testing.T) {
 	taskStore.value.Owner = task.OrganizationOwner{OrganizationID: organizationID}
 	service := NewService(store, taskStore, submissionPermissionStore{organizationID: organizationID, roles: []org.Role{org.RoleReviewer}}, eventtest.NewRecorder())
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
-	if _, matched := service.Submit(context.Background(), command).(SubmissionCreated); !matched {
+	if _, matched := service.Submit(context.Background(), task.WorkerIsUser{}, command).(SubmissionCreated); !matched {
 		t.Fatalf("submit was rejected")
 	}
 
@@ -142,7 +142,7 @@ func TestSubmissionCommentVisibility(t *testing.T) {
 
 	submitterID := submissionTestUserID(t)
 	command := SubmitCommand{TaskID: taskStore.value.ID, SubmitterID: submitterID, ResponseSource: acceptedResponseSource(t, `{"answer":"done"}`)}
-	created := service.Submit(context.Background(), command).(SubmissionCreated)
+	created := service.Submit(context.Background(), task.WorkerIsUser{}, command).(SubmissionCreated)
 
 	body := acceptedCommentBody(t, "Could you clarify the scope?")
 

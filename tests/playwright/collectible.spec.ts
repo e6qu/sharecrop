@@ -4,6 +4,7 @@ import {
   password,
   taskRequest,
   uniqueEmail,
+  verifyAccountWithToken,
 } from "./helpers.ts";
 
 interface TaskBody {
@@ -26,6 +27,7 @@ async function registerLoginAndCreateTask(
     `register ${email} failed with ${registerResponse.status()}: ${registerText}`,
   ).toBeTruthy();
   const registerBody = JSON.parse(registerText) as AuthBody;
+  await verifyAccountWithToken(request, registerBody.access_token);
 
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${registerBody.access_token}` },

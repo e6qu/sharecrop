@@ -655,6 +655,9 @@ type ReservationCommand struct {
 	TaskID      core.TaskID
 	Assignee    Assignee
 	RequestedBy core.UserID
+	// Origin attributes the reservation (session vs agent credential) and
+	// carries the budget the store must consume atomically with the insert.
+	Origin ReservationOrigin
 	// Draft is the reservation_requested event recorded inside the create
 	// transaction.
 	Draft event.Draft
@@ -682,27 +685,59 @@ func (ReservationCreated) reservationResult() {}
 
 func (ReservationRejected) reservationResult() {}
 
-func (service Service) Reserve(ctx context.Context, actor auth.UserSubject, taskID core.TaskID) ReservationResult {
-	return service.reserve(ctx, actor, taskID, UserAssignee{UserID: actor.ID}, AssigneeScopeUser, "this task does not accept user reservations")
+func (service Service) Reserve(ctx context.Context, actor auth.UserSubject, origin WorkerOrigin, taskID core.TaskID) ReservationResult {
+	return service.reserve(ctx, actor, origin, taskID, UserAssignee{UserID: actor.ID}, AssigneeScopeUser, "this task does not accept user reservations")
 }
 
-func (service Service) ReserveForOrganizationTeam(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) ReservationResult {
+func (service Service) ReserveForOrganizationTeam(ctx context.Context, actor auth.UserSubject, origin WorkerOrigin, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) ReservationResult {
 	check := service.organizationPermissions.CheckOrganizationTeamMembership(ctx, organizationID, teamID, actor.ID)
 	if rejected, matched := check.(org.PermissionDenied); matched {
 		return ReservationRejected{Reason: rejected.Reason}
 	}
-	return service.reserve(ctx, actor, taskID, OrganizationTeamAssignee{OrganizationID: organizationID, TeamID: teamID}, AssigneeScopeOrganizationTeam, "this task does not accept organization team reservations")
+	return service.reserve(ctx, actor, origin, taskID, OrganizationTeamAssignee{OrganizationID: organizationID, TeamID: teamID}, AssigneeScopeOrganizationTeam, "this task does not accept organization team reservations")
 }
 
-func (service Service) ReserveForTeam(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, teamID core.TeamID) ReservationResult {
+func (service Service) ReserveForTeam(ctx context.Context, actor auth.UserSubject, origin WorkerOrigin, taskID core.TaskID, teamID core.TeamID) ReservationResult {
 	check := service.organizationPermissions.CheckTeamMembership(ctx, teamID, actor.ID)
 	if rejected, matched := check.(org.PermissionDenied); matched {
 		return ReservationRejected{Reason: rejected.Reason}
 	}
-	return service.reserve(ctx, actor, taskID, TeamAssignee{TeamID: teamID}, AssigneeScopeTeam, "this task does not accept team reservations")
+	return service.reserve(ctx, actor, origin, taskID, TeamAssignee{TeamID: teamID}, AssigneeScopeTeam, "this task does not accept team reservations")
 }
 
-func (service Service) reserve(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, assignee Assignee, requiredScope AssigneeScope, wrongScopeMessage string) ReservationResult {
+// reservationOriginFor gates a reservation attempt against the worker origin,
+// failing closed: a task-scoped worker credential may never establish a new
+// reservation, and a personal agent credential must be explicitly enabled for
+// work-seeking. The returned origin carries the budget the store consumes
+// atomically with the insert.
+func reservationOriginFor(origin WorkerOrigin, target Task) (ReservationOrigin, *core.DomainError) {
+	switch typed := origin.(type) {
+	case WorkerIsUser:
+		return ReservedByUserSession{}, nil
+	case WorkerViaTaskCredential:
+		reason := core.NewDomainError(core.ErrorCodePermissionDenied, "a task-scoped worker credential cannot reserve tasks; it works within the reservation it was issued for")
+		return nil, &reason
+	case WorkerViaCredential:
+		budget, enabled := typed.Policy.(CredentialWorkBudget)
+		if !enabled {
+			reason := core.NewDomainError(core.ErrorCodePermissionDenied, "agent credential is not enabled for work-seeking; its owner must enable it with a work budget")
+			return nil, &reason
+		}
+		if problem := checkWorkPolicyAgainstTask(budget, target); problem != nil {
+			return nil, problem
+		}
+		return ReservedViaWorkCredential{
+			CredentialID:   typed.CredentialID,
+			DailyTaskLimit: budget.DailyTaskLimit,
+			Concurrent:     budget.Concurrent,
+		}, nil
+	default:
+		reason := core.NewDomainError(core.ErrorCodeInvalidArgument, "worker origin is invalid")
+		return nil, &reason
+	}
+}
+
+func (service Service) reserve(ctx context.Context, actor auth.UserSubject, origin WorkerOrigin, taskID core.TaskID, assignee Assignee, requiredScope AssigneeScope, wrongScopeMessage string) ReservationResult {
 	taskResult := service.store.FindTask(ctx, taskID)
 	taskFound, taskMatched := taskResult.(FindTaskStoreAccepted)
 	if !taskMatched {
@@ -722,6 +757,11 @@ func (service Service) reserve(ctx context.Context, actor auth.UserSubject, task
 		return ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task requester cannot reserve their own task")}
 	}
 
+	reservationOrigin, originProblem := reservationOriginFor(origin, taskFound.Value)
+	if originProblem != nil {
+		return ReservationRejected{Reason: *originProblem}
+	}
+
 	reservationIDResult := core.NewTaskReservationID()
 	reservationIDCreated, reservationIDMatched := reservationIDResult.(core.TaskReservationIDCreated)
 	if !reservationIDMatched {
@@ -739,6 +779,7 @@ func (service Service) reserve(ctx context.Context, actor auth.UserSubject, task
 		TaskID:      taskID,
 		Assignee:    assignee,
 		RequestedBy: actor.ID,
+		Origin:      reservationOrigin,
 		Draft:       draft,
 	})
 	created, matched := storeResult.(CreateReservationStoreAccepted)

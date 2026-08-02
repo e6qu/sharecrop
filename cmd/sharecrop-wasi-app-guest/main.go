@@ -17,6 +17,7 @@ import (
 	"os"
 
 	"github.com/e6qu/sharecrop/internal/auth"
+	httpserver "github.com/e6qu/sharecrop/internal/http"
 	"github.com/e6qu/sharecrop/internal/wasibridge/agentbridge"
 	"github.com/e6qu/sharecrop/internal/wasibridge/appmux"
 	"github.com/e6qu/sharecrop/internal/wasibridge/assetsbridge"
@@ -83,5 +84,9 @@ func buildMux() (http.Handler, error) {
 		SubjectRateLimiter:      ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "subject"),
 		RegistrationRateLimiter: ratelimitbridge.NewGuestRateLimiter(rpc.Invoke, "register"),
 		MCPSessions:             mcpsessionbridge.NewGuestMCPSessionPersistence(rpc.Invoke),
+		// The counters read model is host-only (struct-only store, no bridge);
+		// the host serves GET /api/admin/operations/counters natively, so the
+		// guest's route keeps the explicit unavailable reader.
+		OpsCounters: httpserver.NewUnavailableOpsCountersReader(),
 	}), nil
 }

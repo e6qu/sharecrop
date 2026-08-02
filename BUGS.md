@@ -72,6 +72,35 @@ Test gaps:
 - `tests/playwright/demo.spec.ts` and `tests/playwright/mobile.spec.ts` passed
   against the Go/WASM default demo on non-default port `29181`.
 
+Agent work-budget notes:
+
+- Enabling work-seeking is a breaking change for existing agents: every
+  credential that predates migration 000055 is `work_seeking_disabled` and
+  must be enabled by its owner before it can reserve or directly submit.
+- Multiple direct submissions to the same open task each consume one daily
+  budget unit; a per-(credential, task, day) dedupe would be a refinement.
+- `credits_spent_today` is metered only while a daily spend cap is
+  configured (uncapped spending writes no counter), so an uncapped
+  credential always reports zero spend.
+- The advisory token budget is stored and displayed only; Sharecrop cannot
+  meter another system's LLM usage and the UI says so.
+- OIDC-registered accounts start unverified and receive no signup grant
+  until they verify, even when the provider asserts a verified address.
+- The peer-transfer velocity ceiling keys on the source credit account, so a
+  user and their organizations each carry their own daily allowance.
+- MCP `resets_at` is computed from the process clock with no injected seam,
+  so it cannot be asserted at a fixed instant in tests.
+- Test harnesses that register accounts must run their target server with
+  `SHARECROP_ACCOUNT_TOKEN_DELIVERY=api` and verify the account, otherwise
+  the actor holds no signup grant and credit-spending steps fail. This
+  applies to `tools/run_db_checks.sh` scenario servers, the Playwright web
+  server, and `tools/run_local_real_scenario_parity.ts`.
+- The ops-counters endpoint is host-routed under WASI; no automated test
+  drives the full guest-pool serve to prove the host mux wins that route.
+- `min_reward_credits` enforcement is covered by unit and REST tests but not
+  end to end over MCP (no e2e helper builds a reservation-required task with
+  a credit reward).
+
 Event-pipeline and economy notes (post-seam-fixes):
 
 - Webhook secrets are stored as written; the dispatcher must compute HMACs.

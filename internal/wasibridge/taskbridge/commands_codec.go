@@ -193,10 +193,71 @@ func decodeCreateCommand(wire createCommandWire) (task.CreateCommand, error) {
 
 // ---- task.ReservationCommand ----
 
+// reservationOriginWire flattens the task.ReservationOrigin union: kind is
+// "user_session" or "work_credential"; the budget fields travel only with the
+// credential variant (zero concurrent cap = no cap).
+type reservationOriginWire struct {
+	Kind           string `json:"kind"`
+	CredentialID   string `json:"credential_id,omitempty"`
+	DailyTaskLimit int64  `json:"daily_task_limit,omitempty"`
+	ConcurrentCap  int64  `json:"concurrent_cap,omitempty"`
+}
+
+const (
+	reservationOriginKindUserSession    = "user_session"
+	reservationOriginKindWorkCredential = "work_credential"
+)
+
+// encodeReservationOrigin leaves the kind empty for an unknown (or missing)
+// origin; the decoding side rejects the empty kind, so a malformed origin
+// fails closed at the boundary instead of passing as an unbudgeted session.
+func encodeReservationOrigin(origin task.ReservationOrigin) reservationOriginWire {
+	switch typed := origin.(type) {
+	case task.ReservedByUserSession:
+		return reservationOriginWire{Kind: reservationOriginKindUserSession}
+	case task.ReservedViaWorkCredential:
+		wire := reservationOriginWire{
+			Kind:           reservationOriginKindWorkCredential,
+			CredentialID:   corewire.EncodeAgentCredentialID(typed.CredentialID),
+			DailyTaskLimit: typed.DailyTaskLimit,
+		}
+		if capped, matched := typed.Concurrent.(task.ReservationConcurrencyCapAtMost); matched {
+			wire.ConcurrentCap = capped.Limit
+		}
+		return wire
+	default:
+		return reservationOriginWire{}
+	}
+}
+
+func decodeReservationOrigin(wire reservationOriginWire) (task.ReservationOrigin, error) {
+	switch wire.Kind {
+	case reservationOriginKindUserSession:
+		return task.ReservedByUserSession{}, nil
+	case reservationOriginKindWorkCredential:
+		credentialID, err := corewire.DecodeAgentCredentialID(wire.CredentialID)
+		if err != nil {
+			return nil, err
+		}
+		origin := task.ReservedViaWorkCredential{
+			CredentialID:   credentialID,
+			DailyTaskLimit: wire.DailyTaskLimit,
+			Concurrent:     task.NoReservationConcurrencyCap{},
+		}
+		if wire.ConcurrentCap != 0 {
+			origin.Concurrent = task.ReservationConcurrencyCapAtMost{Limit: wire.ConcurrentCap}
+		}
+		return origin, nil
+	default:
+		return nil, fmt.Errorf("unknown reservation origin kind %q", wire.Kind)
+	}
+}
+
 type reservationCommandWire struct {
 	TaskID      string                `json:"task_id"`
 	Assignee    assigneeWire          `json:"assignee"`
 	RequestedBy string                `json:"requested_by"`
+	Origin      reservationOriginWire `json:"origin"`
 	Draft       eventbridge.DraftWire `json:"draft"`
 }
 
@@ -205,6 +266,7 @@ func encodeReservationCommand(command task.ReservationCommand) reservationComman
 		TaskID:      corewire.EncodeTaskID(command.TaskID),
 		Assignee:    encodeAssignee(command.Assignee),
 		RequestedBy: corewire.EncodeUserID(command.RequestedBy),
+		Origin:      encodeReservationOrigin(command.Origin),
 		Draft:       eventbridge.EncodeDraft(command.Draft),
 	}
 }
@@ -222,11 +284,15 @@ func decodeReservationCommand(wire reservationCommandWire) (task.ReservationComm
 	if err != nil {
 		return task.ReservationCommand{}, err
 	}
+	origin, err := decodeReservationOrigin(wire.Origin)
+	if err != nil {
+		return task.ReservationCommand{}, err
+	}
 	draft, err := eventbridge.DecodeDraft(wire.Draft)
 	if err != nil {
 		return task.ReservationCommand{}, err
 	}
-	return task.ReservationCommand{TaskID: taskID, Assignee: assignee, RequestedBy: requestedBy, Draft: draft}, nil
+	return task.ReservationCommand{TaskID: taskID, Assignee: assignee, RequestedBy: requestedBy, Origin: origin, Draft: draft}, nil
 }
 
 // ---- task.ListScope union ----

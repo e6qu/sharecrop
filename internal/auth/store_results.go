@@ -56,6 +56,10 @@ type UserDirectoryEntry struct {
 	Email       EmailAddress
 	DisplayName DisplayName
 	Status      string
+	// VerificationState is the account's email-verification lifecycle state.
+	// It is exposed only on the owner's own profile and session responses;
+	// the public user directory does not serialize it.
+	VerificationState EmailVerificationState
 }
 
 type UserDirectoryResult interface {

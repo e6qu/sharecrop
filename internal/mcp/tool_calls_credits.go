@@ -162,7 +162,7 @@ func (creditTransferPayload) payloadValue() {}
 // the user may spend from (source_kind "organization" plus
 // source_organization_id) to another user or organization, idempotently per
 // (sender account, idempotency_key).
-func (server Server) callSendCredits(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callSendCredits(ctx context.Context, subject auth.UserSubject, credential CallerCredential, arguments json.RawMessage) toolResult {
 	var args struct {
 		SourceKind           string `json:"source_kind"`
 		SourceOrganizationID string `json:"source_organization_id"`
@@ -199,7 +199,7 @@ func (server Server) callSendCredits(ctx context.Context, subject auth.UserSubje
 		return toolProtocolError{code: codeInvalidParams, message: keyResult.(ledger.IdempotencyKeyRejected).Reason.Description()}
 	}
 
-	result := server.services.SendCredits(ctx, subject.ID, source, target, amount.Value, note, key.Value)
+	result := server.services.SendCredits(ctx, subject.ID, source, target, amount.Value, note, key.Value, credential.Spend)
 	sent, matched := result.(ledger.CreditsSent)
 	if !matched {
 		return toolFailed{code: result.(ledger.SendRejected).Reason.Code(), message: result.(ledger.SendRejected).Reason.Description()}

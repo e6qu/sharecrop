@@ -43,6 +43,7 @@ func appmuxStores(pool *pgxpool.Pool) appmux.Stores {
 		SubjectRateLimiter:      db.NewRateLimiter(pool, "subject", httpserver.MCPRateCapacity, httpserver.MCPRateRefillPerSec),
 		RegistrationRateLimiter: db.NewRateLimiter(pool, "register", httpserver.RegistrationRateCapacity, httpserver.RegistrationRateRefillPerSec),
 		MCPSessions:             db.NewMCPSessionStore(pool),
+		OpsCounters:             db.NewOpsCountersStore(pool),
 	}
 }
 

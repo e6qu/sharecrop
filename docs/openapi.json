@@ -478,6 +478,9 @@
                     "email": {
                       "type": "string"
                     },
+                    "email_verification_state": {
+                      "type": "string"
+                    },
                     "id": {
                       "type": "string"
                     }
@@ -485,7 +488,8 @@
                   "required": [
                     "id",
                     "email",
-                    "display_name"
+                    "display_name",
+                    "email_verification_state"
                   ]
                 }
               }
@@ -2334,6 +2338,123 @@
         }
       }
     },
+    "/api/admin/operations/counters": {
+      "get": {
+        "operationId": "operationsCounters",
+        "responses": {
+          "200": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "budget_refusals_today": {
+                      "type": "integer"
+                    },
+                    "oldest_pending_webhook_age_seconds": {
+                      "type": "integer"
+                    },
+                    "outbox_dispatch_failed": {
+                      "type": "integer"
+                    },
+                    "outbox_recorded_backlog": {
+                      "type": "integer"
+                    },
+                    "peer_transfer_credits_today": {
+                      "type": "integer"
+                    },
+                    "peer_transfers_today": {
+                      "type": "integer"
+                    },
+                    "signup_grants_today": {
+                      "type": "integer"
+                    },
+                    "webhook_deliveries_dead": {
+                      "type": "integer"
+                    },
+                    "webhook_deliveries_pending": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "outbox_recorded_backlog",
+                    "outbox_dispatch_failed",
+                    "webhook_deliveries_pending",
+                    "webhook_deliveries_dead",
+                    "oldest_pending_webhook_age_seconds",
+                    "signup_grants_today",
+                    "peer_transfers_today",
+                    "peer_transfer_credits_today",
+                    "budget_refusals_today"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/platform-admins": {
       "get": {
         "operationId": "listPlatformAdmins",
@@ -3099,6 +3220,12 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "active_reservations": {
+                            "type": "integer"
+                          },
+                          "credits_spent_today": {
+                            "type": "integer"
+                          },
                           "expires_at": {
                             "type": "string"
                           },
@@ -3119,6 +3246,51 @@
                           },
                           "task_id": {
                             "type": "string"
+                          },
+                          "tasks_used_today": {
+                            "type": "integer"
+                          },
+                          "work_policy": {
+                            "type": "object",
+                            "properties": {
+                              "max_concurrent_reservations": {
+                                "type": "integer"
+                              },
+                              "max_credits_per_day": {
+                                "type": "integer"
+                              },
+                              "max_tasks_per_day": {
+                                "type": "integer"
+                              },
+                              "min_reward_credits": {
+                                "type": "integer"
+                              },
+                              "task_types": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "token_budget_note": {
+                                "type": "string"
+                              },
+                              "token_budget_tokens": {
+                                "type": "integer"
+                              },
+                              "work_seeking": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "work_seeking",
+                              "max_tasks_per_day",
+                              "max_concurrent_reservations",
+                              "max_credits_per_day",
+                              "task_types",
+                              "min_reward_credits",
+                              "token_budget_tokens",
+                              "token_budget_note"
+                            ]
                           }
                         },
                         "required": [
@@ -3127,7 +3299,11 @@
                           "scopes",
                           "state",
                           "expires_at",
-                          "task_id"
+                          "task_id",
+                          "work_policy",
+                          "tasks_used_today",
+                          "credits_spent_today",
+                          "active_reservations"
                         ]
                       }
                     },
@@ -3245,6 +3421,12 @@
                     "credential": {
                       "type": "object",
                       "properties": {
+                        "active_reservations": {
+                          "type": "integer"
+                        },
+                        "credits_spent_today": {
+                          "type": "integer"
+                        },
                         "expires_at": {
                           "type": "string"
                         },
@@ -3265,6 +3447,51 @@
                         },
                         "task_id": {
                           "type": "string"
+                        },
+                        "tasks_used_today": {
+                          "type": "integer"
+                        },
+                        "work_policy": {
+                          "type": "object",
+                          "properties": {
+                            "max_concurrent_reservations": {
+                              "type": "integer"
+                            },
+                            "max_credits_per_day": {
+                              "type": "integer"
+                            },
+                            "max_tasks_per_day": {
+                              "type": "integer"
+                            },
+                            "min_reward_credits": {
+                              "type": "integer"
+                            },
+                            "task_types": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "token_budget_note": {
+                              "type": "string"
+                            },
+                            "token_budget_tokens": {
+                              "type": "integer"
+                            },
+                            "work_seeking": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "work_seeking",
+                            "max_tasks_per_day",
+                            "max_concurrent_reservations",
+                            "max_credits_per_day",
+                            "task_types",
+                            "min_reward_credits",
+                            "token_budget_tokens",
+                            "token_budget_note"
+                          ]
                         }
                       },
                       "required": [
@@ -3273,7 +3500,11 @@
                         "scopes",
                         "state",
                         "expires_at",
-                        "task_id"
+                        "task_id",
+                        "work_policy",
+                        "tasks_used_today",
+                        "credits_spent_today",
+                        "active_reservations"
                       ]
                     },
                     "secret": {
@@ -3389,38 +3620,142 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "expires_at": {
-                      "type": "string"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "label": {
-                      "type": "string"
-                    },
-                    "scopes": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "state": {
-                      "type": "string"
-                    },
-                    "task_id": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-credentials/{credential_id}/work-policy": {
+      "put": {
+        "operationId": "configureAgentWorkPolicy",
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "max_concurrent_reservations": {
+                    "type": "integer"
+                  },
+                  "max_credits_per_day": {
+                    "type": "integer"
+                  },
+                  "max_tasks_per_day": {
+                    "type": "integer"
+                  },
+                  "min_reward_credits": {
+                    "type": "integer"
+                  },
+                  "task_types": {
+                    "type": "array",
+                    "items": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "id",
-                    "label",
-                    "scopes",
-                    "state",
-                    "expires_at",
-                    "task_id"
-                  ]
+                  "token_budget_note": {
+                    "type": "string"
+                  },
+                  "token_budget_tokens": {
+                    "type": "integer"
+                  },
+                  "work_seeking": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "work_seeking",
+                  "max_tasks_per_day",
+                  "max_concurrent_reservations",
+                  "max_credits_per_day",
+                  "task_types",
+                  "min_reward_credits",
+                  "token_budget_tokens",
+                  "token_budget_note"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
                 }
               }
             }
@@ -3618,6 +3953,9 @@
                     "display_name": {
                       "type": "string"
                     },
+                    "email_verification_state": {
+                      "type": "string"
+                    },
                     "role": {
                       "type": "string"
                     },
@@ -3637,7 +3975,8 @@
                     "access_token",
                     "role",
                     "username",
-                    "display_name"
+                    "display_name",
+                    "email_verification_state"
                   ]
                 }
               }
@@ -3745,6 +4084,9 @@
                     "display_name": {
                       "type": "string"
                     },
+                    "email_verification_state": {
+                      "type": "string"
+                    },
                     "role": {
                       "type": "string"
                     },
@@ -3764,7 +4106,8 @@
                     "access_token",
                     "role",
                     "username",
-                    "display_name"
+                    "display_name",
+                    "email_verification_state"
                   ]
                 }
               }
@@ -4115,6 +4458,9 @@
                     "display_name": {
                       "type": "string"
                     },
+                    "email_verification_state": {
+                      "type": "string"
+                    },
                     "role": {
                       "type": "string"
                     },
@@ -4134,7 +4480,8 @@
                     "access_token",
                     "role",
                     "username",
-                    "display_name"
+                    "display_name",
+                    "email_verification_state"
                   ]
                 }
               }
@@ -4255,6 +4602,9 @@
                     "display_name": {
                       "type": "string"
                     },
+                    "email_verification_state": {
+                      "type": "string"
+                    },
                     "role": {
                       "type": "string"
                     },
@@ -4274,7 +4624,8 @@
                     "access_token",
                     "role",
                     "username",
-                    "display_name"
+                    "display_name",
+                    "email_verification_state"
                   ]
                 }
               }
@@ -13689,7 +14040,17 @@
                 "security_review",
                 "product_review",
                 "ui_ux_review",
-                "qa_testing"
+                "qa_testing",
+                "document_review",
+                "documentation_writing",
+                "diagram_writing",
+                "planning",
+                "research",
+                "data_extraction",
+                "troubleshooting",
+                "code_analysis",
+                "architecture_review",
+                "threat_analysis"
               ]
             }
           },
@@ -18411,7 +18772,17 @@
                 "security_review",
                 "product_review",
                 "ui_ux_review",
-                "qa_testing"
+                "qa_testing",
+                "document_review",
+                "documentation_writing",
+                "diagram_writing",
+                "planning",
+                "research",
+                "data_extraction",
+                "troubleshooting",
+                "code_analysis",
+                "architecture_review",
+                "threat_analysis"
               ]
             }
           },
@@ -20515,6 +20886,7 @@
               "conflict",
               "unauthenticated",
               "rate_limited",
+              "budget_exceeded",
               "unavailable"
             ]
           },

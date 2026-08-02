@@ -28,7 +28,7 @@ func TestSubmitEmitsSubmissionCreatedToOwnerAndSubmitter(t *testing.T) {
 	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.RecorderOver(events))
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
 
-	created, matched := service.Submit(context.Background(), command).(SubmissionCreated)
+	created, matched := service.Submit(context.Background(), task.WorkerIsUser{}, command).(SubmissionCreated)
 	if !matched {
 		t.Fatalf("submit rejected")
 	}
@@ -60,7 +60,7 @@ func TestAddSubmissionCommentEmitsSubmissionCommented(t *testing.T) {
 	store.events = events
 	service := NewService(store, taskStore, submissionPermissionStore{}, eventtest.RecorderOver(events))
 	command := testSubmitCommand(t, taskStore.value.ID, `{"answer":"done"}`)
-	created, matched := service.Submit(context.Background(), command).(SubmissionCreated)
+	created, matched := service.Submit(context.Background(), task.WorkerIsUser{}, command).(SubmissionCreated)
 	if !matched {
 		t.Fatalf("submit rejected")
 	}

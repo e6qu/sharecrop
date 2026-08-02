@@ -182,13 +182,14 @@ func TestGenerateEmitsErrorResponseComponentWithEveryCode(t *testing.T) {
 		t.Fatalf("ErrorResponse schema = %#v, want an object with a string error", schema)
 	}
 	code := schema.Properties["code"]
-	if code.Type != "string" || len(code.Enum) != 10 {
-		t.Fatalf("ErrorResponse code schema = %#v, want a string with the 10-code enum", code)
+	if code.Type != "string" || len(code.Enum) != 11 {
+		t.Fatalf("ErrorResponse code schema = %#v, want a string with the 11-code enum", code)
 	}
 	wantCodes := map[string]bool{
 		"invalid_id": true, "invalid_enum": true, "invalid_state": true,
 		"invalid_argument": true, "not_found": true, "permission_denied": true,
-		"conflict": true, "unauthenticated": true, "rate_limited": true, "unavailable": true,
+		"conflict": true, "unauthenticated": true, "rate_limited": true,
+		"budget_exceeded": true, "unavailable": true,
 	}
 	for _, value := range code.Enum {
 		if !wantCodes[value] {

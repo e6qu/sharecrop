@@ -362,14 +362,22 @@ type authHTTPRequest struct {
 }
 
 type authHTTPResponse struct {
-	SubjectKind string `json:"subject_kind"`
-	SubjectID   string `json:"subject_id"`
-	AccessToken string `json:"access_token"`
-	DisplayName string `json:"display_name"`
+	SubjectKind            string `json:"subject_kind"`
+	SubjectID              string `json:"subject_id"`
+	AccessToken            string `json:"access_token"`
+	DisplayName            string `json:"display_name"`
+	EmailVerificationState string `json:"email_verification_state"`
 }
 
 func newAuthHTTPServer(t *testing.T, ctx context.Context) *httptest.Server {
 	t.Helper()
+
+	// The signup grant lands at email verification, so the shared register
+	// helper needs api token delivery to complete verification over HTTP.
+	// Tests exercising the default log mode set the variable themselves.
+	if os.Getenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY") == "" {
+		t.Setenv("SHARECROP_ACCOUNT_TOKEN_DELIVERY", "api")
+	}
 
 	pool, err := db.Open(ctx, requiredEnv(t, "DATABASE_URL"))
 	if err != nil {
@@ -418,6 +426,7 @@ func newAuthHTTPServer(t *testing.T, ctx context.Context) *httptest.Server {
 	runtime := httpserver.DefaultRuntimeState(httpserver.ParseAdminUserIDsForRuntime(os.Getenv("SHARECROP_ADMIN_USER_IDS")))
 	runtime.NotificationService = notificationService
 	runtime.EventStore = eventStore
+	runtime.OpsCounters = db.NewOpsCountersStore(pool)
 	return httptest.NewServer(httpserver.NewWithRuntimeState(staticFiles, serviceCreated.Value, verifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, runtime))
 }
 

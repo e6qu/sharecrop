@@ -79,7 +79,7 @@ func TestReserveEmitsReservationRequestedToOwnerAndWorker(t *testing.T) {
 		t.Fatalf("open rejected")
 	}
 	worker := testUserSubject(t)
-	reserved, matched := harness.service.Reserve(context.Background(), worker, harness.owner.ID).(ReservationCreated)
+	reserved, matched := harness.service.Reserve(context.Background(), worker, WorkerIsUser{}, harness.owner.ID).(ReservationCreated)
 	if !matched {
 		t.Fatalf("reserve rejected")
 	}
@@ -105,7 +105,7 @@ func TestCancelEmitsTaskCancelledToOwnerAndActiveHolder(t *testing.T) {
 		t.Fatalf("open rejected")
 	}
 	worker := testUserSubject(t)
-	if _, matched := harness.service.Reserve(context.Background(), worker, harness.owner.ID).(ReservationCreated); !matched {
+	if _, matched := harness.service.Reserve(context.Background(), worker, WorkerIsUser{}, harness.owner.ID).(ReservationCreated); !matched {
 		t.Fatalf("reserve rejected")
 	}
 
@@ -129,7 +129,7 @@ func TestAddTaskCommentEmitsTaskCommentedToBothParties(t *testing.T) {
 		t.Fatalf("open rejected")
 	}
 	worker := testUserSubject(t)
-	if _, matched := harness.service.Reserve(context.Background(), worker, harness.owner.ID).(ReservationCreated); !matched {
+	if _, matched := harness.service.Reserve(context.Background(), worker, WorkerIsUser{}, harness.owner.ID).(ReservationCreated); !matched {
 		t.Fatalf("reserve rejected")
 	}
 

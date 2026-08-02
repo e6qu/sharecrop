@@ -389,7 +389,7 @@ func runMCPStdio(ctx context.Context, cfg app.MCPConfig, stdout io.Writer, logge
 	platformAdmins := db.NewPlatformAdminStore(pool, bootstrapAdmins)
 	moderationTriage := db.NewModerationTriageStore(pool)
 	privacyService := db.NewPrivacyStore(pool)
-	mcpServer := httpserver.NewMCPServer(graph.TaskService, graph.SubmissionService, graph.LedgerService, graph.OrganizationService, graph.OrgCredentialService, graph.AssetService, graph.NotificationService, graph.AuthService, platformAdmins, moderationTriage, privacyService, graph.AuditService, webhook.NewService(db.NewWebhookStore(pool)), db.NewEventStore(pool))
+	mcpServer := httpserver.NewMCPServer(graph.TaskService, graph.SubmissionService, graph.LedgerService, graph.OrganizationService, graph.OrgCredentialService, graph.AssetService, graph.NotificationService, graph.AuthService, platformAdmins, moderationTriage, privacyService, graph.AuditService, webhook.NewService(db.NewWebhookStore(pool)), db.NewEventStore(pool), graph.AgentService)
 
 	logger.Info("starting sharecrop mcp stdio transport")
 	if err := mcp.ServeStdio(ctx, mcpServer, subject, callerCredential, os.Stdin, stdout); err != nil {
@@ -461,6 +461,7 @@ func runServe(ctx context.Context, cfg app.Config, logger *slog.Logger) int {
 		PlatformAdmins:          db.NewPlatformAdminStore(pool, bootstrapAdmins),
 		ModerationTriage:        db.NewModerationTriageStore(pool),
 		OIDCSessions:            db.NewOpenIDConnectSessionStore(db.NewPGX(pool)),
+		OpsCounters:             db.NewOpsCountersStore(pool),
 	})
 
 	// WASI hosting is the default: production runs the same WASM artifact as the
@@ -588,6 +589,12 @@ func serveThroughWASIGuest(ctx context.Context, guestWASM []byte, cfg app.Config
 	// logout routes also stay host-side so every replica shares the durable
 	// OpenID Connect session and replay records in PostgreSQL.
 	registerShauthHostBoundary(mux, nativeHandler)
+	// The operations counters read model is a host-side struct-only store
+	// (internal/db.OpsCountersStore is absent from every bridged store
+	// interface), so its route is served natively like the Shauth boundary;
+	// the guest's own registration of this route is never reached under WASI
+	// hosting.
+	mux.Handle("GET /api/admin/operations/counters", nativeHandler)
 	// Dynamic routes run in the guest.
 	mux.Handle("/api/", guest)
 	mux.Handle("/mcp", guest)

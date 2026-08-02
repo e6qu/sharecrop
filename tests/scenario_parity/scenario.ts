@@ -199,10 +199,34 @@ async function registerScenarioActor(
   assertStatus(registered, 201, `register ${label}`);
   const subjectID = requireString(registered.json, "subject_id");
   const accessToken = requireString(registered.json, "access_token");
+  const actorClient = client.withAccessToken(accessToken);
+
+  // The signup grant lands at email verification, and the scenario's balance
+  // arithmetic assumes every actor holds it. The scenario therefore requires
+  // api token delivery (SHARECROP_ACCOUNT_TOKEN_DELIVERY=api) on the target
+  // server so verification completes over the API.
+  const issued = await actorClient.request(
+    "POST",
+    "/api/account/email-verification",
+    noScenarioBody,
+  );
+  assertStatus(issued, 201, `request email verification for ${label}`);
+  const token = issued.json["token"];
+  assertScenario(
+    typeof token === "string" && token !== "",
+    `email verification token missing for ${label}: the scenario needs SHARECROP_ACCOUNT_TOKEN_DELIVERY=api`,
+  );
+  const confirmed = await actorClient.request(
+    "POST",
+    "/api/auth/email-verification/confirm",
+    { token: token as string },
+  );
+  assertStatus(confirmed, 200, `confirm email verification for ${label}`);
+
   return {
     subjectID,
     email,
-    client: client.withAccessToken(accessToken),
+    client: actorClient,
   };
 }
 

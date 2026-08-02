@@ -42,17 +42,19 @@ type alias AuthResponse =
     , role : String
     , username : String
     , displayName : String
+    , emailVerificationState : String
     }
 
 authResponseDecoder : Decoder AuthResponse
 authResponseDecoder =
-    Decode.map6 AuthResponse
+    Decode.map7 AuthResponse
         (Decode.field "subject_kind" subjectKindDecoder)
         (Decode.field "subject_id" Decode.string)
         (Decode.field "access_token" Decode.string)
         (Decode.field "role" Decode.string)
         (Decode.field "username" Decode.string)
         (Decode.field "display_name" Decode.string)
+        (Decode.field "email_verification_state" Decode.string)
 
 authResponseEncoder : AuthResponse -> Encode.Value
 authResponseEncoder authResponse =
@@ -63,20 +65,23 @@ authResponseEncoder authResponse =
         , ( "role", Encode.string authResponse.role )
         , ( "username", Encode.string authResponse.username )
         , ( "display_name", Encode.string authResponse.displayName )
+        , ( "email_verification_state", Encode.string authResponse.emailVerificationState )
         ]
 
 type alias AccountProfileResponse =
     { id : String
     , email : String
     , displayName : String
+    , emailVerificationState : String
     }
 
 accountProfileResponseDecoder : Decoder AccountProfileResponse
 accountProfileResponseDecoder =
-    Decode.map3 AccountProfileResponse
+    Decode.map4 AccountProfileResponse
         (Decode.field "id" Decode.string)
         (Decode.field "email" Decode.string)
         (Decode.field "display_name" Decode.string)
+        (Decode.field "email_verification_state" Decode.string)
 
 accountProfileResponseEncoder : AccountProfileResponse -> Encode.Value
 accountProfileResponseEncoder accountProfileResponse =
@@ -84,4 +89,5 @@ accountProfileResponseEncoder accountProfileResponse =
         [ ( "id", Encode.string accountProfileResponse.id )
         , ( "email", Encode.string accountProfileResponse.email )
         , ( "display_name", Encode.string accountProfileResponse.displayName )
+        , ( "email_verification_state", Encode.string accountProfileResponse.emailVerificationState )
         ]

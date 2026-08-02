@@ -29,6 +29,10 @@ const (
 	privacyRetentionSweepInterval  = time.Hour
 	rateLimitEvictionSweepInterval = 5 * time.Minute
 	mcpSessionSweepInterval        = 10 * time.Minute
+	// Work-budget day counters are windowed by UTC day and kept for a week
+	// (the ops read model reads at most today's rows); an hourly eviction
+	// keeps the table bounded without racing the in-transaction budget checks.
+	workDayCounterSweepInterval = time.Hour
 
 	// The event dispatch sweep is the crash-recovery half of the outbox: it
 	// re-dispatches events whose mutation committed but whose inline
@@ -92,6 +96,13 @@ func buildLifecycleRunner(logger *slog.Logger, pool *pgxpool.Pool, recorder even
 					return err
 				}
 				return subjectLimiter.EvictExpired(ctx)
+			},
+		},
+		{
+			Name:     "work_day_counter_eviction",
+			Interval: workDayCounterSweepInterval,
+			Run: func(ctx context.Context) error {
+				return db.NewOpsCountersStore(pool).EvictStaleWorkDayCounters(ctx)
 			},
 		},
 		{

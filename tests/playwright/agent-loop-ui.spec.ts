@@ -4,7 +4,12 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import { password, taskRequest, uniqueEmail } from "./helpers.ts";
+import {
+  password,
+  taskRequest,
+  uniqueEmail,
+  verifyAccountWithToken,
+} from "./helpers.ts";
 
 // Browser coverage for the agent-loop UI items: forced sign-out on an
 // unauthenticated response, the persistent overview feed cursor, superseded
@@ -34,6 +39,7 @@ async function signUp(
     access_token: string;
     subject_id: string;
   };
+  await verifyAccountWithToken(request, parsed.access_token);
   return {
     email,
     displayName,

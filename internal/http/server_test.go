@@ -883,7 +883,7 @@ func (testTaskService) List(context.Context, auth.Subject, task.ListScope, task.
 	return task.TasksListed{Values: []task.ListItem{}}
 }
 
-func (testTaskService) Reserve(_ context.Context, actor auth.UserSubject, taskID core.TaskID) task.ReservationResult {
+func (testTaskService) Reserve(_ context.Context, actor auth.UserSubject, _ task.WorkerOrigin, taskID core.TaskID) task.ReservationResult {
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationCreated{Value: task.Reservation{
 		ID:          reservationID.Value,
@@ -894,7 +894,7 @@ func (testTaskService) Reserve(_ context.Context, actor auth.UserSubject, taskID
 	}}
 }
 
-func (testTaskService) ReserveForOrganizationTeam(_ context.Context, actor auth.UserSubject, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) task.ReservationResult {
+func (testTaskService) ReserveForOrganizationTeam(_ context.Context, actor auth.UserSubject, _ task.WorkerOrigin, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) task.ReservationResult {
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationCreated{Value: task.Reservation{
 		ID:          reservationID.Value,
@@ -905,7 +905,7 @@ func (testTaskService) ReserveForOrganizationTeam(_ context.Context, actor auth.
 	}}
 }
 
-func (testTaskService) ReserveForTeam(_ context.Context, actor auth.UserSubject, taskID core.TaskID, teamID core.TeamID) task.ReservationResult {
+func (testTaskService) ReserveForTeam(_ context.Context, actor auth.UserSubject, _ task.WorkerOrigin, taskID core.TaskID, teamID core.TeamID) task.ReservationResult {
 	reservationID := core.NewTaskReservationID().(core.TaskReservationIDCreated)
 	return task.ReservationCreated{Value: task.Reservation{
 		ID:          reservationID.Value,
@@ -932,7 +932,7 @@ func (testTaskService) GetSeries(context.Context, auth.Subject, core.TaskSeriesI
 	return task.GetSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused test task service")}
 }
 
-func (testSubmissionService) Submit(_ context.Context, command submission.SubmitCommand) submission.SubmitResult {
+func (testSubmissionService) Submit(_ context.Context, _ task.WorkerOrigin, command submission.SubmitCommand) submission.SubmitResult {
 	idResult := core.NewSubmissionID()
 	idCreated := idResult.(core.SubmissionIDCreated)
 	tokenResult := submission.NewReceiptTokenPlain()
@@ -993,11 +993,11 @@ func (testSubmissionService) ListSubmissionComments(context.Context, auth.Subjec
 	return submission.SubmissionCommentsListed{Values: []submission.SubmissionComment{}}
 }
 
-func (testLedgerService) FundTask(_ context.Context, _ core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
+func (testLedgerService) FundTask(_ context.Context, _ core.UserID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey, _ ledger.SpendOrigin) ledger.FundResult {
 	return ledger.TaskFunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: amount}}
 }
 
-func (testLedgerService) FundTaskFromOrganization(_ context.Context, _ core.UserID, _ core.OrganizationID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey) ledger.FundResult {
+func (testLedgerService) FundTaskFromOrganization(_ context.Context, _ core.UserID, _ core.OrganizationID, taskID core.TaskID, amount ledger.CreditAmount, _ ledger.IdempotencyKey, _ ledger.SpendOrigin) ledger.FundResult {
 	return ledger.TaskFunded{Fund: ledger.TaskFund{TaskID: taskID, CreditAmount: amount}}
 }
 
@@ -1009,7 +1009,7 @@ func (testLedgerService) AcceptSubmission(_ context.Context, _ ledger.Reviewer, 
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
-func (testLedgerService) ReviewAcceptSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.CollectibleTipSelection) ledger.AcceptResult {
+func (testLedgerService) ReviewAcceptSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.CollectibleTipSelection, _ ledger.SpendOrigin) ledger.AcceptResult {
 	return ledger.SubmissionAccepted{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
@@ -1017,7 +1017,7 @@ func (testLedgerService) RequestChanges(_ context.Context, _ ledger.Reviewer, ta
 	return ledger.ChangesRequested{TaskID: taskID, SubmissionID: submissionID, ReviewNote: note.String()}
 }
 
-func (testLedgerService) RejectSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ submission.ReviewNote, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.BanSelection) ledger.RejectResult {
+func (testLedgerService) RejectSubmission(_ context.Context, _ ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, _ ledger.IdempotencyKey, _ submission.ReviewNote, _ ledger.CreditReviewSelection, _ ledger.TipSelection, _ ledger.BanSelection, _ ledger.SpendOrigin) ledger.RejectResult {
 	return ledger.SubmissionRejected{TaskID: taskID, SubmissionID: submissionID, Payout: ledger.NoPayout{}, Tip: ledger.NoTip{}}
 }
 
@@ -1045,7 +1045,7 @@ func (testLedgerService) GrantCredits(context.Context, core.UserID, ledger.Grant
 	return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (testLedgerService) SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey) ledger.SendResult {
+func (testLedgerService) SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey, ledger.SpendOrigin) ledger.SendResult {
 	return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -1055,7 +1055,7 @@ func (testAgentService) Create(_ context.Context, owner core.UserID, label agent
 	idCreated := core.NewAgentCredentialID().(core.AgentCredentialIDCreated)
 	secretCreated := agent.NewSecretPlain().(agent.SecretPlainAccepted)
 	return agent.CredentialCreated{
-		Value:  agent.Credential{ID: idCreated.Value, UserID: owner, Label: label, Scopes: scopes, State: agent.StateActive, ExpiresAt: expiresAt, TaskID: taskID},
+		Value:  agent.Credential{ID: idCreated.Value, UserID: owner, Label: label, Scopes: scopes, State: agent.StateActive, ExpiresAt: expiresAt, TaskID: taskID, WorkPolicy: agent.WorkPolicyDisabled{}},
 		Secret: secretCreated.Value,
 	}
 }
@@ -1174,7 +1174,16 @@ func (testAssetService) TransferCollectibleFromOrganization(context.Context, cor
 
 func (testAgentService) Revoke(_ context.Context, owner core.UserID, id core.AgentCredentialID) agent.RevokeResult {
 	labelAccepted := agent.NewLabel("Test agent").(agent.LabelAccepted)
-	return agent.CredentialRevoked{Value: agent.Credential{ID: id, UserID: owner, Label: labelAccepted.Value, Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead}), State: agent.StateRevoked}}
+	return agent.CredentialRevoked{Value: agent.Credential{ID: id, UserID: owner, Label: labelAccepted.Value, Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead}), State: agent.StateRevoked, WorkPolicy: agent.WorkPolicyDisabled{}}}
+}
+
+func (testAgentService) ConfigureWorkPolicy(_ context.Context, owner core.UserID, id core.AgentCredentialID, policy agent.WorkPolicy) agent.ConfigureWorkPolicyResult {
+	labelAccepted := agent.NewLabel("Test agent").(agent.LabelAccepted)
+	return agent.WorkPolicyConfigured{Value: agent.Credential{ID: id, UserID: owner, Label: labelAccepted.Value, Scopes: agent.NewScopeSet([]agent.Scope{agent.ScopeTasksRead}), State: agent.StateActive, WorkPolicy: policy}}
+}
+
+func (testAgentService) WorkActivity(context.Context, core.UserID) agent.WorkActivityResult {
+	return agent.WorkActivityListed{Values: []agent.CredentialWorkActivity{}}
 }
 
 func testAccessToken() auth.AccessToken {

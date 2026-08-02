@@ -66,6 +66,20 @@ test("the demo renders without horizontal overflow across pages on a phone", asy
     await expectNoHorizontalOverflow(name);
   }
 
+  // The agent work-budget editor is a dense form (paired number fields and
+  // two columns of task-type checkboxes) that only exists once opened.
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByRole("link", { name: "Agents", exact: true }).click();
+  await page.getByTestId("edit-work-policy").first().click();
+  await expect(page.getByTestId("work-policy-form")).toBeVisible();
+  await expectNoHorizontalOverflow("agent work-budget editor");
+
+  // The admin operations counters are a fact grid of long labels.
+  await page.getByTestId("nav-account-menu").click();
+  await page.getByTestId("nav-admin").click();
+  await expect(page.getByTestId("admin-ops-counters")).toBeVisible();
+  await expectNoHorizontalOverflow("admin operations counters");
+
   // A task detail page (instruction/code blocks are a mobile overflow risk).
   await page.getByTestId("nav-tasks").click();
   await page.getByTestId("discovery-view").first().click();

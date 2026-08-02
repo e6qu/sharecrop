@@ -311,6 +311,14 @@ func (service stubAgentService) Revoke(context.Context, core.UserID, core.AgentC
 	return agent.RevokeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
 }
 
+func (service stubAgentService) ConfigureWorkPolicy(context.Context, core.UserID, core.AgentCredentialID, agent.WorkPolicy) agent.ConfigureWorkPolicyResult {
+	return agent.ConfigureWorkPolicyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "unused")}
+}
+
+func (service stubAgentService) WorkActivity(context.Context, core.UserID) agent.WorkActivityResult {
+	return agent.WorkActivityListed{Values: []agent.CredentialWorkActivity{}}
+}
+
 // eventFeedAgentHandler builds the mux so a personal agent credential owned
 // by stableTestUserID authenticates, with one event visible to that owner.
 func eventFeedAgentHandler(t *testing.T, scopes []agent.Scope) (http.Handler, string) {

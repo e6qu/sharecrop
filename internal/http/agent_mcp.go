@@ -41,6 +41,26 @@ type mcpServices struct {
 	auditService         AuditService
 	webhookService       webhook.Service
 	eventStore           event.Store
+	agentService         AgentService
+}
+
+// AgentWorkActivity narrows the owner's work-activity read to the one
+// credential that authenticated the MCP call, so the budget tool cannot
+// report another credential's consumption. A credential that has consumed
+// nothing today has no stored row, which the caller reads as zeros.
+func (services mcpServices) AgentWorkActivity(ctx context.Context, owner core.UserID, credentialID core.AgentCredentialID) agent.WorkActivityResult {
+	result := services.agentService.WorkActivity(ctx, owner)
+	listed, matched := result.(agent.WorkActivityListed)
+	if !matched {
+		return result
+	}
+	values := make([]agent.CredentialWorkActivity, 0, 1)
+	for index := range listed.Values {
+		if listed.Values[index].CredentialID == credentialID {
+			values = append(values, listed.Values[index])
+		}
+	}
+	return agent.WorkActivityListed{Values: values}
 }
 
 func (services mcpServices) CreateWebhookSubscription(ctx context.Context, owner webhook.Owner, endpoint webhook.EndpointURL, kinds webhook.KindFilter, audience webhook.Audience) webhook.CreateResult {
@@ -79,16 +99,16 @@ func (services mcpServices) CancelTask(ctx context.Context, subject auth.Subject
 	return services.taskService.Cancel(ctx, subject, taskID)
 }
 
-func (services mcpServices) FundTask(ctx context.Context, funder core.UserID, taskID core.TaskID, amount ledger.CreditAmount, key ledger.IdempotencyKey) ledger.FundResult {
-	return services.ledgerService.FundTask(ctx, funder, taskID, amount, key)
+func (services mcpServices) FundTask(ctx context.Context, funder core.UserID, taskID core.TaskID, amount ledger.CreditAmount, key ledger.IdempotencyKey, origin ledger.SpendOrigin) ledger.FundResult {
+	return services.ledgerService.FundTask(ctx, funder, taskID, amount, key, origin)
 }
 
 func (services mcpServices) RefundTask(ctx context.Context, requester core.UserID, taskID core.TaskID, key ledger.IdempotencyKey) ledger.RefundResult {
 	return services.ledgerService.RefundTask(ctx, requester, taskID, key)
 }
 
-func (services mcpServices) SubmitResponse(ctx context.Context, command submission.SubmitCommand) submission.SubmitResult {
-	return services.submissionService.Submit(ctx, command)
+func (services mcpServices) SubmitResponse(ctx context.Context, origin task.WorkerOrigin, command submission.SubmitCommand) submission.SubmitResult {
+	return services.submissionService.Submit(ctx, origin, command)
 }
 
 func (services mcpServices) GetSubmissionStatus(ctx context.Context, token submission.ReceiptTokenPlain) submission.ReceiptStatusResult {
@@ -106,16 +126,16 @@ func (services mcpServices) ListTaskSubmissions(ctx context.Context, subject aut
 // The MCP review tools pass the ledger.Reviewer union straight through, so
 // an organization credential reviews its own organization's tasks with the
 // same authorization REST's review routes grant it.
-func (services mcpServices) ReviewAcceptSubmission(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, collectibleTip ledger.CollectibleTipSelection) ledger.AcceptResult {
-	return services.ledgerService.ReviewAcceptSubmission(ctx, reviewer, taskID, submissionID, key, creditSelection, tipSelection, collectibleTip)
+func (services mcpServices) ReviewAcceptSubmission(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, collectibleTip ledger.CollectibleTipSelection, origin ledger.SpendOrigin) ledger.AcceptResult {
+	return services.ledgerService.ReviewAcceptSubmission(ctx, reviewer, taskID, submissionID, key, creditSelection, tipSelection, collectibleTip, origin)
 }
 
 func (services mcpServices) RequestChanges(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, note submission.ReviewNote) ledger.RequestChangesResult {
 	return services.ledgerService.RequestChanges(ctx, reviewer, taskID, submissionID, key, note)
 }
 
-func (services mcpServices) RejectSubmission(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, note submission.ReviewNote, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, banSelection ledger.BanSelection) ledger.RejectResult {
-	return services.ledgerService.RejectSubmission(ctx, reviewer, taskID, submissionID, key, note, creditSelection, tipSelection, banSelection)
+func (services mcpServices) RejectSubmission(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, note submission.ReviewNote, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, banSelection ledger.BanSelection, origin ledger.SpendOrigin) ledger.RejectResult {
+	return services.ledgerService.RejectSubmission(ctx, reviewer, taskID, submissionID, key, note, creditSelection, tipSelection, banSelection, origin)
 }
 
 func (services mcpServices) ListSeries(ctx context.Context, subject auth.UserSubject, page core.Page) task.ListSeriesResult {
@@ -178,12 +198,12 @@ func (services mcpServices) ListSubmissionComments(ctx context.Context, subject 
 	return services.submissionService.ListSubmissionComments(ctx, subject, submissionID, page)
 }
 
-func (services mcpServices) ReserveTask(ctx context.Context, subject auth.UserSubject, taskID core.TaskID) task.ReservationResult {
-	return services.taskService.Reserve(ctx, subject, taskID)
+func (services mcpServices) ReserveTask(ctx context.Context, subject auth.UserSubject, origin task.WorkerOrigin, taskID core.TaskID) task.ReservationResult {
+	return services.taskService.Reserve(ctx, subject, origin, taskID)
 }
 
-func (services mcpServices) ReserveTaskForOrganizationTeam(ctx context.Context, subject auth.UserSubject, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) task.ReservationResult {
-	return services.taskService.ReserveForOrganizationTeam(ctx, subject, taskID, organizationID, teamID)
+func (services mcpServices) ReserveTaskForOrganizationTeam(ctx context.Context, subject auth.UserSubject, origin task.WorkerOrigin, taskID core.TaskID, organizationID core.OrganizationID, teamID core.TeamID) task.ReservationResult {
+	return services.taskService.ReserveForOrganizationTeam(ctx, subject, origin, taskID, organizationID, teamID)
 }
 
 func (services mcpServices) ListReservations(ctx context.Context, subject auth.Subject, taskID core.TaskID, page core.Page) task.ReservationsListResult {
@@ -375,8 +395,8 @@ func (services mcpServices) GrantCredits(ctx context.Context, actingAdmin core.U
 	return services.ledgerService.GrantCredits(ctx, actingAdmin, target, amount, note, key)
 }
 
-func (services mcpServices) SendCredits(ctx context.Context, actor core.UserID, source ledger.TransferSource, target ledger.TransferTarget, amount ledger.CreditAmount, note ledger.TransferNote, key ledger.IdempotencyKey) ledger.SendResult {
-	return services.ledgerService.SendCredits(ctx, actor, source, target, amount, note, key)
+func (services mcpServices) SendCredits(ctx context.Context, actor core.UserID, source ledger.TransferSource, target ledger.TransferTarget, amount ledger.CreditAmount, note ledger.TransferNote, key ledger.IdempotencyKey, origin ledger.SpendOrigin) ledger.SendResult {
+	return services.ledgerService.SendCredits(ctx, actor, source, target, amount, note, key, origin)
 }
 
 func (services mcpServices) ListUsers(ctx context.Context, query string, page core.Page) auth.UserDirectoryResult {
@@ -403,6 +423,22 @@ type agentCredentialRequest struct {
 	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
+// workPolicyResponse is the stored work policy on credential responses.
+// Allowance fields use the DTO absence convention: 0 / empty means the
+// allowance is not configured (unlimited concurrency and spend, every task
+// type, no reward floor, no advisory token budget). For a
+// work_seeking_disabled credential every allowance field is 0 / empty.
+type workPolicyResponse struct {
+	WorkSeeking               string   `json:"work_seeking"`
+	MaxTasksPerDay            int64    `json:"max_tasks_per_day"`
+	MaxConcurrentReservations int64    `json:"max_concurrent_reservations"`
+	MaxCreditsPerDay          int64    `json:"max_credits_per_day"`
+	TaskTypes                 []string `json:"task_types"`
+	MinRewardCredits          int64    `json:"min_reward_credits"`
+	TokenBudgetTokens         int64    `json:"token_budget_tokens"`
+	TokenBudgetNote           string   `json:"token_budget_note"`
+}
+
 type agentCredentialResponse struct {
 	ID        string   `json:"id"`
 	Label     string   `json:"label"`
@@ -410,6 +446,15 @@ type agentCredentialResponse struct {
 	State     string   `json:"state"`
 	ExpiresAt string   `json:"expires_at"`
 	TaskID    string   `json:"task_id"`
+	// WorkPolicy is the stored work budget; every credential is minted
+	// work_seeking_disabled.
+	WorkPolicy workPolicyResponse `json:"work_policy"`
+	// TasksUsedToday and CreditsSpentToday are the current UTC day's consumed
+	// budget units; ActiveReservations counts reservations attributed to this
+	// credential that are still active.
+	TasksUsedToday     int64 `json:"tasks_used_today"`
+	CreditsSpentToday  int64 `json:"credits_spent_today"`
+	ActiveReservations int64 `json:"active_reservations"`
 }
 
 type agentCredentialCreatedResponse struct {
@@ -437,9 +482,9 @@ func (server Server) getTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	actorResult := server.requireWorkerSubject(r, agent.ScopeTasksRead, taskIDAccepted.value)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actor, actorMatched := actorResult.(workerSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(workerSubjectRejected).reason)
 		return
 	}
 
@@ -525,6 +570,8 @@ func (server Server) createAgentCredential(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// A freshly minted credential has consumed nothing and reserved nothing,
+	// so its activity triple is factually zero without a store read.
 	writeJSON(w, http.StatusCreated, agentCredentialCreatedResponse{
 		Credential: credentialToResponse(created.Value),
 		Secret:     created.Secret.String(),
@@ -550,10 +597,19 @@ func (server Server) listAgentCredentials(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// One activity read covers every listed credential (a single query with
+	// indexed subselects), so the page stays a constant number of queries.
+	activityResult := server.agentService.WorkActivity(r.Context(), actor.subject.ID)
+	activity, activityMatched := activityResult.(agent.WorkActivityListed)
+	if !activityMatched {
+		writeDomainError(w, activityResult.(agent.WorkActivityRejected).Reason)
+		return
+	}
+
 	visible, nextOffset := probeListWindow(len(listed.Values), page)
 	response := agentCredentialsResponse{Credentials: make([]agentCredentialResponse, 0, visible), NextOffset: nextOffset}
 	for index := range listed.Values[:visible] {
-		response.Credentials = append(response.Credentials, credentialToResponse(listed.Values[index]))
+		response.Credentials = append(response.Credentials, applyWorkActivity(credentialToResponse(listed.Values[index]), activity.Values))
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -580,7 +636,12 @@ func (server Server) revokeAgentCredential(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	writeJSON(w, http.StatusOK, credentialToResponse(revoked.Value))
+	response, activityErr := server.credentialResponseWithActivity(r.Context(), actor.subject.ID, revoked.Value)
+	if activityErr != nil {
+		writeDomainError(w, *activityErr)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (server Server) mcpEndpoint(w http.ResponseWriter, r *http.Request) {
@@ -901,9 +962,12 @@ func (server Server) verifyMCPCaller(r *http.Request) mcpCallerResult {
 		if !verifyMatched {
 			return mcpCallerRejected{reason: verifyResult.(orgcred.VerifyRejected).Reason.Description()}
 		}
+		// An organization credential never reaches the worker or spend tools
+		// (they require a personal user subject), so it carries the
+		// unbudgeted defaults.
 		return mcpCallerVerified{
 			subject:    verified.Subject,
-			credential: mcp.CallerCredential{Scopes: verified.Credential.Scopes, TaskID: nil},
+			credential: mcp.CallerCredential{Scopes: verified.Credential.Scopes, TaskID: nil, Worker: task.WorkerIsUser{}, Spend: ledger.SpendByUser{}, Budget: mcp.OrganizationCredentialBudget{}},
 		}
 	}
 	verifyResult := server.verifyAgent(r)
@@ -913,8 +977,19 @@ func (server Server) verifyMCPCaller(r *http.Request) mcpCallerResult {
 	}
 	return mcpCallerVerified{
 		subject:    verified.Subject,
-		credential: mcp.CallerCredential{Scopes: verified.Credential.Scopes, TaskID: verified.Credential.TaskID},
+		credential: mcp.CallerCredential{Scopes: verified.Credential.Scopes, TaskID: verified.Credential.TaskID, Worker: verified.Credential.TaskWorkerOrigin(), Spend: verified.Credential.SpendOrigin(), Budget: mcpBudgetView(verified.Credential)},
 	}
+}
+
+// mcpBudgetView says what the budget tool may report for a verified personal
+// credential: a task-scoped one carries no policy of its own (it works inside
+// the reservation it was issued for), an unscoped one carries the policy its
+// owner configured.
+func mcpBudgetView(credential agent.Credential) mcp.WorkBudgetView {
+	if credential.TaskID != nil {
+		return mcp.TaskScopedCredentialBudget{TaskID: *credential.TaskID}
+	}
+	return mcp.PersonalCredentialBudget{CredentialID: credential.ID, Policy: credential.WorkPolicy}
 }
 
 // mcpSubjectIdentity returns a stable string key for an MCP caller's
@@ -947,13 +1022,74 @@ func credentialToResponse(value agent.Credential) agentCredentialResponse {
 		rawTaskID = value.TaskID.String()
 	}
 	return agentCredentialResponse{
-		ID:        value.ID.String(),
-		Label:     value.Label.String(),
-		Scopes:    rawScopes,
-		State:     value.State.String(),
-		ExpiresAt: rawExpiresAt,
-		TaskID:    rawTaskID,
+		ID:         value.ID.String(),
+		Label:      value.Label.String(),
+		Scopes:     rawScopes,
+		State:      value.State.String(),
+		ExpiresAt:  rawExpiresAt,
+		TaskID:     rawTaskID,
+		WorkPolicy: workPolicyToResponse(value.WorkPolicy),
 	}
+}
+
+// workPolicyToResponse flattens the sealed policy into the DTO shape: absent
+// allowances become the documented 0 / empty sentinels.
+func workPolicyToResponse(policy agent.WorkPolicy) workPolicyResponse {
+	response := workPolicyResponse{
+		WorkSeeking: agent.WorkPolicyState(policy).String(),
+		TaskTypes:   []string{},
+	}
+	enabled, isEnabled := policy.(agent.WorkPolicyEnabled)
+	if !isEnabled {
+		return response
+	}
+	response.MaxTasksPerDay = enabled.Allowances.MaxTasksPerDay.Int64()
+	if capped, matched := enabled.Allowances.ConcurrentReservations.(agent.ConcurrentReservationsCapped); matched {
+		response.MaxConcurrentReservations = capped.Limit.Int64()
+	}
+	if capped, matched := enabled.Allowances.DailySpend.(agent.DailySpendCapped); matched {
+		response.MaxCreditsPerDay = capped.Limit.Int64()
+	}
+	if limited, matched := enabled.Allowances.TaskTypes.(agent.TaskTypesLimited); matched {
+		for _, taskType := range limited.Values() {
+			response.TaskTypes = append(response.TaskTypes, taskType.String())
+		}
+	}
+	if floor, matched := enabled.Allowances.RewardFloor.(agent.RewardFloorAtLeast); matched {
+		response.MinRewardCredits = floor.Minimum.Int64()
+	}
+	if advised, matched := enabled.Allowances.TokenBudget.(agent.TokenBudgetAdvised); matched {
+		response.TokenBudgetTokens = advised.Tokens.Int64()
+		response.TokenBudgetNote = advised.Note.String()
+	}
+	return response
+}
+
+// applyWorkActivity stamps the activity triple for the response's credential.
+// A credential without a recorded entry (nothing consumed and nothing
+// reserved via it) keeps the zero counts.
+func applyWorkActivity(response agentCredentialResponse, values []agent.CredentialWorkActivity) agentCredentialResponse {
+	for _, value := range values {
+		if value.CredentialID.String() == response.ID {
+			response.TasksUsedToday = value.TasksToday
+			response.CreditsSpentToday = value.CreditsSpentToday
+			response.ActiveReservations = value.ActiveReservations
+			return response
+		}
+	}
+	return response
+}
+
+// credentialResponseWithActivity builds the credential response and resolves
+// today's consumption for it through the owner's activity read.
+func (server Server) credentialResponseWithActivity(ctx context.Context, owner core.UserID, value agent.Credential) (agentCredentialResponse, *core.DomainError) {
+	activityResult := server.agentService.WorkActivity(ctx, owner)
+	activity, matched := activityResult.(agent.WorkActivityListed)
+	if !matched {
+		reason := activityResult.(agent.WorkActivityRejected).Reason
+		return agentCredentialResponse{}, &reason
+	}
+	return applyWorkActivity(credentialToResponse(value), activity.Values), nil
 }
 
 type expiresAtResult interface {

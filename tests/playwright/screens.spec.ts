@@ -83,7 +83,64 @@ async function registerViaApi(
     response.ok(),
     `register ${email} failed with ${response.status()}: ${responseText}`,
   ).toBeTruthy();
-  return { email, body: JSON.parse(responseText) as AuthBody };
+  const body = JSON.parse(responseText) as AuthBody;
+  await verifyStructural(request, body.access_token);
+  return { email, body };
+}
+
+// accessTokenForLogin logs an already-registered account in over the API and
+// returns its bearer token, for verification after a UI-driven registration.
+async function accessTokenForLogin(
+  request: {
+    post: (
+      url: string,
+      opts: { data: unknown },
+    ) => Promise<{
+      ok: () => boolean;
+      json: () => Promise<unknown>;
+      status: () => number;
+      text: () => Promise<string>;
+    }>;
+  },
+  email: string,
+): Promise<string> {
+  const login = await request.post("/api/auth/login", {
+    data: { email, password },
+  });
+  expect(login.ok(), await login.text()).toBeTruthy();
+  return ((await login.json()) as AuthBody).access_token;
+}
+
+// verifyStructural completes email verification through the same structural
+// request shape registerViaApi accepts, so the signup grant (which lands at
+// verification, not registration) is present for every registered actor.
+async function verifyStructural(
+  request: {
+    post: (
+      url: string,
+      opts: { data: unknown; headers: Record<string, string> | undefined },
+    ) => Promise<{
+      ok: () => boolean;
+      json: () => Promise<unknown>;
+      status: () => number;
+      text: () => Promise<string>;
+    }>;
+  },
+  accessToken: string,
+): Promise<void> {
+  const issued = await request.post("/api/account/email-verification", {
+    data: {},
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  expect(issued.ok(), await issued.text()).toBeTruthy();
+  const token =
+    ((await issued.json()) as { token: string | undefined }).token ?? "";
+  expect(token, "verification token requires api delivery").not.toBe("");
+  const confirmed = await request.post("/api/auth/email-verification/confirm", {
+    data: { token },
+    headers: undefined,
+  });
+  expect(confirmed.ok(), await confirmed.text()).toBeTruthy();
 }
 
 async function loginViaUi(page: Page, email: string): Promise<void> {
@@ -1641,6 +1698,8 @@ test("another actor's submission raises the unread badge and the inbox unread fi
     },
   });
   expect(workerRegister.ok()).toBeTruthy();
+  const workerRegisterBody = (await workerRegister.json()) as AuthBody;
+  await verifyStructural(request, workerRegisterBody.access_token);
   const worker = {
     email: workerEmail,
     body: (await workerRegister.json()) as AuthBody,
@@ -1950,13 +2009,16 @@ async function needsReviewOwnerAccepts(
   );
 }
 
-test("registering with a display name shows it in the header and profile, and it can be edited", async ({ page }) => {
+test("registering with a display name shows it in the header and profile, and it can be edited", async ({ page, request }) => {
   const email = uniqueEmail("ui-identity");
   await page.goto("/");
   await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
   await page.getByTestId("register-name").fill("Pat Verifier");
   await page.getByTestId("register").click();
+  await expect(page.getByTestId("balance")).toHaveText("0 credits");
+  await verifyStructural(request, await accessTokenForLogin(request, email));
+  await page.reload();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   // The Account menu trigger names the signed-in person.

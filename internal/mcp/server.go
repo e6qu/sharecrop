@@ -27,6 +27,17 @@ import (
 type CallerCredential struct {
 	Scopes agent.ScopeSet
 	TaskID *core.TaskID
+	// Worker and Spend say how work-budget enforcement sees this caller: a
+	// personal agent credential carries its work-policy snapshot and spend
+	// cap; an organization credential (which the user-subject guards keep
+	// away from worker and spend tools anyway) carries the unbudgeted
+	// defaults.
+	Worker task.WorkerOrigin
+	Spend  ledger.SpendOrigin
+	// Budget is what sharecrop.get_my_budget may report about this caller:
+	// the personal credential's stored work policy, the fact that it is
+	// task-scoped, or the fact that organization credentials carry no policy.
+	Budget WorkBudgetView
 }
 
 // Services is the set of domain operations the MCP adapter exposes as tools.
@@ -40,9 +51,9 @@ type Services interface {
 	CreateTask(context.Context, task.CreateCommand) task.CreateResult
 	OpenTask(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
 	CancelTask(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
-	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
+	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey, ledger.SpendOrigin) ledger.FundResult
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
-	SubmitResponse(context.Context, submission.SubmitCommand) submission.SubmitResult
+	SubmitResponse(context.Context, task.WorkerOrigin, submission.SubmitCommand) submission.SubmitResult
 	GetSubmissionStatus(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	GetSubmission(context.Context, auth.Subject, core.SubmissionID) submission.GetResult
 	ListTaskSubmissions(context.Context, auth.Subject, core.TaskID, core.Page) submission.ListResult
@@ -50,9 +61,9 @@ type Services interface {
 	// an organization reviewer), mirroring REST: an organization credential
 	// reviews its own organization's tasks with org-admin parity, but tips
 	// and bans stay user-only (enforced by the ledger service).
-	ReviewAcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult
+	ReviewAcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection, ledger.SpendOrigin) ledger.AcceptResult
 	RequestChanges(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult
-	RejectSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
+	RejectSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection, ledger.SpendOrigin) ledger.RejectResult
 	ListSeries(context.Context, auth.UserSubject, core.Page) task.ListSeriesResult
 	GetSeries(context.Context, auth.UserSubject, core.TaskSeriesID) task.GetSeriesResult
 	CreateSeries(context.Context, auth.UserSubject, task.SeriesTitle, task.SeriesDescription) task.SeriesMutationResult
@@ -68,8 +79,8 @@ type Services interface {
 	AddSubmissionComment(context.Context, auth.UserSubject, core.SubmissionID, task.CommentBody) submission.SubmissionCommentResult
 	ListSubmissionComments(context.Context, auth.UserSubject, core.SubmissionID, core.Page) submission.SubmissionCommentsResult
 	UnpublishTask(context.Context, auth.Subject, core.TaskID) task.ChangeStateResult
-	ReserveTask(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
-	ReserveTaskForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
+	ReserveTask(context.Context, auth.UserSubject, task.WorkerOrigin, core.TaskID) task.ReservationResult
+	ReserveTaskForOrganizationTeam(context.Context, auth.UserSubject, task.WorkerOrigin, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
 	ListReservations(context.Context, auth.Subject, core.TaskID, core.Page) task.ReservationsListResult
 	CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 
@@ -123,7 +134,12 @@ type Services interface {
 	GetCreditBalance(context.Context, core.UserID) ledger.BalanceResult
 	ListLedger(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
 	GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult
-	SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey) ledger.SendResult
+	SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey, ledger.SpendOrigin) ledger.SendResult
+
+	// AgentWorkActivity reads today's budget consumption for exactly one of
+	// the owner's agent credentials - the one that authenticated the call -
+	// so sharecrop.get_my_budget can never report another credential's usage.
+	AgentWorkActivity(context.Context, core.UserID, core.AgentCredentialID) agent.WorkActivityResult
 
 	CreateWebhookSubscription(context.Context, webhook.Owner, webhook.EndpointURL, webhook.KindFilter, webhook.Audience) webhook.CreateResult
 	ListWebhookSubscriptions(context.Context, webhook.Owner, core.Page) webhook.ListResult
@@ -199,7 +215,11 @@ If a review rejected your submission wrongly, file a structured dispute: sharecr
 sharecrop.send_credits sends spendable credits to another user or organization (from your own balance, or an organization balance you may spend from); it requires a credential minted with the ledger_write scope, and idempotency_key makes a retried send safe.
 sharecrop.collectible_catalog lists every platform collectible template with its state (available or withdrawn), max_editions, and minted_count; collectible payloads carry catalog_slug, edition_number, and issuer_display_name provenance.
 List tools return next_offset (0 means the last page; otherwise pass it back as offset to continue); the list tools whose REST counterpart carries total also return it (rows matching the filter, ignoring paging).
-Failed tool calls return isError with one text item of compact JSON {"code":"...","message":"..."}.`
+Work budget: every credential starts with work-seeking disabled, so a fresh credential cannot reserve a task or submit to a task it was not handed until its human enables it with a daily task budget.
+sharecrop.get_my_budget (no scope required) reports that policy, today's consumption, what is left, and resets_at (the next UTC midnight); read it before a work loop and stop when tasks_remaining_today reaches 0.
+Stop cleanly on code "budget_exceeded" - an allowance is spent and retrying before resets_at cannot succeed; a "permission_denied" refusal carrying a guidance field means work-seeking is off and only your human can change it.
+The token budget in get_my_budget is advisory: Sharecrop never meters model tokens, so pacing your own usage against it is your responsibility.
+Failed tool calls return isError with one text item of compact JSON {"code":"...","message":"..."}, plus "guidance" when the refusal needs human action.`
 
 func (server Server) handleInitialize(request Request) Response {
 	result := initializeResult{
@@ -215,12 +235,13 @@ func (server Server) handleInitialize(request Request) Response {
 // scope-eligible to call, so an underscoped credential is not shown tools
 // that would always fail its scope gate. (Admin-gated tools additionally
 // re-check live platform-admin status at call time; scope eligibility is the
-// listing criterion, matching the scope check in handleToolsCall.)
+// listing criterion, matching the scope check in handleToolsCall.) A
+// scope-free tool - sharecrop.get_my_budget - is listed for every credential.
 func (server Server) handleToolsList(request Request, credential CallerCredential) Response {
 	definitions := toolDefinitions()
 	entries := make([]toolListEntry, 0, len(definitions))
 	for index := range definitions {
-		if _, granted := credential.Scopes.Allows(definitions[index].Scope).(agent.ScopeGranted); !granted {
+		if _, denied := toolAccessCheck(credential, definitions[index].Access).(toolAccessDenied); denied {
 			continue
 		}
 		entries = append(entries, toolListEntry{
@@ -242,8 +263,8 @@ func (server Server) handleToolsCall(ctx context.Context, subject auth.Subject, 
 	if !found {
 		return errorResponse(request.ID, codeInvalidParams, "unknown tool: "+params.Name)
 	}
-	if _, granted := credential.Scopes.Allows(definition.Scope).(agent.ScopeGranted); !granted {
-		return errorResponse(request.ID, codeScopeDenied, "agent credential is missing the "+definition.Scope.String()+" scope")
+	if denied, matched := toolAccessCheck(credential, definition.Access).(toolAccessDenied); matched {
+		return errorResponse(request.ID, codeScopeDenied, denied.message)
 	}
 	// A task-scoped credential (e.g. auto-issued when a reservation becomes
 	// active) may only call tools whose arguments target that exact task.
@@ -267,7 +288,7 @@ func (server Server) handleToolsCall(ctx context.Context, subject auth.Subject, 
 		}
 	}
 
-	outcome := server.dispatchTool(ctx, subject, credential, definition.Name, params.Arguments)
+	outcome := withWorkSeekingGuidance(credential, definition.Name, server.dispatchTool(ctx, subject, credential, definition.Name, params.Arguments))
 	switch typed := outcome.(type) {
 	case toolSucceeded:
 		return marshalResult(request.ID, toolCallResult{Content: []contentItem{{Type: "text", Text: string(typed.payload)}}})
@@ -278,6 +299,34 @@ func (server Server) handleToolsCall(ctx context.Context, subject auth.Subject, 
 	default:
 		return errorResponse(request.ID, codeInternalError, "tool produced no result")
 	}
+}
+
+// toolAccessResult is the outcome of checking a caller's credential against a
+// tool's access requirement: it is the single rule tools/list filtering and
+// tools/call gating share.
+type toolAccessResult interface {
+	toolAccessResult()
+}
+
+type toolAccessAllowed struct{}
+
+type toolAccessDenied struct {
+	message string
+}
+
+func (toolAccessAllowed) toolAccessResult() {}
+
+func (toolAccessDenied) toolAccessResult() {}
+
+func toolAccessCheck(credential CallerCredential, access toolAccess) toolAccessResult {
+	needed, gated := access.(toolNeedsScope)
+	if !gated {
+		return toolAccessAllowed{}
+	}
+	if _, granted := credential.Scopes.Allows(needed.Value).(agent.ScopeGranted); !granted {
+		return toolAccessDenied{message: "agent credential is missing the " + needed.Value.String() + " scope"}
+	}
+	return toolAccessAllowed{}
 }
 
 // toolArgumentTaskID extracts a tool call's "task_id" argument, if it has
@@ -327,6 +376,8 @@ func (server Server) requireAdminSubjectForTool(ctx context.Context, subject aut
 // already checked.
 func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, credential CallerCredential, name string, arguments json.RawMessage) toolResult {
 	switch name {
+	case toolGetMyBudget:
+		return server.callGetMyBudget(ctx, subject, credential)
 	case toolCreateWebhookSubscription:
 		return server.callCreateWebhookSubscription(ctx, subject, credential, arguments)
 	case toolListWebhookSubscriptions:
@@ -364,7 +415,7 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 		if !ok {
 			return failure
 		}
-		return server.callFundTask(ctx, userActor, arguments)
+		return server.callFundTask(ctx, userActor, credential, arguments)
 	case toolRefundTask:
 		userActor, failure, ok := requireUserSubjectForTool(subject)
 		if !ok {
@@ -376,7 +427,7 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 		if !ok {
 			return failure
 		}
-		return server.callSubmitResponse(ctx, userActor, arguments)
+		return server.callSubmitResponse(ctx, userActor, credential, arguments)
 	case toolGetSubmissionStatus:
 		return server.callGetSubmissionStatus(ctx, arguments)
 	case toolGetSubmission:
@@ -384,11 +435,11 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 	case toolListTaskSubmissions:
 		return server.callListTaskSubmissions(ctx, subject, arguments)
 	case toolAcceptSubmission:
-		return server.callAcceptSubmission(ctx, subject, arguments)
+		return server.callAcceptSubmission(ctx, subject, credential, arguments)
 	case toolRequestChanges:
 		return server.callRequestChanges(ctx, subject, arguments)
 	case toolRejectSubmission:
-		return server.callRejectSubmission(ctx, subject, arguments)
+		return server.callRejectSubmission(ctx, subject, credential, arguments)
 	case toolListTaskSeries:
 		userActor, failure, ok := requireUserSubjectForTool(subject)
 		if !ok {
@@ -498,7 +549,7 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 		if !ok {
 			return failure
 		}
-		return server.callReserveTask(ctx, userActor, arguments)
+		return server.callReserveTask(ctx, userActor, credential, arguments)
 	case toolListReservations:
 		return server.callListReservations(ctx, subject, arguments)
 	case toolCancelReservation:
@@ -706,7 +757,7 @@ func (server Server) dispatchTool(ctx context.Context, subject auth.Subject, cre
 		if !ok {
 			return failure
 		}
-		return server.callSendCredits(ctx, userActor, arguments)
+		return server.callSendCredits(ctx, userActor, credential, arguments)
 	case toolListEvents:
 		return server.callListEvents(ctx, subject, arguments)
 	case toolListNotifications:
@@ -911,23 +962,27 @@ type toolSucceeded struct {
 // toolFailed is a domain-level tool failure. It carries the machine-readable
 // core.ErrorCode alongside the human-readable message; the tool result
 // renders both as one compact JSON text item with isError:true, so agents
-// can branch on the code instead of parsing prose.
+// can branch on the code instead of parsing prose. guidance is empty on most
+// failures; it is set where the refusal reflects a configuration state only
+// the credential's human can change, so an agent stops instead of retrying.
 type toolFailed struct {
-	code    core.ErrorCode
-	message string
+	code     core.ErrorCode
+	message  string
+	guidance string
 }
 
 // toolErrorBody is the wire shape of a failed tool result's single text item.
 type toolErrorBody struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	Guidance string `json:"guidance,omitempty"`
 }
 
 // structuredText renders the failure as compact JSON. A marshal failure is
-// impossible for two plain strings, but the fallback keeps the message
-// visible rather than dropping it.
+// impossible for plain strings, but the fallback keeps the message visible
+// rather than dropping it.
 func (failure toolFailed) structuredText() string {
-	encoded, err := json.Marshal(toolErrorBody{Code: failure.code.String(), Message: failure.message})
+	encoded, err := json.Marshal(toolErrorBody{Code: failure.code.String(), Message: failure.message, Guidance: failure.guidance})
 	if err != nil {
 		return failure.message
 	}

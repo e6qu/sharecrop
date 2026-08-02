@@ -251,6 +251,7 @@ func TestRejectCommandRoundTrip(t *testing.T) {
 		CreditSelection:  ledger.NoCreditReviewSelection{},
 		TipSelection:     ledger.CreditTipSelection{Amount: amount(t, 3)},
 		BanSelection:     ledger.BanImplementorSelection{},
+		Spend:            ledger.NoSpendCharge{},
 		Draft:            testDraft(t, event.KindSubmissionRejected, userID(t)),
 	}
 	restored, err := decodeRejectCommand(encodeRejectCommand(original))
@@ -346,4 +347,34 @@ func describeTip(outcome ledger.TipOutcome) string {
 
 func itoa(value int64) string {
 	return strconv.FormatInt(value, 10)
+}
+
+// TestSpendChargeRoundTrip pins the spend-charge wire codec, and that a
+// missing charge fails closed at decode.
+func TestSpendChargeRoundTrip(t *testing.T) {
+	none, err := decodeSpendCharge(encodeSpendCharge(ledger.NoSpendCharge{}))
+	if err != nil {
+		t.Fatalf("decode no-charge: %v", err)
+	}
+	if _, matched := none.(ledger.NoSpendCharge); !matched {
+		t.Fatalf("no-charge = %T", none)
+	}
+
+	credentialID, matched := core.NewAgentCredentialID().(core.AgentCredentialIDCreated)
+	if !matched {
+		t.Fatalf("credential id rejected")
+	}
+	original := ledger.ChargeSpendBudget{CredentialID: credentialID.Value, DayLimit: amount(t, 100), Amount: amount(t, 40)}
+	restored, err := decodeSpendCharge(encodeSpendCharge(original))
+	if err != nil {
+		t.Fatalf("decode charge: %v", err)
+	}
+	charge, chargeMatched := restored.(ledger.ChargeSpendBudget)
+	if !chargeMatched || charge.CredentialID != credentialID.Value || charge.DayLimit.Int64() != 100 || charge.Amount.Int64() != 40 {
+		t.Fatalf("charge did not round-trip: %#v", restored)
+	}
+
+	if _, err := decodeSpendCharge(spendChargeWire{}); err == nil {
+		t.Fatalf("missing charge kind was decoded")
+	}
 }

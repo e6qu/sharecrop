@@ -39,7 +39,7 @@ func Seed(ctx context.Context, secret auth.AccessTokenSecret, stores appmux.Stor
 	ledgerService := ledger.NewService(stores.Ledger, recorder, audit.NewService(stores.Audit))
 	assetService := assets.NewService(stores.Assets, recorder)
 
-	return SeedDemoScenario(ctx, authService.Value, organizationService, taskService, ledgerService, submissionService, assetService)
+	return SeedDemoScenario(ctx, authService.Value, organizationService, agentService, taskService, ledgerService, submissionService, assetService)
 }
 
 // demoUserSeed is one of the fixed browser-demo accounts. The email addresses
@@ -86,7 +86,7 @@ func seedErr(reason string) SeedResult { return SeedResult{Err: reason} }
 // mara in either way so the caller always gets a fresh refresh-token cookie
 // - browser storage persists seeded data across page reloads, but the
 // in-memory admin/session state built fresh each reload does not.
-func SeedDemoScenario(ctx context.Context, authService auth.Service, organizationService org.Service, taskService task.Service, ledgerService ledger.Service, submissionService submission.Service, assetService assets.Service) SeedResult {
+func SeedDemoScenario(ctx context.Context, authService auth.Service, organizationService org.Service, agentService agent.Service, taskService task.Service, ledgerService ledger.Service, submissionService submission.Service, assetService assets.Service) SeedResult {
 	maraEmailResult := auth.NewEmailAddress(demoUsers[0].email)
 	maraEmail, matched := maraEmailResult.(auth.EmailAddressAccepted)
 	if !matched {
@@ -105,7 +105,10 @@ func SeedDemoScenario(ctx context.Context, authService auth.Service, organizatio
 	}
 	registerResult := authService.Register(ctx, maraEmail.Value, password.Value, auth.ProvidedDisplayName{Value: maraName.Value})
 	if accepted, matched := registerResult.(auth.RegisterAccepted); matched {
-		if err := seedDemoScenarioData(ctx, authService, organizationService, taskService, ledgerService, submissionService, assetService, accepted.Subject.ID, password.Value); err != "" {
+		if err := verifySeedAccount(ctx, authService, accepted.Subject.ID); err != "" {
+			return seedErr(err)
+		}
+		if err := seedDemoScenarioData(ctx, authService, organizationService, agentService, taskService, ledgerService, submissionService, assetService, accepted.Subject.ID, password.Value); err != "" {
 			return seedErr(err)
 		}
 		return SeedResult{AdminUserID: accepted.Subject.ID, AdminRefreshToken: refreshCookie(accepted.RefreshToken)}
@@ -121,6 +124,22 @@ func SeedDemoScenario(ctx context.Context, authService auth.Service, organizatio
 	return SeedResult{AdminUserID: accepted.Subject.ID, AdminRefreshToken: refreshCookie(accepted.RefreshToken)}
 }
 
+// verifySeedAccount marks a freshly registered demo persona's email verified
+// through the real token flow, which also lands the 100-credit signup grant
+// (grants are written at first verification, not at registration). Demo
+// personas are therefore seeded pre-verified.
+func verifySeedAccount(ctx context.Context, authService auth.Service, userID core.UserID) string {
+	issueResult := authService.RequestEmailVerification(ctx, userID)
+	issued, matched := issueResult.(auth.AccountTokenIssued)
+	if !matched {
+		return "seed email verification token issue failed"
+	}
+	if _, verified := authService.VerifyEmail(ctx, issued.Token).(auth.AccountActionAccepted); !verified {
+		return "seed email verification failed"
+	}
+	return ""
+}
+
 // refreshCookie mirrors internal/http's setRefreshCookie shape (same cookie
 // name), the piece SeedDemoScenario's caller preloads into the WASM
 // binary's own request bridge so the first /api/auth/refresh call succeeds
@@ -129,7 +148,7 @@ func refreshCookie(token auth.RefreshTokenPlain) *http.Cookie {
 	return &http.Cookie{Name: "sharecrop_refresh_token", Value: token.String(), Path: "/"}
 }
 
-func seedDemoScenarioData(ctx context.Context, authService auth.Service, organizationService org.Service, taskService task.Service, ledgerService ledger.Service, submissionService submission.Service, assetService assets.Service, maraID core.UserID, password auth.PasswordSecret) string {
+func seedDemoScenarioData(ctx context.Context, authService auth.Service, organizationService org.Service, agentService agent.Service, taskService task.Service, ledgerService ledger.Service, submissionService submission.Service, assetService assets.Service, maraID core.UserID, password auth.PasswordSecret) string {
 	mara := auth.UserSubject{ID: maraID}
 	memberIDs := make(map[string]core.UserID, len(demoUsers))
 	memberIDs[demoUsers[0].label] = maraID
@@ -149,6 +168,9 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 		accepted, matched := registerResult.(auth.RegisterAccepted)
 		if !matched {
 			return registerResult.(auth.RegisterRejected).Reason.Description()
+		}
+		if err := verifySeedAccount(ctx, authService, accepted.Subject.ID); err != "" {
+			return err
 		}
 		memberIDs[seed.label] = accepted.Subject.ID
 	}
@@ -179,7 +201,7 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 	// deliberately left free of pending submissions so the demo refund flow
 	// still applies (a task with work pending review cannot be refunded).
 	if _, fraudErr := seedFundedOpenTask(ctx, taskService, ledgerService, mara, "Verify 10 ledger transfers for fraud signals",
-		"Review ledger movements and flag suspicious transfers.", task.TaskTypeCodeReview,
+		"Review ledger movements and flag suspicious transfers.", task.TaskTypeCodeReview, task.ParticipationPolicyOpen,
 		`{"kind":"freeform"}`, "", 30); fraudErr != "" {
 		return fraudErr
 	}
@@ -225,7 +247,7 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 	if !matched {
 		return supportTask.(task.CreateRejected).Reason.Description()
 	}
-	fundResult := ledgerService.FundTask(ctx, memberIDs["ren"], supportCreated.Value.ID, mustCreditAmount(20), mustIdempotencyKey("seed-fund-support"))
+	fundResult := ledgerService.FundTask(ctx, memberIDs["ren"], supportCreated.Value.ID, mustCreditAmount(20), mustIdempotencyKey("seed-fund-support"), ledger.SpendByUser{})
 	if _, matched := fundResult.(ledger.TaskFunded); !matched {
 		return "fund task-support failed"
 	}
@@ -291,7 +313,7 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 	if !matched {
 		return "seed submission response was rejected"
 	}
-	submitResult := submissionService.Submit(ctx, submission.SubmitCommand{
+	submitResult := submissionService.Submit(ctx, task.WorkerIsUser{}, submission.SubmitCommand{
 		TaskID:         reviewCreated.Value.ID,
 		SubmitterID:    renSubject.ID,
 		ResponseSource: responseAccepted.Value,
@@ -330,7 +352,7 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 	if !matched {
 		return "seed disputed submission response was rejected"
 	}
-	disputedSubmit := submissionService.Submit(ctx, submission.SubmitCommand{
+	disputedSubmit := submissionService.Submit(ctx, task.WorkerIsUser{}, submission.SubmitCommand{
 		TaskID:         disputedCreated.Value.ID,
 		SubmitterID:    maraID,
 		ResponseSource: disputedResponseAccepted.Value,
@@ -345,7 +367,7 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 	if !matched {
 		return "seed reject note was rejected"
 	}
-	rejectResult := ledgerService.RejectSubmission(ctx, ledger.UserReviewer{ID: memberIDs["ren"]}, disputedCreated.Value.ID, disputedSubmitted.Value.ID, mustIdempotencyKey("seed-reject-disputed"), rejectNote.Value, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{})
+	rejectResult := ledgerService.RejectSubmission(ctx, ledger.UserReviewer{ID: memberIDs["ren"]}, disputedCreated.Value.ID, disputedSubmitted.Value.ID, mustIdempotencyKey("seed-reject-disputed"), rejectNote.Value, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{}, ledger.SpendByUser{})
 	if _, matched := rejectResult.(ledger.SubmissionRejected); !matched {
 		return "seed reject of the disputed submission failed"
 	}
@@ -373,7 +395,7 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 		return "open task-reserved failed"
 	}
 	solSubject := auth.UserSubject{ID: memberIDs["sol"]}
-	if reserveResult := taskService.Reserve(ctx, solSubject, reservedCreated.Value.ID); !isReservationCreated(reserveResult) {
+	if reserveResult := taskService.Reserve(ctx, solSubject, task.WorkerIsUser{}, reservedCreated.Value.ID); !isReservationCreated(reserveResult) {
 		return "seed reservation failed"
 	}
 
@@ -466,12 +488,131 @@ func seedDemoScenarioData(ctx context.Context, authService auth.Service, organiz
 		return "seed transfer note was rejected"
 	}
 	sendResult := ledgerService.SendCredits(ctx, memberIDs["ren"], ledger.TransferFromSelf{}, ledger.TransferToUser{ID: maraID},
-		mustCreditAmount(25), ledger.TransferNoteProvided{Note: sendNoteAccepted.Value}, mustIdempotencyKey("seed-send-ren-mara"))
+		mustCreditAmount(25), ledger.TransferNoteProvided{Note: sendNoteAccepted.Value}, mustIdempotencyKey("seed-send-ren-mara"), ledger.SpendByUser{})
 	if _, matched := sendResult.(ledger.CreditsSent); !matched {
 		return "seed peer credit send failed"
 	}
 
+	if err := seedAgentWorkBudgets(ctx, agentService, taskService, ledgerService, mara, memberIDs); err != "" {
+		return err
+	}
+
 	return ""
+}
+
+// seedAgentWorkBudgets gives mara the two agent credentials the Agents page
+// is built around: one she has allowed to seek work on a budget, with part
+// of today's allowance already used, and one left at the default (an agent
+// does not ask for work until its human says so). The consumption is real -
+// the enabled credential reserves two seeded tasks through its own work
+// origin, which is what charges the day counter - so the meters show
+// numbers the same code path would produce in production.
+func seedAgentWorkBudgets(ctx context.Context, agentService agent.Service, taskService task.Service, ledgerService ledger.Service, mara auth.UserSubject, memberIDs map[string]core.UserID) string {
+	seeking, err := seedCredential(ctx, agentService, mara.ID, "Harvest crew agent",
+		[]agent.Scope{agent.ScopeTasksRead, agent.ScopeSubmissionsWrite, agent.ScopeSubmissionsRead, agent.ScopeNotificationsRead})
+	if err != "" {
+		return err
+	}
+	if _, err := seedCredential(ctx, agentService, mara.ID, "Notebook helper",
+		[]agent.Scope{agent.ScopeTasksRead, agent.ScopeSubmissionsRead}); err != "" {
+		return err
+	}
+
+	budget := agent.NewDailyTaskBudget(10)
+	budgetAccepted, budgetMatched := budget.(agent.DailyTaskBudgetAccepted)
+	if !budgetMatched {
+		return "seed daily task budget was rejected"
+	}
+	concurrent := agent.NewConcurrentReservationCap(3)
+	concurrentAccepted, concurrentMatched := concurrent.(agent.ConcurrentReservationCapAccepted)
+	if !concurrentMatched {
+		return "seed concurrent reservation cap was rejected"
+	}
+	allowedTypes := agent.NewTaskTypesLimited([]task.TaskType{task.TaskTypeResearch, task.TaskTypeDataExtraction, task.TaskTypeDocumentReview})
+	allowedTypesAccepted, allowedTypesMatched := allowedTypes.(agent.TaskTypesLimitedAccepted)
+	if !allowedTypesMatched {
+		return "seed allowed task types were rejected"
+	}
+	tokens := agent.NewTokenBudgetTokens(200000)
+	tokensAccepted, tokensMatched := tokens.(agent.TokenBudgetTokensAccepted)
+	if !tokensMatched {
+		return "seed advisory token budget was rejected"
+	}
+	note := agent.NewTokenBudgetNote("Stop for the day once you have spent this; leave the rest for tomorrow.")
+	noteAccepted, noteMatched := note.(agent.TokenBudgetNoteAccepted)
+	if !noteMatched {
+		return "seed advisory token note was rejected"
+	}
+	policy := agent.WorkPolicyEnabled{Allowances: agent.WorkAllowances{
+		MaxTasksPerDay:         budgetAccepted.Value,
+		ConcurrentReservations: agent.ConcurrentReservationsCapped{Limit: concurrentAccepted.Value},
+		DailySpend:             agent.DailySpendCapped{Limit: mustCreditAmount(50)},
+		TaskTypes:              allowedTypesAccepted.Value,
+		RewardFloor:            agent.RewardFloorAtLeast{Minimum: mustCreditAmount(5)},
+		TokenBudget:            agent.TokenBudgetAdvised{Tokens: tokensAccepted.Value, Note: noteAccepted.Value},
+	}}
+	configured := agentService.ConfigureWorkPolicy(ctx, mara.ID, seeking.ID, policy)
+	budgeted, configuredMatched := configured.(agent.WorkPolicyConfigured)
+	if !configuredMatched {
+		return configured.(agent.ConfigureWorkPolicyRejected).Reason.Description()
+	}
+
+	// Two tasks the agent is allowed to take (an allowed type, a reward
+	// above its floor, and someone else's) so its day counter reads 2 of 10
+	// with 2 of 3 reservations held.
+	agentWork := []struct {
+		owner       string
+		title       string
+		description string
+		taskType    task.TaskType
+		schema      string
+		payload     string
+		reward      int64
+	}{
+		{
+			owner: "tala", title: "Summarise 4 field reports into one weekly brief",
+			description: "Read the four attached field reports and write one brief covering yields, weather losses, and anything needing a decision.",
+			taskType:    task.TaskTypeResearch,
+			schema:      `{"kind":"object","fields":[{"name":"brief","presence":"required","schema":{"kind":"string"}},{"name":"decisions_needed","presence":"required","schema":{"kind":"array","item":{"kind":"string"}}}]}`,
+			payload:     `{"reports":["north-field-week-31","south-field-week-31","orchard-week-31","greenhouse-week-31"]}`,
+			reward:      12,
+		},
+		{
+			owner: "ren", title: "Pull delivery dates out of 12 supplier emails",
+			description: "Each email confirms one delivery. Return the supplier, the item, and the confirmed date for every one of them.",
+			taskType:    task.TaskTypeDataExtraction,
+			schema:      `{"kind":"object","fields":[{"name":"deliveries","presence":"required","schema":{"kind":"array","item":{"kind":"string"}}}]}`,
+			payload:     `{"emails":["birch-supply-2026-08-03","kestrel-seed-2026-08-05"]}`,
+			reward:      8,
+		},
+	}
+	for _, seed := range agentWork {
+		owner := auth.UserSubject{ID: memberIDs[seed.owner]}
+		taskID, createErr := seedFundedOpenTask(ctx, taskService, ledgerService, owner, seed.title, seed.description, seed.taskType, task.ParticipationPolicyReservationRequired, seed.schema, seed.payload, seed.reward)
+		if createErr != "" {
+			return createErr
+		}
+		reserveResult := taskService.Reserve(ctx, mara, budgeted.Value.TaskWorkerOrigin(), taskID)
+		if !isReservationCreated(reserveResult) {
+			return "seed agent reservation failed: " + reserveResult.(task.ReservationRejected).Reason.Description()
+		}
+	}
+
+	return ""
+}
+
+func seedCredential(ctx context.Context, agentService agent.Service, owner core.UserID, label string, scopes []agent.Scope) (agent.Credential, string) {
+	labelResult := agent.NewLabel(label)
+	labelAccepted, labelMatched := labelResult.(agent.LabelAccepted)
+	if !labelMatched {
+		return agent.Credential{}, labelResult.(agent.LabelRejected).Reason.Description()
+	}
+	createResult := agentService.Create(ctx, owner, labelAccepted.Value, agent.NewScopeSet(scopes), nil, nil)
+	created, createMatched := createResult.(agent.CredentialCreated)
+	if !createMatched {
+		return agent.Credential{}, createResult.(agent.CreateRejected).Reason.Description()
+	}
+	return created.Value, ""
 }
 
 func isCatalogMutated(result assets.CatalogMutationResult) bool {
@@ -593,14 +734,16 @@ func isTaskStateChanged(result task.ChangeStateResult) bool {
 	return matched
 }
 
-// seedFundedOpenTask creates a task owned by actor, funds it from the
-// actor's own balance, and opens it - the shape task-ledger-review needs.
-func seedFundedOpenTask(ctx context.Context, taskService task.Service, ledgerService ledger.Service, actor auth.UserSubject, title string, description string, taskType task.TaskType, schemaJSON string, payloadJSON string, amount int64) (core.TaskID, string) {
+// seedFundedOpenTask creates a public credit-rewarded task owned by actor,
+// funds it from the actor's own balance, and opens it. The participation
+// policy is the caller's: task-ledger-review is openly worked, while the
+// tasks the demo's work-seeking agent holds require a reservation.
+func seedFundedOpenTask(ctx context.Context, taskService task.Service, ledgerService ledger.Service, actor auth.UserSubject, title string, description string, taskType task.TaskType, participation task.ParticipationPolicy, schemaJSON string, payloadJSON string, amount int64) (core.TaskID, string) {
 	command := task.CreateCommand{
 		Actor: actor, Owner: task.UserOwner{UserID: actor.ID},
 		Title: seedTitle(title), Description: seedDescription(description),
 		Type: taskType, Reference: task.ReferenceURL{},
-		Reward: mustCreditReward(amount), Participation: task.ParticipationPolicyOpen,
+		Reward: mustCreditReward(amount), Participation: participation,
 		AssigneeScope: task.AssigneeScopeUser, ReservationTTL: task.DefaultReservationTTL(),
 		Visibility: task.PublicVisibility{}, Placement: task.StandalonePlacement{},
 		ResponseSchema: seedSchema(schemaJSON), Payload: task.NoDataPayload{},
@@ -613,7 +756,7 @@ func seedFundedOpenTask(ctx context.Context, taskService task.Service, ledgerSer
 	if !matched {
 		return core.TaskID{}, createResult.(task.CreateRejected).Reason.Description()
 	}
-	fundResult := ledgerService.FundTask(ctx, actor.ID, created.Value.ID, mustCreditAmount(amount), mustIdempotencyKey("seed-fund-"+created.Value.ID.String()))
+	fundResult := ledgerService.FundTask(ctx, actor.ID, created.Value.ID, mustCreditAmount(amount), mustIdempotencyKey("seed-fund-"+created.Value.ID.String()), ledger.SpendByUser{})
 	if _, matched := fundResult.(ledger.TaskFunded); !matched {
 		return core.TaskID{}, "fund seeded task failed"
 	}

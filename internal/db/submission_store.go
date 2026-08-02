@@ -7,6 +7,7 @@ import (
 	"github.com/e6qu/sharecrop/internal/attachment"
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/submission"
+	"github.com/e6qu/sharecrop/internal/task"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,6 +23,30 @@ func NewSubmissionStoreFromHandle(handle Beginner) SubmissionStore {
 	return SubmissionStore{db: handle}
 }
 
+// consumeSubmissionBudget consumes one unit of a work-seeking credential's
+// daily task budget inside the create-submission transaction (a direct
+// submission to an open task is a task engagement, exactly like establishing
+// a reservation). The credential row is locked first so concurrent
+// consumptions through the same credential serialize.
+func (store SubmissionStore) consumeSubmissionBudget(ctx context.Context, tx Tx, charge task.ChargeDailyTaskBudget) *core.DomainError {
+	var lockedID string
+	if err := tx.QueryRow(ctx, "select id::text from agent_credentials where id = $1 for update", charge.CredentialID.String()).Scan(&lockedID); err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "lock agent credential for submission budget failed")
+		return &reason
+	}
+	chargeResult := chargeWorkDayCounter(ctx, tx, workDayKeyAgentTasks+charge.CredentialID.String(), utcDay(time.Now()), 1, charge.DailyTaskLimit)
+	switch typed := chargeResult.(type) {
+	case dayCounterCharged:
+		return nil
+	case dayCounterExhausted:
+		reason := budgetExceededError(dailyTaskBudgetMessage(typed.usedBefore, charge.DailyTaskLimit))
+		return &reason
+	default:
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "consume daily task budget failed")
+		return &reason
+	}
+}
+
 func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID core.SubmissionID, receiptID core.SubmissionReceiptTokenID, receiptHash submission.ReceiptTokenHash, command submission.SubmitCommand, state submission.State, outcome submission.ValidationOutcome, sensitiveFields []submission.SensitiveField) submission.CreateSubmissionStoreResult {
 	tx, err := store.db.Begin(ctx)
 	if err != nil {
@@ -31,6 +56,13 @@ func (store SubmissionStore) CreateSubmission(ctx context.Context, submissionID 
 		rollbackErr := tx.Rollback(ctx)
 		_ = rollbackErr
 	}()
+
+	if charge, budgeted := command.Budget.(task.ChargeDailyTaskBudget); budgeted {
+		if problem := store.consumeSubmissionBudget(ctx, tx, charge); problem != nil {
+			recordBudgetRefusal(ctx, store.db, utcDay(time.Now()))
+			return submission.CreateSubmissionStoreRejected{Reason: *problem}
+		}
+	}
 
 	_, err = tx.Exec(ctx, `
 		insert into submissions (id, task_id, user_id, state, response_json)

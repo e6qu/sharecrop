@@ -475,3 +475,17 @@ func (store *memoryStore) ConsumeRefreshToken(_ context.Context, hash RefreshTok
 	store.consumedByHash[hash.String()] = record
 	return RefreshTokenConsumed{Subject: record.Subject, Family: record.FamilyID}
 }
+
+func TestParseEmailVerificationStateRoundTrips(t *testing.T) {
+	for _, state := range []EmailVerificationState{EmailUnverified, EmailVerified} {
+		accepted, matched := ParseEmailVerificationState(state.String()).(EmailVerificationStateAccepted)
+		if !matched || accepted.Value != state {
+			t.Fatalf("ParseEmailVerificationState(%q) did not round-trip", state.String())
+		}
+	}
+	for _, raw := range []string{"", "pending", "VERIFIED"} {
+		if _, matched := ParseEmailVerificationState(raw).(EmailVerificationStateRejected); !matched {
+			t.Fatalf("ParseEmailVerificationState accepted %q", raw)
+		}
+	}
+}

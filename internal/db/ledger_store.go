@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/core"
 	"github.com/e6qu/sharecrop/internal/event"
@@ -49,6 +50,11 @@ func (store LedgerStore) FundTask(ctx context.Context, command ledger.FundStoreC
 		return rejected
 	}
 
+	if problem := applySpendCharge(ctx, tx, command.Spend); problem != nil {
+		recordBudgetRefusal(ctx, store.db, utcDay(time.Now()))
+		return ledger.FundRejected{Reason: *problem}
+	}
+
 	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient credits to fund the task", command.Draft)
 }
 
@@ -86,6 +92,11 @@ func (store LedgerStore) FundTaskFromOrganization(ctx context.Context, command l
 		return ledger.FundRejected{Reason: *ownerProblem}
 	}
 	draft := command.Draft.WithRecipients(ownerID)
+
+	if problem := applySpendCharge(ctx, tx, command.Spend); problem != nil {
+		recordBudgetRefusal(ctx, store.db, utcDay(time.Now()))
+		return ledger.FundRejected{Reason: *problem}
+	}
 
 	return completeFunding(ctx, tx, account, command.TaskID, command.Amount, command.EntryID, command.IdempotencyKey, "insufficient organization credits to fund the task", draft)
 }
@@ -174,6 +185,10 @@ func (store LedgerStore) AcceptSubmission(ctx context.Context, command ledger.Ac
 		}
 	}
 
+	if problem := applySpendCharge(ctx, tx, command.Spend); problem != nil {
+		recordBudgetRefusal(ctx, store.db, utcDay(time.Now()))
+		return ledger.AcceptRejected{Reason: *problem}
+	}
 	tipResult := payCreditTip(ctx, tx, command.TaskID, command.Reviewer, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.IdempotencyKey, command.TipSelection)
 	tip, tipMatched := tipResult.(tipResolved)
 	if !tipMatched {
@@ -375,6 +390,10 @@ func (store LedgerStore) RejectSubmission(ctx context.Context, command ledger.Re
 		return ledger.RejectRejected{Reason: payoutResult.(payoutRejected).reason}
 	}
 
+	if problem := applySpendCharge(ctx, tx, command.Spend); problem != nil {
+		recordBudgetRefusal(ctx, store.db, utcDay(time.Now()))
+		return ledger.RejectRejected{Reason: *problem}
+	}
 	tipResult := payCreditTip(ctx, tx, command.TaskID, command.Reviewer, rawWorkerID, command.TipDebitEntryID, command.TipCreditEntryID, command.IdempotencyKey, command.TipSelection)
 	tip, tipMatched := tipResult.(tipResolved)
 	if !tipMatched {
@@ -958,6 +977,15 @@ func (store LedgerStore) PeerTransfer(ctx context.Context, command ledger.PeerTr
 	}
 	if spendable < command.Amount.Int64() {
 		return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "insufficient credits to send")}
+	}
+
+	if problem := applyPeerTransferVelocity(ctx, tx, sourceAccount.id, command.Amount.Int64()); problem != nil {
+		recordBudgetRefusal(ctx, store.db, utcDay(time.Now()))
+		return ledger.SendRejected{Reason: *problem}
+	}
+	if problem := applySpendCharge(ctx, tx, command.Spend); problem != nil {
+		recordBudgetRefusal(ctx, store.db, utcDay(time.Now()))
+		return ledger.SendRejected{Reason: *problem}
 	}
 
 	noteText := ""

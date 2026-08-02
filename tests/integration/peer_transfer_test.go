@@ -63,7 +63,7 @@ func TestPeerTransferUserToUser(t *testing.T) {
 	key := "p2p-" + sender.String()
 
 	result := service.SendCredits(context.Background(), sender, ledger.TransferFromSelf{}, ledger.TransferToUser{ID: receiver},
-		mustTransferAmount(t, 30), mustTransferNote(t, "thanks for the review"), mustTransferKey(t, key))
+		mustTransferAmount(t, 30), mustTransferNote(t, "thanks for the review"), mustTransferKey(t, key), ledger.SpendByUser{})
 	sent, matched := result.(ledger.CreditsSent)
 	if !matched {
 		t.Fatalf("send rejected: %#v", result)
@@ -113,7 +113,7 @@ func TestPeerTransferUserToUser(t *testing.T) {
 
 	// Idempotent replay: same key, no new rows, no new events, same outcome.
 	replay := service.SendCredits(context.Background(), sender, ledger.TransferFromSelf{}, ledger.TransferToUser{ID: receiver},
-		mustTransferAmount(t, 30), mustTransferNote(t, "thanks for the review"), mustTransferKey(t, key))
+		mustTransferAmount(t, 30), mustTransferNote(t, "thanks for the review"), mustTransferKey(t, key), ledger.SpendByUser{})
 	replayed, replayMatched := replay.(ledger.CreditsSent)
 	if !replayMatched {
 		t.Fatalf("replay rejected: %#v", replay)
@@ -147,7 +147,7 @@ func TestPeerTransferRejectsInsufficientFundsAndSelfSend(t *testing.T) {
 	receiver := createUser(t, pool, "p2p-reject-receiver")
 
 	overdraw := service.SendCredits(context.Background(), sender, ledger.TransferFromSelf{}, ledger.TransferToUser{ID: receiver},
-		mustTransferAmount(t, 1000), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-overdraw-"+sender.String()))
+		mustTransferAmount(t, 1000), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-overdraw-"+sender.String()), ledger.SpendByUser{})
 	if _, rejected := overdraw.(ledger.SendRejected); !rejected {
 		t.Fatalf("overdraw = %#v, want rejected", overdraw)
 	}
@@ -156,7 +156,7 @@ func TestPeerTransferRejectsInsufficientFundsAndSelfSend(t *testing.T) {
 	}
 
 	selfSend := service.SendCredits(context.Background(), sender, ledger.TransferFromSelf{}, ledger.TransferToUser{ID: sender},
-		mustTransferAmount(t, 5), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-self-"+sender.String()))
+		mustTransferAmount(t, 5), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-self-"+sender.String()), ledger.SpendByUser{})
 	if _, rejected := selfSend.(ledger.SendRejected); !rejected {
 		t.Fatalf("self send = %#v, want rejected", selfSend)
 	}
@@ -181,7 +181,7 @@ func TestPeerTransferOrganizationPaths(t *testing.T) {
 
 	// user -> organization: the depositor needs no membership at all.
 	deposit := service.SendCredits(context.Background(), outsider, ledger.TransferFromSelf{}, ledger.TransferToOrganization{ID: organizationID},
-		mustTransferAmount(t, 40), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-deposit-"+outsider.String()))
+		mustTransferAmount(t, 40), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-deposit-"+outsider.String()), ledger.SpendByUser{})
 	deposited, depositMatched := deposit.(ledger.CreditsSent)
 	if !depositMatched {
 		t.Fatalf("deposit rejected: %#v", deposit)
@@ -209,7 +209,7 @@ func TestPeerTransferOrganizationPaths(t *testing.T) {
 	// organization -> user: a plain member is refused, the billing member
 	// succeeds.
 	denied := service.SendCredits(context.Background(), plainMember, ledger.TransferFromOrganization{ID: organizationID}, ledger.TransferToUser{ID: outsider},
-		mustTransferAmount(t, 10), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-org-denied-"+plainMember.String()))
+		mustTransferAmount(t, 10), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-org-denied-"+plainMember.String()), ledger.SpendByUser{})
 	deniedRejected, deniedMatched := denied.(ledger.SendRejected)
 	if !deniedMatched {
 		t.Fatalf("plain-member org send = %#v, want rejected", denied)
@@ -219,7 +219,7 @@ func TestPeerTransferOrganizationPaths(t *testing.T) {
 	}
 
 	orgSend := service.SendCredits(context.Background(), billingUser, ledger.TransferFromOrganization{ID: organizationID}, ledger.TransferToUser{ID: outsider},
-		mustTransferAmount(t, 15), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-org-send-"+billingUser.String()))
+		mustTransferAmount(t, 15), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-org-send-"+billingUser.String()), ledger.SpendByUser{})
 	orgSent, orgSentMatched := orgSend.(ledger.CreditsSent)
 	if !orgSentMatched {
 		t.Fatalf("billing-member org send rejected: %#v", orgSend)
@@ -237,7 +237,7 @@ func TestPeerTransferOrganizationPaths(t *testing.T) {
 	// organization -> organization is rejected outright.
 	otherOrganization := createOrganization(t, pool, "p2p-org-other")
 	orgToOrg := service.SendCredits(context.Background(), billingUser, ledger.TransferFromOrganization{ID: organizationID}, ledger.TransferToOrganization{ID: otherOrganization},
-		mustTransferAmount(t, 5), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-orgorg-"+billingUser.String()))
+		mustTransferAmount(t, 5), ledger.NoTransferNote{}, mustTransferKey(t, "p2p-orgorg-"+billingUser.String()), ledger.SpendByUser{})
 	if _, rejected := orgToOrg.(ledger.SendRejected); !rejected {
 		t.Fatalf("org-to-org send = %#v, want rejected", orgToOrg)
 	}

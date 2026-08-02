@@ -101,7 +101,7 @@ func TestServiceFundTaskGeneratesEntryAndDelegates(t *testing.T) {
 	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
 	amount := newTestAmount(t, 50)
 
-	result := service.FundTask(context.Background(), newTestUserID(t), newTestTaskID(t), amount, newTestKey(t, "fund-1"))
+	result := service.FundTask(context.Background(), newTestUserID(t), newTestTaskID(t), amount, newTestKey(t, "fund-1"), SpendByUser{})
 	if _, matched := result.(TaskFunded); !matched {
 		t.Fatalf("result = %T, want TaskFunded", result)
 	}
@@ -168,15 +168,15 @@ func TestOrganizationReviewerCannotTipOrBan(t *testing.T) {
 	reviewer := OrganizationReviewer{ID: newTestOrganizationID(t)}
 	note := submissionNote(t, "not accepted")
 
-	creditTip := service.ReviewAcceptSubmission(context.Background(), reviewer, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "org-tip-1"), FullCreditReviewSelection{}, CreditTipSelection{Amount: newTestAmount(t, 5)}, NoCollectibleTipSelection{})
+	creditTip := service.ReviewAcceptSubmission(context.Background(), reviewer, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "org-tip-1"), FullCreditReviewSelection{}, CreditTipSelection{Amount: newTestAmount(t, 5)}, NoCollectibleTipSelection{}, SpendByUser{})
 	if rejected, matched := creditTip.(AcceptRejected); !matched || rejected.Reason.Code() != core.ErrorCodeInvalidArgument {
 		t.Fatalf("credit tip result = %#v, want AcceptRejected invalid_argument", creditTip)
 	}
-	collectibleTip := service.ReviewAcceptSubmission(context.Background(), reviewer, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "org-tip-2"), FullCreditReviewSelection{}, NoTipSelection{}, CollectibleTipSelected{ID: newTestCollectibleID(t)})
+	collectibleTip := service.ReviewAcceptSubmission(context.Background(), reviewer, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "org-tip-2"), FullCreditReviewSelection{}, NoTipSelection{}, CollectibleTipSelected{ID: newTestCollectibleID(t)}, SpendByUser{})
 	if rejected, matched := collectibleTip.(AcceptRejected); !matched || rejected.Reason.Code() != core.ErrorCodeInvalidArgument {
 		t.Fatalf("collectible tip result = %#v, want AcceptRejected invalid_argument", collectibleTip)
 	}
-	ban := service.RejectSubmission(context.Background(), reviewer, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "org-ban-1"), note, NoCreditReviewSelection{}, NoTipSelection{}, BanImplementorSelection{})
+	ban := service.RejectSubmission(context.Background(), reviewer, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "org-ban-1"), note, NoCreditReviewSelection{}, NoTipSelection{}, BanImplementorSelection{}, SpendByUser{})
 	if rejected, matched := ban.(RejectRejected); !matched || rejected.Reason.Code() != core.ErrorCodeInvalidArgument {
 		t.Fatalf("ban result = %#v, want RejectRejected invalid_argument", ban)
 	}
@@ -196,7 +196,7 @@ func TestServiceRejectSubmissionDelegates(t *testing.T) {
 	service := NewService(store, eventtest.NewRecorder(), noopAuditRecorder{})
 	note := submissionNote(t, "needs current data")
 
-	result := service.RejectSubmission(context.Background(), UserReviewer{ID: newTestUserID(t)}, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "reject-1"), note, NoCreditReviewSelection{}, NoTipSelection{}, BanImplementorSelection{})
+	result := service.RejectSubmission(context.Background(), UserReviewer{ID: newTestUserID(t)}, newTestTaskID(t), newTestSubmissionID(t), newTestKey(t, "reject-1"), note, NoCreditReviewSelection{}, NoTipSelection{}, BanImplementorSelection{}, SpendByUser{})
 	if _, matched := result.(SubmissionRejected); !matched {
 		t.Fatalf("result = %T, want SubmissionRejected", result)
 	}

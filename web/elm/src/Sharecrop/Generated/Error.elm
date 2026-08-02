@@ -15,6 +15,7 @@ type ErrorCode
     | ErrorCodeConflict
     | ErrorCodeUnauthenticated
     | ErrorCodeRateLimited
+    | ErrorCodeBudgetExceeded
     | ErrorCodeUnavailable
 
 errorCodeDecoder : Decoder ErrorCode
@@ -49,6 +50,9 @@ errorCodeDecoder =
 
                     "rate_limited" ->
                         Decode.succeed ErrorCodeRateLimited
+
+                    "budget_exceeded" ->
+                        Decode.succeed ErrorCodeBudgetExceeded
 
                     "unavailable" ->
                         Decode.succeed ErrorCodeUnavailable
@@ -86,6 +90,9 @@ errorCodeEncoder errorCode =
 
         ErrorCodeRateLimited ->
             Encode.string "rate_limited"
+
+        ErrorCodeBudgetExceeded ->
+            Encode.string "budget_exceeded"
 
         ErrorCodeUnavailable ->
             Encode.string "unavailable"

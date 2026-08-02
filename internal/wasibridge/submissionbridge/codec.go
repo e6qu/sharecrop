@@ -148,11 +148,58 @@ func decodeSensitiveFields(wires []sensitiveFieldWire) ([]submission.SensitiveFi
 
 // ---- submission.SubmitCommand ----
 
+// workBudgetChargeWire flattens the task.WorkBudgetCharge union: kind is
+// "none" or "daily_task_budget".
+type workBudgetChargeWire struct {
+	Kind           string `json:"kind"`
+	CredentialID   string `json:"credential_id,omitempty"`
+	DailyTaskLimit int64  `json:"daily_task_limit,omitempty"`
+}
+
+const (
+	workBudgetChargeKindNone      = "none"
+	workBudgetChargeKindDailyTask = "daily_task_budget"
+)
+
+// encodeWorkBudgetCharge leaves the kind empty for an unknown (or missing)
+// charge; the decoding side rejects the empty kind, so a malformed charge
+// fails closed at the boundary instead of passing as "no charge".
+func encodeWorkBudgetCharge(charge task.WorkBudgetCharge) workBudgetChargeWire {
+	switch typed := charge.(type) {
+	case task.NoWorkBudgetCharge:
+		return workBudgetChargeWire{Kind: workBudgetChargeKindNone}
+	case task.ChargeDailyTaskBudget:
+		return workBudgetChargeWire{
+			Kind:           workBudgetChargeKindDailyTask,
+			CredentialID:   corewire.EncodeAgentCredentialID(typed.CredentialID),
+			DailyTaskLimit: typed.DailyTaskLimit,
+		}
+	default:
+		return workBudgetChargeWire{}
+	}
+}
+
+func decodeWorkBudgetCharge(wire workBudgetChargeWire) (task.WorkBudgetCharge, error) {
+	switch wire.Kind {
+	case workBudgetChargeKindNone:
+		return task.NoWorkBudgetCharge{}, nil
+	case workBudgetChargeKindDailyTask:
+		credentialID, err := corewire.DecodeAgentCredentialID(wire.CredentialID)
+		if err != nil {
+			return nil, err
+		}
+		return task.ChargeDailyTaskBudget{CredentialID: credentialID, DailyTaskLimit: wire.DailyTaskLimit}, nil
+	default:
+		return nil, fmt.Errorf("unknown work budget charge kind %q", wire.Kind)
+	}
+}
+
 type submitCommandWire struct {
 	TaskID         string                `json:"task_id"`
 	SubmitterID    string                `json:"submitter_id"`
 	ResponseSource string                `json:"response_source"`
 	Attachments    []attachmentwire.Wire `json:"attachments,omitempty"`
+	Budget         workBudgetChargeWire  `json:"budget"`
 	Draft          eventbridge.DraftWire `json:"draft"`
 }
 
@@ -162,6 +209,7 @@ func encodeSubmitCommand(command submission.SubmitCommand) submitCommandWire {
 		SubmitterID:    corewire.EncodeUserID(command.SubmitterID),
 		ResponseSource: encodeResponseSource(command.ResponseSource),
 		Attachments:    attachmentwire.EncodeSlice(command.Attachments),
+		Budget:         encodeWorkBudgetCharge(command.Budget),
 		Draft:          eventbridge.EncodeDraft(command.Draft),
 	}
 }
@@ -183,6 +231,10 @@ func decodeSubmitCommand(wire submitCommandWire) (submission.SubmitCommand, erro
 	if err != nil {
 		return submission.SubmitCommand{}, err
 	}
+	budget, err := decodeWorkBudgetCharge(wire.Budget)
+	if err != nil {
+		return submission.SubmitCommand{}, err
+	}
 	draft, err := eventbridge.DecodeDraft(wire.Draft)
 	if err != nil {
 		return submission.SubmitCommand{}, err
@@ -192,6 +244,7 @@ func decodeSubmitCommand(wire submitCommandWire) (submission.SubmitCommand, erro
 		SubmitterID:    submitterID,
 		ResponseSource: responseSource,
 		Attachments:    attachments,
+		Budget:         budget,
 		Draft:          draft,
 	}, nil
 }

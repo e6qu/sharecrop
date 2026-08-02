@@ -338,3 +338,52 @@ func displayNameForTest(t *testing.T) auth.DisplayName {
 	}
 	return accepted.Value
 }
+
+// TestReservationOriginRoundTrip pins the reservation-origin wire codec, and
+// that a missing origin fails closed at decode instead of passing as an
+// unbudgeted session.
+func TestReservationOriginRoundTrip(t *testing.T) {
+	session, err := decodeReservationOrigin(encodeReservationOrigin(task.ReservedByUserSession{}))
+	if err != nil {
+		t.Fatalf("decode session origin: %v", err)
+	}
+	if _, matched := session.(task.ReservedByUserSession); !matched {
+		t.Fatalf("session origin = %T", session)
+	}
+
+	credentialID, matched := core.NewAgentCredentialID().(core.AgentCredentialIDCreated)
+	if !matched {
+		t.Fatalf("credential id rejected")
+	}
+	original := task.ReservedViaWorkCredential{
+		CredentialID:   credentialID.Value,
+		DailyTaskLimit: 5,
+		Concurrent:     task.ReservationConcurrencyCapAtMost{Limit: 2},
+	}
+	restored, err := decodeReservationOrigin(encodeReservationOrigin(original))
+	if err != nil {
+		t.Fatalf("decode credential origin: %v", err)
+	}
+	via, viaMatched := restored.(task.ReservedViaWorkCredential)
+	if !viaMatched || via.CredentialID != original.CredentialID || via.DailyTaskLimit != 5 {
+		t.Fatalf("credential origin did not round-trip: %#v", restored)
+	}
+	if capped, capMatched := via.Concurrent.(task.ReservationConcurrencyCapAtMost); !capMatched || capped.Limit != 2 {
+		t.Fatalf("concurrency cap did not round-trip: %#v", via.Concurrent)
+	}
+
+	uncapped := task.ReservedViaWorkCredential{CredentialID: credentialID.Value, DailyTaskLimit: 1, Concurrent: task.NoReservationConcurrencyCap{}}
+	restoredUncapped, err := decodeReservationOrigin(encodeReservationOrigin(uncapped))
+	if err != nil {
+		t.Fatalf("decode uncapped origin: %v", err)
+	}
+	if via, viaMatched := restoredUncapped.(task.ReservedViaWorkCredential); !viaMatched {
+		t.Fatalf("uncapped origin = %T", restoredUncapped)
+	} else if _, noCap := via.Concurrent.(task.NoReservationConcurrencyCap); !noCap {
+		t.Fatalf("uncapped origin grew a cap: %#v", via.Concurrent)
+	}
+
+	if _, err := decodeReservationOrigin(reservationOriginWire{}); err == nil {
+		t.Fatalf("missing origin kind was decoded")
+	}
+}

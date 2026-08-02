@@ -19,13 +19,15 @@ continuity files if task scope changes.
    key-management decision. Every emission path is now on the transactional
    outbox.
 
-3. **Deliberate product decisions still open.** Sybil stance for signup
-   grants (per-IP throttle is the only guard; peer transfers make farmed
-   credits consolidatable); auto-accept policy (validation + escrow +
-   limits exist as building blocks); API versioning (`/v1`); socket-mode
-   webhooks for local agents — gated on the edge decision in item 1, with
-   agent event polling/long-poll as the shipped interim; local-timezone
-   expiry input (needs a JS port or dependency).
+3. **Deliberate product decisions still open.** Auto-accept policy
+   (validation, escrow, budgets, and disputes now all exist as building
+   blocks; with primarily-human requesters it is an opt-in convenience);
+   API versioning (`/v1`); socket-mode webhooks for local agents — gated on
+   the edge decision in item 1, with agent event polling/long-poll as the
+   shipped interim; local-timezone expiry input (needs a JS port or
+   dependency); whether OIDC-asserted verified addresses should satisfy the
+   signup-grant gate. The sybil stance is now decided: grants require a
+   verified address and peer transfers carry a daily ceiling.
 
 4. **Economy polish follow-ups.** Directory read models expose no display
    names (send-success notes label users by email); feed sentences for
@@ -87,6 +89,12 @@ UI minors queue:
   continue replacing raw-id fields as directory-backed selectors become available.
 
 Recently finished (details in [WHAT_WE_DID.md](./WHAT_WE_DID.md)):
+
+- Agent work budgets: default-deny work-seeking per credential with
+  human-configured daily task, concurrency, spend, task-type, and reward-floor
+  allowances (plus an advisory token budget), in-transaction enforcement with
+  `budget_exceeded`, MCP `get_my_budget`, verification-gated signup grants,
+  peer-transfer velocity ceiling, sixteen task types, and operator counters.
 
 - Collectible release and ownership visibility: reversible withdrawal for
   catalog entries and instances (unique slots re-validated on release),
