@@ -191,6 +191,34 @@ func (store *memoryStore) RevokeCredential(_ context.Context, owner core.UserID,
 	return RevokeStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "agent credential was not found")}
 }
 
+func (store *memoryStore) UpdateWorkPolicy(_ context.Context, owner core.UserID, id core.AgentCredentialID, policy WorkPolicy) UpdateWorkPolicyStoreResult {
+	for index := range store.records {
+		record := &store.records[index]
+		if record.credential.ID != id || record.credential.UserID != owner {
+			continue
+		}
+		if record.credential.State != StateActive {
+			return UpdateWorkPolicyStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "a revoked agent credential cannot carry a work policy")}
+		}
+		if record.credential.TaskID != nil {
+			return UpdateWorkPolicyStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "a task-scoped worker credential cannot carry a work policy")}
+		}
+		record.credential.WorkPolicy = policy
+		return UpdateWorkPolicyStoreUpdated{Value: record.credential}
+	}
+	return UpdateWorkPolicyStoreRejected{Reason: core.NewDomainError(core.ErrorCodeNotFound, "agent credential was not found")}
+}
+
+func (store *memoryStore) ReadWorkActivity(_ context.Context, owner core.UserID) WorkActivityStoreResult {
+	values := make([]CredentialWorkActivity, 0)
+	for index := range store.records {
+		if store.records[index].credential.UserID == owner {
+			values = append(values, CredentialWorkActivity{CredentialID: store.records[index].credential.ID})
+		}
+	}
+	return WorkActivityStoreListed{Values: values}
+}
+
 func (store *memoryStore) revoke(id core.AgentCredentialID) {
 	for index := range store.records {
 		if store.records[index].credential.ID == id {

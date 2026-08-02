@@ -139,6 +139,7 @@ func TestReserveThenSubmitDirectly(t *testing.T) {
 		t.Fatalf("reservation id rejected")
 	}
 	command := task.ReservationCommand{
+		Origin:      task.ReservedByUserSession{},
 		TaskID:      taskID,
 		Assignee:    task.UserAssignee{UserID: worker},
 		RequestedBy: worker,

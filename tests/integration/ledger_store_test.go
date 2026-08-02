@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/e6qu/sharecrop/internal/auth"
 	"github.com/e6qu/sharecrop/internal/core"
@@ -349,6 +350,15 @@ func newPool(t *testing.T) *pgxpool.Pool {
 
 func createUser(t *testing.T, pool *pgxpool.Pool, prefix string) core.UserID {
 	t.Helper()
+	userID := createUnverifiedUser(t, pool, prefix)
+	verifyUserEmail(t, pool, userID)
+	return userID
+}
+
+// createUnverifiedUser registers an account without verifying it: it holds a
+// credit account with a zero balance until verification lands the grant.
+func createUnverifiedUser(t *testing.T, pool *pgxpool.Pool, prefix string) core.UserID {
+	t.Helper()
 	userID := newUserID(t)
 	email, matched := auth.NewEmailAddress(prefix + "-" + userID.String() + "@example.com").(auth.EmailAddressAccepted)
 	if !matched {
@@ -367,6 +377,26 @@ func createUser(t *testing.T, pool *pgxpool.Pool, prefix string) core.UserID {
 		t.Fatalf("create user credential rejected")
 	}
 	return userID
+}
+
+// verifyUserEmail marks the account verified through the real account-token
+// store flow, which also writes the 100-credit signup grant (grants land at
+// first verification, not at registration).
+func verifyUserEmail(t *testing.T, pool *pgxpool.Pool, userID core.UserID) {
+	t.Helper()
+	store := db.NewAuthStore(pool)
+	tokenResult := auth.NewAccountToken(time.Now(), auth.AccountTokenKindEmailVerification)
+	token, tokenMatched := tokenResult.(auth.AccountTokenCreated)
+	if !tokenMatched {
+		t.Fatalf("account token rejected")
+	}
+	if _, stored := store.StoreAccountToken(context.Background(), userID, auth.AccountTokenKindEmailVerification, token.Value).(auth.AccountTokenStored); !stored {
+		t.Fatalf("store account token rejected")
+	}
+	consumeResult := store.ConsumeAccountToken(context.Background(), auth.AccountTokenKindEmailVerification, auth.HashAccountToken(token.Value.Plain), time.Now())
+	if _, consumed := consumeResult.(auth.AccountTokenConsumed); !consumed {
+		t.Fatalf("consume account token rejected: %#v", consumeResult)
+	}
 }
 
 func insertTask(t *testing.T, pool *pgxpool.Pool, owner core.UserID, state string, rewardAmount int64) core.TaskID {
@@ -448,6 +478,7 @@ func fundCommand(t *testing.T, owner core.UserID, taskID core.TaskID, amount int
 		TaskID:         taskID,
 		Amount:         creditAmount(t, amount),
 		IdempotencyKey: idempotencyKey(t, key),
+		Spend:          ledger.NoSpendCharge{},
 		Draft:          testEventDraft(t, event.KindTaskFunded, owner),
 	}
 }
@@ -463,6 +494,7 @@ func acceptCommand(t *testing.T, owner core.UserID, taskID core.TaskID, submissi
 		TaskID:           taskID,
 		SubmissionID:     submissionID,
 		IdempotencyKey:   idempotencyKey(t, key),
+		Spend:            ledger.NoSpendCharge{},
 		Draft:            testEventDraft(t, event.KindSubmissionAccepted, owner),
 	}
 }

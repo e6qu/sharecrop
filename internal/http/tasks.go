@@ -179,9 +179,9 @@ func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
 	taskIDAccepted := taskIDResult.(taskIDAccepted)
 
 	actorResult := server.requireWorkerSubject(r, agent.ScopeSubmissionsWrite, taskIDAccepted.value)
-	actor, actorMatched := actorResult.(userSubjectAccepted)
+	actor, actorMatched := actorResult.(workerSubjectAccepted)
 	if !actorMatched {
-		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(userSubjectRejected).reason)
+		writeError(w, http.StatusUnauthorized, core.ErrorCodeUnauthenticated, actorResult.(workerSubjectRejected).reason)
 		return
 	}
 
@@ -191,7 +191,7 @@ func (server Server) reserveTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	requestAccepted := requestResult.(reservationRequestAccepted)
-	result := server.reserveTaskForRequest(r.Context(), actor.subject, taskIDAccepted.value, requestAccepted.value)
+	result := server.reserveTaskForRequest(r.Context(), actor.subject, actor.origin, taskIDAccepted.value, requestAccepted.value)
 	created, matched := result.(task.ReservationCreated)
 	if !matched {
 		writeDomainError(w, result.(task.ReservationRejected).Reason)
@@ -225,10 +225,10 @@ func decodeReservationRequest(r *http.Request) reservationRequestResult {
 	return reservationRequestAccepted{value: request}
 }
 
-func (server Server) reserveTaskForRequest(ctx context.Context, actor auth.UserSubject, taskID core.TaskID, request reservationRequest) task.ReservationResult {
+func (server Server) reserveTaskForRequest(ctx context.Context, actor auth.UserSubject, origin task.WorkerOrigin, taskID core.TaskID, request reservationRequest) task.ReservationResult {
 	switch request.AssigneeKind {
 	case "", task.AssigneeScopeUser.String():
-		return server.taskService.Reserve(ctx, actor, taskID)
+		return server.taskService.Reserve(ctx, actor, origin, taskID)
 	case task.AssigneeScopeOrganizationTeam.String():
 		organizationIDResult := core.ParseOrganizationID(request.OrganizationID)
 		organizationID, organizationIDMatched := organizationIDResult.(core.OrganizationIDCreated)
@@ -240,14 +240,14 @@ func (server Server) reserveTaskForRequest(ctx context.Context, actor auth.UserS
 		if !teamIDMatched {
 			return task.ReservationRejected{Reason: teamIDResult.(core.TeamIDRejected).Reason}
 		}
-		return server.taskService.ReserveForOrganizationTeam(ctx, actor, taskID, organizationID.Value, teamID.Value)
+		return server.taskService.ReserveForOrganizationTeam(ctx, actor, origin, taskID, organizationID.Value, teamID.Value)
 	case task.AssigneeScopeTeam.String():
 		teamIDResult := core.ParseTeamID(request.TeamID)
 		teamID, teamIDMatched := teamIDResult.(core.TeamIDCreated)
 		if !teamIDMatched {
 			return task.ReservationRejected{Reason: teamIDResult.(core.TeamIDRejected).Reason}
 		}
-		return server.taskService.ReserveForTeam(ctx, actor, taskID, teamID.Value)
+		return server.taskService.ReserveForTeam(ctx, actor, origin, taskID, teamID.Value)
 	default:
 		return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "reservation assignee kind is invalid")}
 	}

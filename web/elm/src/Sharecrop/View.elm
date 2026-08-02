@@ -23,7 +23,7 @@ import Sharecrop.Generated.TaskSeries as TaskSeries
 import Sharecrop.Generated.Team as Team
 import Sharecrop.ResponseSchema as ResponseSchema
 import Sharecrop.Sprites as Sprites
-import Sharecrop.Labels exposing (absoluteTimeLabel, allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, domainEventKindLabel, domainEventKindTag, eventSentence, kindLabel, notificationKindLabel, notificationSentence, participationPolicyLabel, participationPolicyTag, participationUsesReservation, relativeTimeLabel, reservationStateLabel, rewardLabel, scopeLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
+import Sharecrop.Labels exposing (absoluteTimeLabel, allScopes, assigneeScopeLabel, assigneeScopeTag, availabilityKindLabel, collectibleKindLabel, collectibleKindTag, collectiblePolicyLabel, collectiblePolicyTag, collectibleStateLabel, credentialStateLabel, domainEventKindLabel, domainEventKindTag, durationLabel, eventSentence, kindLabel, notificationKindLabel, notificationSentence, participationPolicyLabel, participationPolicyTag, participationUsesReservation, pluralCount, relativeTimeLabel, reservationStateLabel, rewardLabel, scopeLabel, scopeTag, submissionStateLabel, taskStateGuidance, taskStateLabel, viewerActionLabel)
 import Sharecrop.Types exposing (..)
 import Sharecrop.Ui as Ui exposing (testId)
 import Time
@@ -330,6 +330,10 @@ adminView state =
                 Nothing ->
                     Ui.emptyState "admin-operations-empty" "windmill" "Operations status is not loaded."
             ]
+        , Ui.disclosure "admin-section-operations-counters"
+            True
+            "Operations counters"
+            [ opsCountersPanel state.opsCounters ]
         , Ui.disclosure "admin-section-audit"
             False
             "Audit events"
@@ -442,9 +446,81 @@ adminView state =
         ]
 
 
+{-| The operations counters: event-pipeline health, webhook-delivery
+health, and the current UTC day's economy totals.
+
+The counters come from aggregates the host process keeps, and a runtime
+without that store answers `unavailable`. That answer is rendered as itself.
+Showing nine zeros instead would read as "everything is quiet" — the exact
+opposite of "nobody is counting" — and an operator would act on it.
+
+-}
+opsCountersPanel : OpsCounters -> Html Msg
+opsCountersPanel counters =
+    case counters of
+        OpsCountersPending ->
+            Ui.emptyState "admin-ops-counters-pending" "windmill" "Counters are loading."
+
+        OpsCountersUnavailable reason ->
+            div [ Html.Attributes.class "space-y-1", testId "admin-ops-counters-unavailable" ]
+                [ p [ Html.Attributes.class "text-sm text-farm-ink" ]
+                    [ text "Counters are served by the host process and are unavailable on this runtime." ]
+                , p [ Html.Attributes.class "text-xs text-farm-muted break-words" ] [ text reason ]
+                ]
+
+        OpsCountersLoaded value ->
+            div [ Html.Attributes.class "space-y-4", testId "admin-ops-counters" ]
+                [ opsCountersGroup "Event pipeline"
+                    [ operationFact "Events awaiting dispatch" (String.fromInt value.outboxRecordedBacklog)
+                    , operationFact "Events that stopped retrying" (String.fromInt value.outboxDispatchFailed)
+                    ]
+                , opsCountersGroup "Webhook deliveries"
+                    [ operationFact "Pending" (String.fromInt value.webhookDeliveriesPending)
+                    , operationFact "Dead" (String.fromInt value.webhookDeliveriesDead)
+                    , operationFact "Oldest pending" (oldestPendingWebhookLabel value)
+                    ]
+                , opsCountersGroup "Today (UTC)"
+                    [ operationFact "Signup grants" (String.fromInt value.signupGrantsToday)
+                    , operationFact "Peer transfers" (String.fromInt value.peerTransfersToday)
+                    , operationFact "Credits moved by peer transfer" (String.fromInt value.peerTransferCreditsToday)
+                    , operationFact "Agent budget refusals" (String.fromInt value.budgetRefusalsToday)
+                    ]
+                ]
+
+
+opsCountersGroup : String -> List (Html Msg) -> Html Msg
+opsCountersGroup groupName facts =
+    div [ Html.Attributes.class "space-y-2" ]
+        [ Ui.label_ groupName
+        , Html.dl [ Html.Attributes.class "grid gap-2 text-sm sm:grid-cols-2" ] facts
+        ]
+
+
+{-| The age of the oldest webhook delivery still waiting. The counter
+reports 0 both when nothing is pending and when the oldest pending delivery
+is younger than a second, so the pending count decides which of those it is.
+-}
+oldestPendingWebhookLabel : Admin.OperationsCountersResponse -> String
+oldestPendingWebhookLabel value =
+    if value.webhookDeliveriesPending == 0 then
+        "Nothing pending"
+
+    else
+        durationLabel value.oldestPendingWebhookAgeSeconds
+
+
 operationFact : String -> String -> Html Msg
 operationFact labelText valueText =
-    div [ Html.Attributes.class "border-2 border-farm-line-soft p-2" ]
+    labelledFact [] labelText valueText
+
+
+{-| One labelled fact in a bordered cell: the caption above, the value
+below. Used by the admin operations grids and by an agent's allowance
+summary, so a fact reads the same wherever it appears.
+-}
+labelledFact : List (Html.Attribute Msg) -> String -> String -> Html Msg
+labelledFact attrs labelText valueText =
+    div (Html.Attributes.class "border-2 border-farm-line-soft p-2" :: attrs)
         [ Html.dt [ Html.Attributes.class "text-xs font-semibold text-farm-muted" ] [ text labelText ]
         , Html.dd [ Html.Attributes.class "break-words text-farm-ink" ] [ text valueText ]
         ]
@@ -2440,9 +2516,34 @@ creditAccountCard state =
             , p [ Html.Attributes.class "font-display text-xl leading-relaxed text-farm-accent-strong break-words", testId "balance" ] [ text (balanceLabel state.balance) ]
             ]
          ]
+            ++ verificationHint state
             ++ allocatedLine state.balance
             ++ [ sendCreditsPanel "send-credits" SendCreditsClicked "Send credits from your spendable balance to another user or to an organization. The transfer shows up in both ledgers." state ]
         )
+
+
+{-| Why an unverified account's balance is zero, said where the zero is.
+The signup grant is written when the address is first verified, so this is
+an explanation of a real state and not a warning: the account works, it just
+has not been funded yet.
+-}
+verificationHint : LoggedInModel -> List (Html Msg)
+verificationHint state =
+    if state.emailVerificationState /= emailUnverifiedState then
+        []
+
+    else
+        [ Ui.insetPanel [ Html.Attributes.class "space-y-1", testId "verify-email-hint" ]
+            [ p [ Html.Attributes.class "text-sm text-farm-ink" ]
+                [ text "Verify your email to receive your 100-credit signup grant." ]
+            , a
+                [ href ("#/users/" ++ state.subjectId)
+                , Html.Attributes.class "text-xs underline"
+                , testId "verify-email-hint-link"
+                ]
+                [ text "Open Account settings" ]
+            ]
+        ]
 
 
 {-| The peer credit-send form, shared by the Overview card (personal
@@ -2833,9 +2934,30 @@ schemaKindOption selectedKind kind =
     option [ value kind, selected (kind == selectedKind) ] [ text kind ]
 
 
+{-| The task types, grouped the way a person picking one thinks about them.
+This is the single source for every task-type control: the create form's
+selector, the discovery/queue filters, and an agent's allowed-types list all
+read these groups, so the sixteen types can never drift apart between
+screens. The order matches internal/task's wire order within each group.
+-}
+taskTypeGroups : List ( String, List String )
+taskTypeGroups =
+    [ ( "Anything", [ "general" ] )
+    , ( "Review and testing"
+      , [ "code_review", "security_review", "product_review", "ui_ux_review", "qa_testing", "document_review", "architecture_review" ]
+      )
+    , ( "Analysis and investigation"
+      , [ "research", "data_extraction", "troubleshooting", "code_analysis", "threat_analysis" ]
+      )
+    , ( "Writing and planning"
+      , [ "documentation_writing", "diagram_writing", "planning" ]
+      )
+    ]
+
+
 allTaskTypes : List String
 allTaskTypes =
-    [ "general", "code_review", "security_review", "product_review", "ui_ux_review", "qa_testing" ]
+    List.concatMap Tuple.second taskTypeGroups
 
 
 taskTypeLabel : String -> String
@@ -2856,6 +2978,36 @@ taskTypeLabel tag =
         "qa_testing" ->
             "QA testing"
 
+        "document_review" ->
+            "Document review"
+
+        "documentation_writing" ->
+            "Documentation writing"
+
+        "diagram_writing" ->
+            "Diagram writing"
+
+        "planning" ->
+            "Planning"
+
+        "research" ->
+            "Research"
+
+        "data_extraction" ->
+            "Data extraction"
+
+        "troubleshooting" ->
+            "Troubleshooting"
+
+        "code_analysis" ->
+            "Code analysis"
+
+        "architecture_review" ->
+            "Architecture review"
+
+        "threat_analysis" ->
+            "Threat analysis"
+
         _ ->
             "General"
 
@@ -2868,20 +3020,38 @@ taskTypeSelect selectedType =
         , onInput CreateTaskTypeChanged
         , testId "create-task-type"
         ]
-        (List.map (taskTypeOption selectedType) allTaskTypes)
+        (taskTypeOptionGroups createTaskTypeLabel selectedType)
 
 
-taskTypeOption : String -> String -> Html Msg
-taskTypeOption selectedType tag =
-    let
-        optionLabel =
-            if tag == "general" then
-                "Freeform (no template)"
+{-| On the create form, "general" is described by what choosing it does
+(no template is applied) rather than by its name.
+-}
+createTaskTypeLabel : String -> String
+createTaskTypeLabel tag =
+    if tag == "general" then
+        "Freeform (no template)"
 
-            else
-                taskTypeLabel tag
-    in
-    option [ value tag, selected (selectedType == tag) ] [ text optionLabel ]
+    else
+        taskTypeLabel tag
+
+
+{-| The sixteen task types as `<optgroup>` blocks. Sixteen flat options is a
+wall; the groups let someone find "Research" without reading all of them.
+-}
+taskTypeOptionGroups : (String -> String) -> String -> List (Html Msg)
+taskTypeOptionGroups optionLabel selectedType =
+    List.map (taskTypeOptionGroup optionLabel selectedType) taskTypeGroups
+
+
+taskTypeOptionGroup : (String -> String) -> String -> ( String, List String ) -> Html Msg
+taskTypeOptionGroup optionLabel selectedType ( groupName, tags ) =
+    Html.optgroup [ Html.Attributes.attribute "label" groupName ]
+        (List.map (taskTypeOption optionLabel selectedType) tags)
+
+
+taskTypeOption : (String -> String) -> String -> String -> Html Msg
+taskTypeOption optionLabel selectedType tag =
+    option [ value tag, selected (selectedType == tag) ] [ text (optionLabel tag) ]
 
 
 taskTemplate : String -> Maybe { description : String, schema : String }
@@ -2915,6 +3085,36 @@ taskTemplate taskType =
             Just
                 { description = "Test the linked build against its requirements. Report the cases you ran and the overall result."
                 , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"summary\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"cases\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"result\",\"presence\":\"required\",\"schema\":{\"kind\":\"enum\",\"values\":[\"pass\",\"fail\"]}}]}"
+                }
+
+        "research" ->
+            Just
+                { description = "Research the question stated above. Answer it directly, then list the sources you relied on and anything you could not establish."
+                , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"answer\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"findings\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"sources\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"open_questions\",\"presence\":\"may_omit\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}}]}"
+                }
+
+        "documentation_writing" ->
+            Just
+                { description = "Write the documentation described above for the stated audience. Return the finished document, its intended audience, and the assumptions you made."
+                , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"document\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"audience\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"assumptions\",\"presence\":\"may_omit\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}}]}"
+                }
+
+        "planning" ->
+            Just
+                { description = "Plan the work described above. Break it into ordered steps, state what each step depends on, and name the risks worth planning around."
+                , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"goal\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"steps\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"risks\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"confidence\",\"presence\":\"required\",\"schema\":{\"kind\":\"enum\",\"values\":[\"low\",\"medium\",\"high\"]}}]}"
+                }
+
+        "troubleshooting" ->
+            Just
+                { description = "Diagnose the failure described above. Say what is going wrong, why, and what to do about it — and say so plainly if the evidence does not settle the cause."
+                , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"diagnosis\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"evidence\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"fix\",\"presence\":\"required\",\"schema\":{\"kind\":\"string\"}},{\"name\":\"certainty\",\"presence\":\"required\",\"schema\":{\"kind\":\"enum\",\"values\":[\"confirmed\",\"likely\",\"unresolved\"]}}]}"
+                }
+
+        "data_extraction" ->
+            Just
+                { description = "Extract the requested fields from the referenced source. Return one record per item found, and list anything you could not extract instead of guessing."
+                , schema = "{\"kind\":\"object\",\"fields\":[{\"name\":\"records\",\"presence\":\"required\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}},{\"name\":\"record_count\",\"presence\":\"required\",\"schema\":{\"kind\":\"integer\"}},{\"name\":\"unextracted\",\"presence\":\"may_omit\",\"schema\":{\"kind\":\"array\",\"item\":{\"kind\":\"string\"}}}]}"
                 }
 
         _ ->
@@ -3159,21 +3359,18 @@ taskFilterChip selected ( tag, labelText ) =
 taskTypeFilterSelect : String -> String -> (String -> Msg) -> Html Msg
 taskTypeFilterSelect identifier selectedType change =
     Ui.fieldLabel "Task type"
-        [ select [ Html.Attributes.class Ui.fieldClass, value selectedType, onInput change, testId identifier ]
-            (List.map (stringOption selectedType) taskTypeFilterOptions)
-        ]
+        [ taskTypeFilterOptionsSelect identifier selectedType change ]
 
 
-taskTypeFilterOptions : List ( String, String )
-taskTypeFilterOptions =
-    [ ( "", "All types" )
-    , ( "general", "General" )
-    , ( "code_review", "Code review" )
-    , ( "security_review", "Security review" )
-    , ( "product_review", "Product review" )
-    , ( "ui_ux_review", "UI/UX review" )
-    , ( "qa_testing", "QA testing" )
-    ]
+{-| The task-type filter control, offering every task type grouped as on the
+create form, with a leading "All types" for the unfiltered case. Shared by
+the task list, the team and organization queues, and the webhook
+marketplace filter.
+-}
+taskTypeFilterOptionsSelect : String -> String -> (String -> Msg) -> Html Msg
+taskTypeFilterOptionsSelect identifier selectedType change =
+    select [ Html.Attributes.class Ui.fieldClass, value selectedType, onInput change, testId identifier ]
+        (blankOption "All types" :: taskTypeOptionGroups taskTypeLabel selectedType)
 
 
 taskSortSelect : String -> String -> (String -> Msg) -> Html Msg
@@ -3411,7 +3608,7 @@ agentsView origin state =
             , maybeNote state.agentMessage "agent-message"
             ]
         , newCredentialView origin state.newCredential
-        , credentialsList state.credentials
+        , credentialsList state
         , webhooksSection state
         ]
 
@@ -3486,9 +3683,7 @@ webhookAudienceDetail state =
                     [ text "Marketplace webhooks deliver every newly opened public task (the task_opened event). Narrow them with the optional filters below." ]
                 , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ]
                     [ Ui.fieldLabel "Task type (optional)"
-                        [ select [ Html.Attributes.class Ui.fieldClass, value state.webhookFilterTaskType, onInput WebhookFilterTaskTypeChanged, testId "webhook-filter-task-type" ]
-                            (List.map (stringOption state.webhookFilterTaskType) taskTypeFilterOptions)
-                        ]
+                        [ taskTypeFilterOptionsSelect "webhook-filter-task-type" state.webhookFilterTaskType WebhookFilterTaskTypeChanged ]
                     , Ui.fieldLabel "Minimum credit reward (optional)"
                         [ Ui.textInput [ type_ "number", placeholder "no floor", value state.webhookFilterMinReward, onInput WebhookFilterMinRewardChanged, testId "webhook-filter-min-reward" ] ]
                     ]
@@ -3723,28 +3918,35 @@ newCredentialView origin created =
             text ""
 
 
-credentialsList : Loaded Agent.AgentCredentialResponse -> Html Msg
-credentialsList credentials =
-    case credentials.failure of
+credentialsList : LoggedInModel -> Html Msg
+credentialsList state =
+    case state.credentials.failure of
         Just message ->
             loadFailureView "credentials" message
 
         Nothing ->
-            if List.isEmpty credentials.items then
+            if List.isEmpty state.credentials.items then
                 text ""
 
             else
-                div [ Html.Attributes.class "mt-4 divide-y-2 divide-farm-line-soft", testId "credentials" ] (List.map credentialRow credentials.items)
+                div [ Html.Attributes.class "mt-4 space-y-4" ]
+                    [ Ui.sectionTitle "Your agents"
+                    , div [ Html.Attributes.class "space-y-3", testId "credentials" ] (List.map (credentialRow state) state.credentials.items)
+                    , maybeNote state.workPolicyMessage "work-policy-message"
+                    ]
 
 
-credentialRow : Agent.AgentCredentialResponse -> Html Msg
-credentialRow credential =
-    div [ Html.Attributes.class "flex items-center justify-between py-2", testId "credential-row" ]
-        [ div []
-            [ p [ Html.Attributes.class "font-medium" ] [ text credential.label ]
-            , p [ Html.Attributes.class "text-xs text-farm-muted" ] [ text (credentialStateLabel credential.state ++ expiryNote credential.expiresAt ++ " · " ++ String.join ", " (List.map scopeLabel credential.scopes)) ]
+credentialRow : LoggedInModel -> Agent.AgentCredentialResponse -> Html Msg
+credentialRow state credential =
+    Ui.subCard [ Html.Attributes.class "space-y-3", testId "credential-row" ]
+        [ div [ Html.Attributes.class "flex flex-wrap items-start justify-between gap-2" ]
+            [ div [ Html.Attributes.class "min-w-0 space-y-1" ]
+                [ p [ Html.Attributes.class "font-medium break-words" ] [ text credential.label ]
+                , p [ Html.Attributes.class "text-xs text-farm-muted break-words" ] [ text (credentialStateLabel credential.state ++ expiryNote credential.expiresAt ++ " · " ++ String.join ", " (List.map scopeLabel credential.scopes)) ]
+                ]
+            , revokeButton credential
             ]
-        , revokeButton credential
+        , workPolicySection state credential
         ]
 
 
@@ -3755,6 +3957,255 @@ expiryNote expiresAt =
 
     else
         " · expires " ++ absoluteTimeLabel expiresAt
+
+
+{-| The work-budget block on one credential row.
+
+An agent does not ask for work by default, so the resting state of this
+block is a plain statement that the agent is not allowed to seek work and
+one control to change that — deliberate, not an error. Enabling shows what
+the agent is allowed to do and how much of today's allowance it has already
+used.
+
+Two credentials never get the block: a revoked one can do nothing at all,
+and a task-scoped worker credential operates inside the single reservation
+it was issued for (the API refuses a policy on it), so offering the control
+would be offering something that cannot happen.
+
+-}
+workPolicySection : LoggedInModel -> Agent.AgentCredentialResponse -> Html Msg
+workPolicySection state credential =
+    case credential.state of
+        Agent.AgentCredentialStateRevoked ->
+            text ""
+
+        Agent.AgentCredentialStateActive ->
+            if credential.taskID /= "" then
+                Ui.noteText "credential-task-scoped" "Issued for one task. It works inside that task's reservation and carries no work budget."
+
+            else if state.workPolicyEditing == Just credential.id then
+                Ui.insetPanel [ Html.Attributes.class "space-y-4", testId "work-policy-editor" ] [ workPolicyForm state credential ]
+
+            else
+                case credential.workPolicy.workSeeking of
+                    Agent.WorkSeekingStateDisabled ->
+                        workSeekingDisabledPanel credential
+
+                    Agent.WorkSeekingStateEnabled ->
+                        workSeekingEnabledPanel credential
+
+
+workSeekingDisabledPanel : Agent.AgentCredentialResponse -> Html Msg
+workSeekingDisabledPanel credential =
+    Ui.insetPanel [ Html.Attributes.class "space-y-3", testId "work-policy-disabled" ]
+        [ workSeekingStateLine "neutral" "Not allowed to seek work"
+        , p [ Html.Attributes.class "text-sm text-farm-muted" ]
+            [ text "This agent only does the work you hand it. It will not look for tasks, reserve them, or spend your credits until you allow it and give it a budget." ]
+        , Ui.primaryButton [ type_ "button", onClick (AllowWorkSeekingClicked credential), testId "allow-work-seeking" ] "Allow this agent to seek work"
+        ]
+
+
+workSeekingEnabledPanel : Agent.AgentCredentialResponse -> Html Msg
+workSeekingEnabledPanel credential =
+    Ui.insetPanel [ Html.Attributes.class "space-y-3", testId "work-policy-enabled" ]
+        [ workSeekingStateLine "success" "Allowed to seek work"
+        , div [ Html.Attributes.class "space-y-3", testId "work-policy-usage" ]
+            [ dailyTaskMeter credential
+            , concurrentReservationMeter credential
+            , dailySpendMeter credential
+            ]
+        , Html.dl [ Html.Attributes.class "grid gap-2 text-sm sm:grid-cols-2" ]
+            [ labelledFact [ testId "work-policy-task-types" ] "Task types" (allowedTaskTypesLabel credential.workPolicy.taskTypes)
+            , labelledFact [ testId "work-policy-min-reward" ] "Minimum reward" (minRewardLabel credential.workPolicy.minRewardCredits)
+            ]
+        , tokenBudgetLine credential.workPolicy
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.secondaryButton [ type_ "button", onClick (EditWorkPolicyClicked credential), testId "edit-work-policy" ] "Edit allowances"
+            , Ui.dangerButton [ type_ "button", onClick (StopWorkSeekingClicked credential.id), testId "stop-work-seeking" ] "Stop seeking work"
+            ]
+        ]
+
+
+workSeekingStateLine : String -> String -> Html Msg
+workSeekingStateLine tone stateText =
+    div [ Html.Attributes.class "flex flex-wrap items-center gap-2" ]
+        [ Ui.label_ "Seeking work"
+        , span [ testId "work-seeking-state" ] [ Ui.badgeVariant tone stateText ]
+        ]
+
+
+dailyTaskMeter : Agent.AgentCredentialResponse -> Html Msg
+dailyTaskMeter credential =
+    Ui.meter "work-tasks-today"
+        (String.fromInt credential.tasksUsedToday ++ " of " ++ String.fromInt credential.workPolicy.maxTasksPerDay ++ " tasks today")
+        credential.tasksUsedToday
+        credential.workPolicy.maxTasksPerDay
+
+
+concurrentReservationMeter : Agent.AgentCredentialResponse -> Html Msg
+concurrentReservationMeter credential =
+    if credential.workPolicy.maxConcurrentReservations == 0 then
+        Ui.noteText "work-reservations-now" (pluralCount credential.activeReservations "task" ++ " held right now (no limit set)")
+
+    else
+        Ui.meter "work-reservations-now"
+            (String.fromInt credential.activeReservations ++ " of " ++ String.fromInt credential.workPolicy.maxConcurrentReservations ++ " tasks held at once")
+            credential.activeReservations
+            credential.workPolicy.maxConcurrentReservations
+
+
+{-| Credits spent today only reads as consumption when the human set a daily
+cap; without one it is a plain fact about the day, so it is worded that way
+rather than shown as a meter with no ceiling.
+-}
+dailySpendMeter : Agent.AgentCredentialResponse -> Html Msg
+dailySpendMeter credential =
+    if credential.workPolicy.maxCreditsPerDay == 0 then
+        Ui.noteText "work-credits-today" (String.fromInt credential.creditsSpentToday ++ " credits spent today (no daily cap set)")
+
+    else
+        Ui.meter "work-credits-today"
+            (String.fromInt credential.creditsSpentToday ++ " of " ++ String.fromInt credential.workPolicy.maxCreditsPerDay ++ " credits spent today")
+            credential.creditsSpentToday
+            credential.workPolicy.maxCreditsPerDay
+
+
+{-| The allowed task types, always read back in the order the task-type
+groups present them rather than in whatever order the store returns the
+restriction. The same policy would otherwise be described differently on
+two page loads.
+-}
+allowedTaskTypesLabel : List String -> String
+allowedTaskTypesLabel taskTypes =
+    if List.isEmpty taskTypes then
+        "Any task type"
+
+    else
+        String.join ", " (List.map taskTypeLabel (List.filter (\tag -> List.member tag taskTypes) allTaskTypes))
+
+
+minRewardLabel : Int -> String
+minRewardLabel minimum =
+    if minimum == 0 then
+        "Any reward"
+
+    else
+        "At least " ++ String.fromInt minimum ++ " credits per task"
+
+
+{-| The advisory token budget, always labelled as advisory where it is
+shown: Sharecrop stores it and hands it back to the agent but never meters
+model tokens, and a budget that looks enforced would be a lie.
+-}
+tokenBudgetLine : Agent.AgentWorkPolicyResponse -> Html Msg
+tokenBudgetLine policy =
+    if policy.tokenBudgetTokens == 0 then
+        text ""
+
+    else
+        div [ Html.Attributes.class "space-y-1 border-2 border-farm-line-soft p-2", testId "work-policy-token-budget" ]
+            [ p [ Html.Attributes.class "text-sm text-farm-ink" ]
+                [ text (String.fromInt policy.tokenBudgetTokens ++ " tokens a day — advisory only; Sharecrop does not enforce this. Your agent reads it and limits itself.") ]
+            , if policy.tokenBudgetNote == "" then
+                text ""
+
+              else
+                p [ Html.Attributes.class "text-xs text-farm-muted break-words" ] [ text policy.tokenBudgetNote ]
+            ]
+
+
+{-| The suggested daily task budget prefilled when a human first allows an
+agent to seek work: a number small enough that an unattended agent cannot
+run away with the day, and large enough to be useful.
+-}
+suggestedDailyTaskBudget : String
+suggestedDailyTaskBudget =
+    "10"
+
+
+workPolicyForm : LoggedInModel -> Agent.AgentCredentialResponse -> Html Msg
+workPolicyForm state credential =
+    form [ Html.Attributes.class "space-y-4", onSubmit (SaveWorkPolicyClicked credential.id), testId "work-policy-form" ]
+        [ Ui.sectionTitle ("What " ++ credential.label ++ " may take on")
+        , p [ Html.Attributes.class "text-sm text-farm-muted" ]
+            [ text "Sharecrop enforces these limits every time this agent asks for work. Leave a field blank for no limit." ]
+
+        -- The number fields carry no `min` attribute on purpose: a native
+        -- constraint would cancel the form's submit event, and with it the
+        -- sentence explaining what is wrong (see saveWorkPolicyCommand).
+        , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ]
+            [ Ui.fieldLabel "Tasks per day (required)"
+                [ Ui.textInput [ type_ "number", placeholder suggestedDailyTaskBudget, value state.workPolicyTasksPerDay, onInput WorkPolicyTasksPerDayChanged, testId "work-policy-tasks-per-day" ] ]
+            , Ui.fieldLabel "Tasks held at once (blank for no limit)"
+                [ Ui.textInput [ type_ "number", placeholder "no limit", value state.workPolicyMaxConcurrent, onInput WorkPolicyMaxConcurrentChanged, testId "work-policy-max-concurrent" ] ]
+            , Ui.fieldLabel "Credits it may spend per day (blank for no limit)"
+                [ Ui.textInput [ type_ "number", placeholder "no limit", value state.workPolicyMaxCredits, onInput WorkPolicyMaxCreditsChanged, testId "work-policy-max-credits" ] ]
+            , Ui.fieldLabel "Minimum reward per task (blank for none)"
+                [ Ui.textInput [ type_ "number", placeholder "no minimum", value state.workPolicyMinReward, onInput WorkPolicyMinRewardChanged, testId "work-policy-min-reward" ] ]
+            ]
+        , Ui.label_ "Task types it may take"
+        , p [ Html.Attributes.class "text-xs text-farm-muted" ]
+            [ text "Leave every box clear to allow all task types." ]
+        , div [ Html.Attributes.class "gap-3 sm:columns-2" ]
+            (List.map (workPolicyTaskTypeGroup state.workPolicyTaskTypes) taskTypeGroups)
+        , Ui.label_ "Advisory token budget"
+        , p [ Html.Attributes.class "text-sm text-farm-ink", testId "work-policy-token-advisory" ]
+            [ text "Advisory — Sharecrop does not enforce this. Your agent reads it and limits itself." ]
+        , div [ Html.Attributes.class "grid gap-3 sm:grid-cols-2" ]
+            [ Ui.fieldLabel "Model tokens a day (blank for none)"
+                [ Ui.textInput [ type_ "number", placeholder "none", value state.workPolicyTokenBudget, onInput WorkPolicyTokenBudgetChanged, testId "work-policy-token-budget-tokens" ] ]
+            , Ui.fieldLabel "Note for your agent"
+                [ Ui.textInput [ type_ "text", placeholder "How to pace the day's work", value state.workPolicyTokenNote, onInput WorkPolicyTokenNoteChanged, testId "work-policy-token-note" ] ]
+            ]
+        , div [ Html.Attributes.class "flex flex-wrap gap-2" ]
+            [ Ui.primaryButton [ type_ "submit", testId "save-work-policy" ] (workPolicySubmitLabel credential)
+            , Ui.secondaryButton [ type_ "button", onClick CloseWorkPolicyClicked, testId "cancel-work-policy" ] "Cancel"
+            ]
+        , maybeNote state.workPolicyMessage "work-policy-form-message"
+        ]
+
+
+workPolicySubmitLabel : Agent.AgentCredentialResponse -> String
+workPolicySubmitLabel credential =
+    case credential.workPolicy.workSeeking of
+        Agent.WorkSeekingStateEnabled ->
+            "Save allowances"
+
+        Agent.WorkSeekingStateDisabled ->
+            "Allow work with this budget"
+
+
+workPolicyTaskTypeGroup : List String -> ( String, List String ) -> Html Msg
+workPolicyTaskTypeGroup selected ( groupName, tags ) =
+    -- The groups differ a lot in size, so they flow down two CSS columns and
+    -- are kept whole rather than sitting in a grid whose rows are as tall as
+    -- the largest group in them.
+    div [ Html.Attributes.class "mb-3 space-y-1 break-inside-avoid" ]
+        (Ui.label_ groupName :: List.map (workPolicyTaskTypeCheckbox selected) tags)
+
+
+workPolicyTaskTypeCheckbox : List String -> String -> Html Msg
+workPolicyTaskTypeCheckbox selected tag =
+    Ui.checkbox
+        [ checked (List.member tag selected)
+        , onCheck (\_ -> ToggleWorkPolicyTaskType tag)
+        , testId ("work-policy-type-" ++ tag)
+        ]
+        (taskTypeLabel tag)
+
+
+{-| The confirmation shown after a work policy is saved: it names the
+credential and states the new arrangement, so the human sees what they just
+authorised rather than a bare "Saved".
+-}
+workPolicySavedLabel : Agent.AgentCredentialResponse -> String
+workPolicySavedLabel credential =
+    case credential.workPolicy.workSeeking of
+        Agent.WorkSeekingStateEnabled ->
+            credential.label ++ " may seek work, up to " ++ pluralCount credential.workPolicy.maxTasksPerDay "task" ++ " a day."
+
+        Agent.WorkSeekingStateDisabled ->
+            credential.label ++ " has stopped seeking work."
 
 
 revokeButton : Agent.AgentCredentialResponse -> Html Msg

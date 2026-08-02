@@ -298,6 +298,81 @@ fieldError message =
         ]
 
 
+{-| A consumption meter: a sentence naming the numbers ("3 of 10 tasks
+today"), a headroom word once the allowance is nearly gone, and a hard-edged
+pixel bar underneath.
+
+The bar is `aria-hidden` decoration — the sentence carries every number, so
+nothing is conveyed by the bar or its color alone (WCAG 1.4.1). The fill
+tone and the headroom word change together at four fifths of the allowance
+and again when it is used up, so "near the cap" is legible at a glance and
+still readable without color.
+
+`limit` is the allowance; a limit of zero or less has no meter to draw and
+renders the sentence alone (callers use the uncapped wording there).
+
+-}
+meter : String -> String -> Int -> Int -> Html msg
+meter identifier sentence used limit =
+    Html.div [ class "space-y-1", testId identifier ]
+        [ p [ class "flex flex-wrap items-baseline gap-x-2 text-sm text-farm-ink" ]
+            (text sentence :: meterHeadroom used limit)
+        , if limit > 0 then
+            Html.div
+                [ class "h-3 w-full max-w-[16rem] border-2 border-farm-line bg-farm-field"
+                , attribute "aria-hidden" "true"
+                ]
+                [ Html.div
+                    [ class ("h-full " ++ meterFillClass used limit)
+                    , Html.Attributes.style "width" (String.fromInt (meterPercent used limit) ++ "%")
+                    ]
+                    []
+                ]
+
+          else
+            text ""
+        ]
+
+
+meterPercent : Int -> Int -> Int
+meterPercent used limit =
+    if limit <= 0 then
+        0
+
+    else
+        min 100 (used * 100 // limit)
+
+
+{-| The headroom word: absent while there is room, "near cap" from four
+fifths of the allowance, "cap reached" once it is spent.
+-}
+meterHeadroom : Int -> Int -> List (Html msg)
+meterHeadroom used limit =
+    if limit <= 0 then
+        []
+
+    else if used >= limit then
+        [ badgeVariant "danger" "cap reached" ]
+
+    else if used * 5 >= limit * 4 then
+        [ badgeVariant "warning" "near cap" ]
+
+    else
+        []
+
+
+meterFillClass : Int -> Int -> String
+meterFillClass used limit =
+    if used >= limit then
+        "bg-farm-danger"
+
+    else if used * 5 >= limit * 4 then
+        "bg-farm-warning"
+
+    else
+        "bg-farm-accent"
+
+
 badge : String -> Html msg
 badge value =
     badgeVariant "neutral" value

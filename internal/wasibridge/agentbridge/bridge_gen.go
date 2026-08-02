@@ -19,6 +19,8 @@ const (
 	methodVerifyCredential = "agent.VerifyCredential"
 	methodListCredentials  = "agent.ListCredentials"
 	methodRevokeCredential = "agent.RevokeCredential"
+	methodUpdateWorkPolicy = "agent.UpdateWorkPolicy"
+	methodReadWorkActivity = "agent.ReadWorkActivity"
 )
 
 type createCredentialArgs struct {
@@ -38,6 +40,16 @@ type listCredentialsArgs struct {
 type revokeCredentialArgs struct {
 	UserID string `json:"userid"`
 	ID     string `json:"id"`
+}
+
+type updateWorkPolicyArgs struct {
+	UserID     string         `json:"userid"`
+	ID         string         `json:"id"`
+	WorkPolicy workPolicyWire `json:"workpolicy"`
+}
+
+type readWorkActivityArgs struct {
+	UserID string `json:"userid"`
 }
 
 // Dispatch services one store call against store: decode the arguments, call the
@@ -97,6 +109,34 @@ func Dispatch(ctx context.Context, store agent.Store, method string, args []byte
 			return nil, err
 		}
 		return json.Marshal(encodeRevokeResult(store.RevokeCredential(ctx, argUserID, argID)))
+	case methodUpdateWorkPolicy:
+		var decoded updateWorkPolicyArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("agent bridge: decode UpdateWorkPolicy args: %w", err)
+		}
+		argUserID, err := corewire.DecodeUserID(decoded.UserID)
+		if err != nil {
+			return nil, err
+		}
+		argID, err := corewire.DecodeAgentCredentialID(decoded.ID)
+		if err != nil {
+			return nil, err
+		}
+		argWorkPolicy, err := decodeWorkPolicy(decoded.WorkPolicy)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeUpdateWorkPolicyResult(store.UpdateWorkPolicy(ctx, argUserID, argID, argWorkPolicy)))
+	case methodReadWorkActivity:
+		var decoded readWorkActivityArgs
+		if err := json.Unmarshal(args, &decoded); err != nil {
+			return nil, fmt.Errorf("agent bridge: decode ReadWorkActivity args: %w", err)
+		}
+		argUserID, err := corewire.DecodeUserID(decoded.UserID)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(encodeWorkActivityResult(store.ReadWorkActivity(ctx, argUserID)))
 	default:
 		return nil, fmt.Errorf("agent bridge: unknown method %q", method)
 	}
@@ -194,6 +234,46 @@ func (g GuestStore) RevokeCredential(ctx context.Context, argUserID core.UserID,
 	result, err := decodeRevokeResult(wire)
 	if err != nil {
 		return agent.RevokeStoreRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) UpdateWorkPolicy(ctx context.Context, argUserID core.UserID, argID core.AgentCredentialID, argWorkPolicy agent.WorkPolicy) agent.UpdateWorkPolicyStoreResult {
+	args, err := json.Marshal(updateWorkPolicyArgs{UserID: corewire.EncodeUserID(argUserID), ID: corewire.EncodeAgentCredentialID(argID), WorkPolicy: encodeWorkPolicy(argWorkPolicy)})
+	if err != nil {
+		return agent.UpdateWorkPolicyStoreRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodUpdateWorkPolicy, args)
+	if err != nil {
+		return agent.UpdateWorkPolicyStoreRejected{Reason: guestError(err)}
+	}
+	var wire credentialResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return agent.UpdateWorkPolicyStoreRejected{Reason: guestError(err)}
+	}
+	result, err := decodeUpdateWorkPolicyResult(wire)
+	if err != nil {
+		return agent.UpdateWorkPolicyStoreRejected{Reason: guestError(err)}
+	}
+	return result
+}
+
+func (g GuestStore) ReadWorkActivity(ctx context.Context, argUserID core.UserID) agent.WorkActivityStoreResult {
+	args, err := json.Marshal(readWorkActivityArgs{UserID: corewire.EncodeUserID(argUserID)})
+	if err != nil {
+		return agent.WorkActivityStoreRejected{Reason: guestError(err)}
+	}
+	raw, err := g.invoke(methodReadWorkActivity, args)
+	if err != nil {
+		return agent.WorkActivityStoreRejected{Reason: guestError(err)}
+	}
+	var wire workActivityResultWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return agent.WorkActivityStoreRejected{Reason: guestError(err)}
+	}
+	result, err := decodeWorkActivityResult(wire)
+	if err != nil {
+		return agent.WorkActivityStoreRejected{Reason: guestError(err)}
 	}
 	return result
 }

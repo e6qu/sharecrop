@@ -427,12 +427,22 @@ func (store TaskStore) CreateReservation(ctx context.Context, reservationID core
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "assignee already has an active reservation")}
 	}
 
+	var viaCredentialID *string
+	if viaCredential, budgeted := command.Origin.(task.ReservedViaWorkCredential); budgeted {
+		rawCredentialID := viaCredential.CredentialID.String()
+		viaCredentialID = &rawCredentialID
+		if problem := store.consumeReservationBudget(ctx, tx, viaCredential); problem != nil {
+			recordBudgetRefusal(ctx, store.db, utcDay(time.Now()))
+			return task.CreateReservationStoreRejected{Reason: *problem}
+		}
+	}
+
 	_, err = tx.Exec(ctx, `
 		insert into task_reservations (
-			id, task_id, assignee_kind, user_id, team_id, organization_id, state, requested_by_user_id, expires_at
+			id, task_id, assignee_kind, user_id, team_id, organization_id, state, requested_by_user_id, expires_at, reserved_via_credential_id
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, now() + make_interval(hours => $9))
-	`, reservationID.String(), command.TaskID.String(), assigneeColumns.kind, assigneeColumns.userID, assigneeColumns.teamID, assigneeColumns.organizationID, reservationState.value.String(), command.RequestedBy.String(), ttlHours)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, now() + make_interval(hours => $9), $10)
+	`, reservationID.String(), command.TaskID.String(), assigneeColumns.kind, assigneeColumns.userID, assigneeColumns.teamID, assigneeColumns.organizationID, reservationState.value.String(), command.RequestedBy.String(), ttlHours, viaCredentialID)
 	if err != nil {
 		return task.CreateReservationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeConflict, "task already has an active reservation")}
 	}
@@ -451,6 +461,44 @@ func (store TaskStore) CreateReservation(ctx context.Context, reservationID core
 		return task.CreateReservationStoreRejected{Reason: result.(reservationMissing).reason}
 	}
 	return task.CreateReservationStoreAccepted{Value: found.value}
+}
+
+// consumeReservationBudget enforces a work-seeking credential's reservation
+// budgets inside the create-reservation transaction: the credential row is
+// locked first so concurrent reserves through the same credential serialize,
+// then the concurrent-reservation cap is checked against the reservations
+// attributed to the credential, then one unit of the daily task budget is
+// consumed. A refusal rolls back with the caller.
+func (store TaskStore) consumeReservationBudget(ctx context.Context, tx Tx, origin task.ReservedViaWorkCredential) *core.DomainError {
+	var lockedID string
+	if err := tx.QueryRow(ctx, "select id::text from agent_credentials where id = $1 for update", origin.CredentialID.String()).Scan(&lockedID); err != nil {
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "lock agent credential for reservation budget failed")
+		return &reason
+	}
+
+	if capped, matched := origin.Concurrent.(task.ReservationConcurrencyCapAtMost); matched {
+		var active int64
+		if err := tx.QueryRow(ctx, "select count(*) from task_reservations where reserved_via_credential_id = $1 and state = 'active'", origin.CredentialID.String()).Scan(&active); err != nil {
+			reason := core.NewDomainError(core.ErrorCodeInvalidState, "count credential reservations failed")
+			return &reason
+		}
+		if active >= capped.Limit {
+			reason := budgetExceededError(concurrentReservationMessage(active, capped.Limit))
+			return &reason
+		}
+	}
+
+	chargeResult := chargeWorkDayCounter(ctx, tx, workDayKeyAgentTasks+origin.CredentialID.String(), utcDay(time.Now()), 1, origin.DailyTaskLimit)
+	switch typed := chargeResult.(type) {
+	case dayCounterCharged:
+		return nil
+	case dayCounterExhausted:
+		reason := budgetExceededError(dailyTaskBudgetMessage(typed.usedBefore, origin.DailyTaskLimit))
+		return &reason
+	default:
+		reason := core.NewDomainError(core.ErrorCodeInvalidState, "consume daily task budget failed")
+		return &reason
+	}
 }
 
 func (store TaskStore) ChangeReservationState(ctx context.Context, taskID core.TaskID, reservationID core.TaskReservationID, state task.ReservationState, plan event.Plan) task.ChangeReservationStateStoreResult {

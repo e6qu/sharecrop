@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { password, uniqueEmail } from "./helpers.ts";
+import { password, uniqueEmail, verifyAccountByApi } from "./helpers.ts";
 import { accountLifecycleScenario } from "./scenarios.ts";
 
-test("guest entry and account lifecycle controls work in the browser", async ({ page }) => {
+test("guest entry and account lifecycle controls work in the browser", async ({ page, request }) => {
   const email = uniqueEmail("ui-account");
   const { changedPassword, resetPassword } = accountLifecycleScenario;
 
@@ -16,6 +16,9 @@ test("guest entry and account lifecycle controls work in the browser", async ({ 
   await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
   await page.getByTestId("register").click();
+  await expect(page.getByTestId("balance")).toHaveText("0 credits");
+  await verifyAccountByApi(request, email);
+  await page.reload();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-account-menu").click();

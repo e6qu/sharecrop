@@ -24,6 +24,11 @@ type authResponse struct {
 	// DisplayName is the signed-in user's display name. Empty for guest
 	// sessions, which have no profile.
 	DisplayName string `json:"display_name"`
+	// EmailVerificationState is "unverified" or "verified" for user sessions
+	// (a fresh registration is always unverified until the email-verification
+	// confirm lands the signup grant). Empty for guest sessions, which have
+	// no email.
+	EmailVerificationState string `json:"email_verification_state"`
 }
 
 // accountProfileResponse is the signed-in user's own profile.
@@ -31,6 +36,9 @@ type accountProfileResponse struct {
 	ID          string `json:"id"`
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
+	// EmailVerificationState is "unverified" or "verified"; the signup credit
+	// grant lands when the account first becomes verified.
+	EmailVerificationState string `json:"email_verification_state"`
 }
 
 func (accountProfileResponse) writableResponse() {}
@@ -207,7 +215,7 @@ type errorResponse struct {
 	// Code is the machine-readable error code (core.ErrorCode wire value):
 	// one of invalid_id, invalid_enum, invalid_state, invalid_argument,
 	// not_found, permission_denied, conflict, unauthenticated, rate_limited,
-	// or unavailable.
+	// budget_exceeded, or unavailable.
 	Code string `json:"code"`
 }
 

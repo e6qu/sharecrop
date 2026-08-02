@@ -214,14 +214,15 @@ func decodeCredentialRecord(wire credentialRecordWire) (auth.CredentialRecord, e
 }
 
 type userDirectoryEntryWire struct {
-	ID          string `json:"id"`
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name"`
-	Status      string `json:"status"`
+	ID                string `json:"id"`
+	Email             string `json:"email"`
+	DisplayName       string `json:"display_name"`
+	Status            string `json:"status"`
+	VerificationState string `json:"verification_state"`
 }
 
 func encodeUserDirectoryEntry(entry auth.UserDirectoryEntry) userDirectoryEntryWire {
-	return userDirectoryEntryWire{ID: corewire.EncodeUserID(entry.ID), Email: encodeEmail(entry.Email), DisplayName: encodeDisplayName(entry.DisplayName), Status: entry.Status}
+	return userDirectoryEntryWire{ID: corewire.EncodeUserID(entry.ID), Email: encodeEmail(entry.Email), DisplayName: encodeDisplayName(entry.DisplayName), Status: entry.Status, VerificationState: entry.VerificationState.String()}
 }
 
 func decodeUserDirectoryEntry(wire userDirectoryEntryWire) (auth.UserDirectoryEntry, error) {
@@ -237,7 +238,12 @@ func decodeUserDirectoryEntry(wire userDirectoryEntryWire) (auth.UserDirectoryEn
 	if err != nil {
 		return auth.UserDirectoryEntry{}, err
 	}
-	return auth.UserDirectoryEntry{ID: id, Email: email, DisplayName: displayName, Status: wire.Status}, nil
+	verificationResult := auth.ParseEmailVerificationState(wire.VerificationState)
+	verification, verificationMatched := verificationResult.(auth.EmailVerificationStateAccepted)
+	if !verificationMatched {
+		return auth.UserDirectoryEntry{}, fmt.Errorf("user directory verification state %q is invalid", wire.VerificationState)
+	}
+	return auth.UserDirectoryEntry{ID: id, Email: email, DisplayName: displayName, Status: wire.Status, VerificationState: verification.Value}, nil
 }
 
 type refreshTokenRecordWire struct {

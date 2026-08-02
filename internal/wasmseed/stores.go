@@ -39,5 +39,9 @@ func StoresFromHandle(handle db.Beginner) appmux.Stores {
 		// the limiter mechanism but with a budget the scenario cannot exhaust.
 		RegistrationRateLimiter: db.NewRateLimiterFromHandle(handle, "register", demoRegistrationRateCapacity, httpserver.RegistrationRateRefillPerSec),
 		MCPSessions:             db.NewMCPSessionStoreFromHandle(handle),
+		// The demo's SQLite database holds the same outbox, delivery, ledger,
+		// and budget-counter tables production aggregates over, so the demo
+		// serves real counters instead of the unavailable reader.
+		OpsCounters: db.NewOpsCountersStoreFromHandle(handle),
 	}
 }

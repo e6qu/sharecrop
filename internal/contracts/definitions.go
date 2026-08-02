@@ -399,6 +399,24 @@ func adminModule() Module {
 					{Name: NewElmValueName("secureCookies"), JSONName: NewJSONFieldName("secure_cookies"), Type: StringRef{}},
 				},
 			},
+			// OperationsCountersResponse mirrors GET
+			// /api/admin/operations/counters: outbox and webhook-delivery
+			// health plus the current UTC day's economy totals.
+			// oldestPendingWebhookAgeSeconds is 0 when no delivery is pending.
+			Product{
+				Name: NewElmTypeName("OperationsCountersResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("outboxRecordedBacklog"), JSONName: NewJSONFieldName("outbox_recorded_backlog"), Type: IntRef{}},
+					{Name: NewElmValueName("outboxDispatchFailed"), JSONName: NewJSONFieldName("outbox_dispatch_failed"), Type: IntRef{}},
+					{Name: NewElmValueName("webhookDeliveriesPending"), JSONName: NewJSONFieldName("webhook_deliveries_pending"), Type: IntRef{}},
+					{Name: NewElmValueName("webhookDeliveriesDead"), JSONName: NewJSONFieldName("webhook_deliveries_dead"), Type: IntRef{}},
+					{Name: NewElmValueName("oldestPendingWebhookAgeSeconds"), JSONName: NewJSONFieldName("oldest_pending_webhook_age_seconds"), Type: IntRef{}},
+					{Name: NewElmValueName("signupGrantsToday"), JSONName: NewJSONFieldName("signup_grants_today"), Type: IntRef{}},
+					{Name: NewElmValueName("peerTransfersToday"), JSONName: NewJSONFieldName("peer_transfers_today"), Type: IntRef{}},
+					{Name: NewElmValueName("peerTransferCreditsToday"), JSONName: NewJSONFieldName("peer_transfer_credits_today"), Type: IntRef{}},
+					{Name: NewElmValueName("budgetRefusalsToday"), JSONName: NewJSONFieldName("budget_refusals_today"), Type: IntRef{}},
+				},
+			},
 			Product{
 				Name: NewElmTypeName("AuditEventResponse"),
 				Fields: []Field{
@@ -610,7 +628,7 @@ func errorModule() Module {
 	return Module{
 		Name: NewModuleName("Sharecrop.Generated.Error"),
 		Definitions: []Definition{
-			// ErrorCode mirrors internal/core/domain_error.go: the nine domain
+			// ErrorCode mirrors internal/core/domain_error.go: the ten domain
 			// codes plus "unavailable", which handlers write for 5xx
 			// infrastructure failures.
 			Enum{
@@ -625,6 +643,7 @@ func errorModule() Module {
 					{Name: NewElmTypeName("ErrorCodeConflict"), Tag: "conflict"},
 					{Name: NewElmTypeName("ErrorCodeUnauthenticated"), Tag: "unauthenticated"},
 					{Name: NewElmTypeName("ErrorCodeRateLimited"), Tag: "rate_limited"},
+					{Name: NewElmTypeName("ErrorCodeBudgetExceeded"), Tag: "budget_exceeded"},
 					{Name: NewElmTypeName("ErrorCodeUnavailable"), Tag: "unavailable"},
 				},
 			},
@@ -659,6 +678,10 @@ func authModule() Module {
 					{Name: NewElmValueName("role"), JSONName: NewJSONFieldName("role"), Type: StringRef{}},
 					{Name: NewElmValueName("username"), JSONName: NewJSONFieldName("username"), Type: StringRef{}},
 					{Name: NewElmValueName("displayName"), JSONName: NewJSONFieldName("display_name"), Type: StringRef{}},
+					// "unverified" or "verified" for user sessions (the
+					// signup grant lands at first verification); empty for
+					// guest sessions, which have no email.
+					{Name: NewElmValueName("emailVerificationState"), JSONName: NewJSONFieldName("email_verification_state"), Type: StringRef{}},
 				},
 			},
 			Product{
@@ -667,6 +690,9 @@ func authModule() Module {
 					{Name: NewElmValueName("id"), JSONName: NewJSONFieldName("id"), Type: StringRef{}},
 					{Name: NewElmValueName("email"), JSONName: NewJSONFieldName("email"), Type: StringRef{}},
 					{Name: NewElmValueName("displayName"), JSONName: NewJSONFieldName("display_name"), Type: StringRef{}},
+					// "unverified" or "verified"; the signup credit grant
+					// lands when the account first becomes verified.
+					{Name: NewElmValueName("emailVerificationState"), JSONName: NewJSONFieldName("email_verification_state"), Type: StringRef{}},
 				},
 			},
 		},
@@ -1242,6 +1268,36 @@ func agentModule() Module {
 					{Name: NewElmTypeName("AgentCredentialStateRevoked"), Tag: "revoked"},
 				},
 			},
+			// WorkSeekingState is the default-deny work-seeking switch: every
+			// credential is minted work_seeking_disabled and the owner must
+			// enable it with a daily task budget before the credential can
+			// reserve tasks or submit on its own.
+			Enum{
+				Name: NewElmTypeName("WorkSeekingState"),
+				Variants: []Variant{
+					{Name: NewElmTypeName("WorkSeekingStateDisabled"), Tag: "work_seeking_disabled"},
+					{Name: NewElmTypeName("WorkSeekingStateEnabled"), Tag: "work_seeking_enabled"},
+				},
+			},
+			// AgentWorkPolicyResponse is the stored work budget. Allowance
+			// fields use 0 / empty for "not configured" (unlimited
+			// concurrency and spend, every task type, no reward floor, no
+			// advisory token budget); a disabled policy carries every
+			// allowance as 0 / empty. The token budget is advisory only: the
+			// server stores and returns it but never enforces it.
+			Product{
+				Name: NewElmTypeName("AgentWorkPolicyResponse"),
+				Fields: []Field{
+					{Name: NewElmValueName("workSeeking"), JSONName: NewJSONFieldName("work_seeking"), Type: NamedRef{Name: NewElmTypeName("WorkSeekingState")}},
+					{Name: NewElmValueName("maxTasksPerDay"), JSONName: NewJSONFieldName("max_tasks_per_day"), Type: IntRef{}},
+					{Name: NewElmValueName("maxConcurrentReservations"), JSONName: NewJSONFieldName("max_concurrent_reservations"), Type: IntRef{}},
+					{Name: NewElmValueName("maxCreditsPerDay"), JSONName: NewJSONFieldName("max_credits_per_day"), Type: IntRef{}},
+					{Name: NewElmValueName("taskTypes"), JSONName: NewJSONFieldName("task_types"), Type: ListRef{Element: StringRef{}}},
+					{Name: NewElmValueName("minRewardCredits"), JSONName: NewJSONFieldName("min_reward_credits"), Type: IntRef{}},
+					{Name: NewElmValueName("tokenBudgetTokens"), JSONName: NewJSONFieldName("token_budget_tokens"), Type: IntRef{}},
+					{Name: NewElmValueName("tokenBudgetNote"), JSONName: NewJSONFieldName("token_budget_note"), Type: StringRef{}},
+				},
+			},
 			Product{
 				Name: NewElmTypeName("AgentCredentialResponse"),
 				Fields: []Field{
@@ -1251,6 +1307,13 @@ func agentModule() Module {
 					{Name: NewElmValueName("state"), JSONName: NewJSONFieldName("state"), Type: NamedRef{Name: NewElmTypeName("AgentCredentialState")}},
 					{Name: NewElmValueName("expiresAt"), JSONName: NewJSONFieldName("expires_at"), Type: StringRef{}},
 					{Name: NewElmValueName("taskID"), JSONName: NewJSONFieldName("task_id"), Type: StringRef{}},
+					{Name: NewElmValueName("workPolicy"), JSONName: NewJSONFieldName("work_policy"), Type: NamedRef{Name: NewElmTypeName("AgentWorkPolicyResponse")}},
+					// Today's consumption (current UTC day): consumed
+					// daily-task units, credits spent via the credential, and
+					// the credential's still-active reservations.
+					{Name: NewElmValueName("tasksUsedToday"), JSONName: NewJSONFieldName("tasks_used_today"), Type: IntRef{}},
+					{Name: NewElmValueName("creditsSpentToday"), JSONName: NewJSONFieldName("credits_spent_today"), Type: IntRef{}},
+					{Name: NewElmValueName("activeReservations"), JSONName: NewJSONFieldName("active_reservations"), Type: IntRef{}},
 				},
 			},
 			Product{

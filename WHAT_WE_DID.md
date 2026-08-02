@@ -6938,3 +6938,39 @@ route: catalog mutation outcomes (withdraw/delete/release notes, including
 server conflict messages) rendered invisibly inside the collapsed
 manage-the-catalog disclosure; the note is now card-level and a visibility
 assertion pins it.
+
+# Agent work budgets (the human-agent delegation contract)
+
+The product thesis was restated: humans primarily ask for work, agents do the
+work, and an agent seeks work only as its human configures it, on a budget.
+This branch made that the enforced model.
+
+Every personal agent credential gained a work policy defaulting to
+`work_seeking_disabled` — a deliberate breaking change that stops existing
+agents from reserving or directly submitting until their owner enables
+work-seeking with a required daily task budget. Optional allowances cover
+concurrent reservations, daily credit spend, permitted task types, a minimum
+reward, and an advisory token budget that Sharecrop stores but never
+enforces. Enforcement consumes day counters inside the same transaction as
+the reservation or submission and attributes reservations to the credential
+that established them, so caps cannot overshoot under concurrency. Refusals
+use the new `budget_exceeded` code (HTTP 429, distinct from `rate_limited`)
+with reset-at-UTC-midnight messages, or `permission_denied` with operator
+guidance when work-seeking is off. Reservation-backed submissions stay
+exempt and user sessions are never limited.
+
+Humans configure and supervise from the Agents page (state, allowances, and
+today's consumption meters that only render where a cap exists) and over
+REST; agents read their own leash through MCP `sharecrop.get_my_budget`,
+which derives remaining values and the next reset instant. The MCP server
+instructions and the agent-scheduling recipe now teach the budgeted worker
+loop: read the budget, poll within allowed types and reward floor, stop
+cleanly when exhausted.
+
+Alongside: signup grants moved to email-verification time (registration
+leaves a zero balance; organization grants need a verified creator), peer
+transfers gained a 500-credit daily ceiling, the task-type taxonomy grew to
+sixteen knowledge-work types with create templates and grouped selectors, and
+operator counters (outbox backlog and dispatch failures, webhook pending and
+dead counts, daily grants, transfers, and budget refusals) landed on the
+Admin page and a host-served endpoint that reports unavailability honestly.

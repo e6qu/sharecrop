@@ -64,6 +64,10 @@ type SubmitCommand struct {
 	SubmitterID    core.UserID
 	ResponseSource ResponseSource
 	Attachments    []attachment.Attachment
+	// Budget is the work-budget consumption the store applies atomically with
+	// the submission insert. The service fills it from the worker origin and
+	// the target task (see task.WorkBudgetForSubmission).
+	Budget task.WorkBudgetCharge
 	// Draft is the submission_created event recorded inside the create
 	// transaction. The service fills it after generating the submission id.
 	Draft event.Draft
@@ -86,7 +90,11 @@ func (SubmissionCreated) submitResult() {}
 
 func (SubmitRejected) submitResult() {}
 
-func (service Service) Submit(ctx context.Context, command SubmitCommand) SubmitResult {
+// Submit records a worker's response. origin says how the submitter
+// authenticated: an agent credential submitting directly to an open task must
+// be enabled for work-seeking and consumes its daily task budget (see
+// task.WorkBudgetForSubmission).
+func (service Service) Submit(ctx context.Context, origin task.WorkerOrigin, command SubmitCommand) SubmitResult {
 	taskResult := service.taskStore.FindTask(ctx, command.TaskID)
 	taskFound, taskMatched := taskResult.(task.FindTaskStoreAccepted)
 	if !taskMatched {
@@ -103,6 +111,12 @@ func (service Service) Submit(ctx context.Context, command SubmitCommand) Submit
 	if rejected, matched := eligibility.(task.SubmissionEligibilityRejected); matched {
 		return SubmitRejected{Reason: rejected.Reason}
 	}
+
+	budget, budgetProblem := task.WorkBudgetForSubmission(origin, taskFound.Value)
+	if budgetProblem != nil {
+		return SubmitRejected{Reason: *budgetProblem}
+	}
+	command.Budget = budget
 
 	schemaResult := schema.ParseSchemaJSON([]byte(taskFound.Value.ResponseSchema.String()))
 	schemaParsed, schemaMatched := schemaResult.(schema.SchemaParsed)

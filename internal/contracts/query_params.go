@@ -54,7 +54,11 @@ func withPaging(parameters ...QueryParameter) []QueryParameter {
 }
 
 func taskTypeEnum() []string {
-	return []string{"general", "code_review", "security_review", "product_review", "ui_ux_review", "qa_testing"}
+	return []string{
+		"general", "code_review", "security_review", "product_review", "ui_ux_review", "qa_testing",
+		"document_review", "documentation_writing", "diagram_writing", "planning", "research", "data_extraction",
+		"troubleshooting", "code_analysis", "architecture_review", "threat_analysis",
+	}
 }
 
 // taskFilterParameters is the shared task filter set parsed by

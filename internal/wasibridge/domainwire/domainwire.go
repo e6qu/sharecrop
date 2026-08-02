@@ -15,17 +15,11 @@ type DomainError struct {
 }
 
 // errorCodesByString reverses ErrorCode.String so a serialized code can be
-// rebuilt as the canonical core.ErrorCode value.
+// rebuilt as the canonical core.ErrorCode value. It walks core.AllErrorCodes
+// so a code added to the enum crosses the bridge without a second
+// hand-maintained list.
 var errorCodesByString = func() map[string]core.ErrorCode {
-	codes := []core.ErrorCode{
-		core.ErrorCodeInvalidID,
-		core.ErrorCodeInvalidEnum,
-		core.ErrorCodeInvalidState,
-		core.ErrorCodeInvalidArgument,
-		core.ErrorCodeNotFound,
-		core.ErrorCodePermissionDenied,
-		core.ErrorCodeConflict,
-	}
+	codes := core.AllErrorCodes()
 	byString := make(map[string]core.ErrorCode, len(codes))
 	for _, code := range codes {
 		byString[code.String()] = code

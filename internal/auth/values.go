@@ -158,3 +158,48 @@ type ProvidedDisplayName struct {
 func (DeriveDisplayName) displayNameChoice() {}
 
 func (ProvidedDisplayName) displayNameChoice() {}
+
+// EmailVerificationState is the explicit email-verification lifecycle of an
+// account. The 100-credit signup grant is written when the account first
+// becomes verified, never at registration, so an unverified account keeps a
+// zero balance (a sybil gate). email_verified_at stays as the event-time
+// fact; this state is the flag.
+type EmailVerificationState struct {
+	value string
+}
+
+var (
+	EmailUnverified = EmailVerificationState{value: "unverified"}
+	EmailVerified   = EmailVerificationState{value: "verified"}
+)
+
+type EmailVerificationStateResult interface {
+	emailVerificationStateResult()
+}
+
+type EmailVerificationStateAccepted struct {
+	Value EmailVerificationState
+}
+
+type EmailVerificationStateRejected struct {
+	Reason core.DomainError
+}
+
+func (EmailVerificationStateAccepted) emailVerificationStateResult() {}
+
+func (EmailVerificationStateRejected) emailVerificationStateResult() {}
+
+func ParseEmailVerificationState(raw string) EmailVerificationStateResult {
+	switch raw {
+	case EmailUnverified.value:
+		return EmailVerificationStateAccepted{Value: EmailUnverified}
+	case EmailVerified.value:
+		return EmailVerificationStateAccepted{Value: EmailVerified}
+	default:
+		return EmailVerificationStateRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "email verification state is invalid")}
+	}
+}
+
+func (state EmailVerificationState) String() string {
+	return state.value
+}

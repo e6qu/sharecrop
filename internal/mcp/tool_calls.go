@@ -755,7 +755,7 @@ func (server Server) callCancelTask(ctx context.Context, subject auth.Subject, a
 	return marshalPayload(taskToDetail(changed.Value))
 }
 
-func (server Server) callFundTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callFundTask(ctx context.Context, subject auth.UserSubject, credential CallerCredential, arguments json.RawMessage) toolResult {
 	var args struct {
 		TaskID         string `json:"task_id"`
 		Amount         int64  `json:"amount"`
@@ -779,7 +779,7 @@ func (server Server) callFundTask(ctx context.Context, subject auth.UserSubject,
 	if !keyMatched {
 		return toolProtocolError{code: codeInvalidParams, message: keyResult.(ledger.IdempotencyKeyRejected).Reason.Description()}
 	}
-	result := server.services.FundTask(ctx, subject.ID, taskID.Value, amount.Value, key.Value)
+	result := server.services.FundTask(ctx, subject.ID, taskID.Value, amount.Value, key.Value, credential.Spend)
 	funded, matched := result.(ledger.TaskFunded)
 	if !matched {
 		return toolFailed{code: result.(ledger.FundRejected).Reason.Code(), message: result.(ledger.FundRejected).Reason.Description()}
@@ -916,7 +916,7 @@ func parseMCPRewardCollectibleIDs(rawIDs []string) ([]core.CollectibleID, string
 	return values, ""
 }
 
-func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSubject, credential CallerCredential, arguments json.RawMessage) toolResult {
 	var args struct {
 		TaskID       string              `json:"task_id"`
 		ResponseJSON string              `json:"response_json"`
@@ -946,7 +946,7 @@ func (server Server) callSubmitResponse(ctx context.Context, subject auth.UserSu
 		ResponseSource: source.Value,
 		Attachments:    attachments,
 	}
-	result := server.services.SubmitResponse(ctx, command)
+	result := server.services.SubmitResponse(ctx, credential.Worker, command)
 	created, matched := result.(submission.SubmissionCreated)
 	if !matched {
 		return toolFailed{code: result.(submission.SubmitRejected).Reason.Code(), message: result.(submission.SubmitRejected).Reason.Description()}
@@ -1055,7 +1055,7 @@ func (server Server) callListTaskSubmissions(ctx context.Context, subject auth.S
 	return marshalPayload(submissionsPayload{Submissions: summaries, NextOffset: nextOffset, Total: listed.Total})
 }
 
-func (server Server) callAcceptSubmission(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
+func (server Server) callAcceptSubmission(ctx context.Context, subject auth.Subject, credential CallerCredential, arguments json.RawMessage) toolResult {
 	var args struct {
 		TaskID           string `json:"task_id"`
 		SubmissionID     string `json:"submission_id"`
@@ -1102,7 +1102,7 @@ func (server Server) callAcceptSubmission(ctx context.Context, subject auth.Subj
 	if reviewerProblem != nil {
 		return reviewerProblem
 	}
-	result := server.services.ReviewAcceptSubmission(ctx, reviewer, ids.taskID, ids.submissionID, key.Value, creditSelection.value, tipSelection.value, collectibleTip)
+	result := server.services.ReviewAcceptSubmission(ctx, reviewer, ids.taskID, ids.submissionID, key.Value, creditSelection.value, tipSelection.value, collectibleTip, credential.Spend)
 	accepted, matched := result.(ledger.SubmissionAccepted)
 	if !matched {
 		return toolFailed{code: result.(ledger.AcceptRejected).Reason.Code(), message: result.(ledger.AcceptRejected).Reason.Description()}
@@ -1250,7 +1250,7 @@ func (server Server) callRequestChanges(ctx context.Context, subject auth.Subjec
 	})
 }
 
-func (server Server) callRejectSubmission(ctx context.Context, subject auth.Subject, arguments json.RawMessage) toolResult {
+func (server Server) callRejectSubmission(ctx context.Context, subject auth.Subject, credential CallerCredential, arguments json.RawMessage) toolResult {
 	var args struct {
 		TaskID              string `json:"task_id"`
 		SubmissionID        string `json:"submission_id"`
@@ -1290,7 +1290,7 @@ func (server Server) callRejectSubmission(ctx context.Context, subject auth.Subj
 	if reviewerProblem != nil {
 		return reviewerProblem
 	}
-	result := server.services.RejectSubmission(ctx, reviewer, parsed.ids.taskID, parsed.ids.submissionID, parsed.key, parsed.note, creditSelection.value, tipSelection.value, banSelection)
+	result := server.services.RejectSubmission(ctx, reviewer, parsed.ids.taskID, parsed.ids.submissionID, parsed.key, parsed.note, creditSelection.value, tipSelection.value, banSelection, credential.Spend)
 	rejected, matched := result.(ledger.SubmissionRejected)
 	if !matched {
 		return toolFailed{code: result.(ledger.RejectRejected).Reason.Code(), message: result.(ledger.RejectRejected).Reason.Description()}
@@ -1402,16 +1402,16 @@ func (server Server) callGetTaskSeries(ctx context.Context, subject auth.UserSub
 	return marshalPayload(seriesDetailPayload{Series: seriesToSummary(got.Value.Series), Tasks: tasks})
 }
 
-func (server Server) callReserveTask(ctx context.Context, subject auth.UserSubject, arguments json.RawMessage) toolResult {
+func (server Server) callReserveTask(ctx context.Context, subject auth.UserSubject, credential CallerCredential, arguments json.RawMessage) toolResult {
 	parsed := parseReserveTaskArguments(arguments)
 	if parsed.problem != nil {
 		return parsed.problem
 	}
 	var result task.ReservationResult
 	if parsed.assigneeKind == task.AssigneeScopeOrganizationTeam.String() {
-		result = server.services.ReserveTaskForOrganizationTeam(ctx, subject, parsed.taskID, parsed.organizationID, parsed.teamID)
+		result = server.services.ReserveTaskForOrganizationTeam(ctx, subject, credential.Worker, parsed.taskID, parsed.organizationID, parsed.teamID)
 	} else {
-		result = server.services.ReserveTask(ctx, subject, parsed.taskID)
+		result = server.services.ReserveTask(ctx, subject, credential.Worker, parsed.taskID)
 	}
 	created, matched := result.(task.ReservationCreated)
 	if !matched {

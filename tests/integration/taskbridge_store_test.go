@@ -91,6 +91,7 @@ func TestTaskBridgeDualRun(t *testing.T) {
 	t.Run("reserve the task through the bridge", func(t *testing.T) {
 		reservationID := tasktest.NewReservationID(t)
 		result := bridgeStore.CreateReservation(ctx, reservationID, task.ReservationCommand{
+			Origin:      task.ReservedByUserSession{},
 			TaskID:      taskID,
 			Assignee:    task.UserAssignee{UserID: worker},
 			RequestedBy: worker,

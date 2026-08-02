@@ -229,7 +229,7 @@ func TestMCPDisputeFilingAndAdminTriageVisibility(t *testing.T) {
 	fundTask(t, server, owner.AccessToken, task.ID, 15, "dispute-fund-"+task.ID)
 	openTask(t, server, owner.AccessToken, task.ID)
 
-	workerAgent := createAgentCredential(t, server, worker.AccessToken, []string{"tasks_read", "submissions_write", "submissions_read"})
+	workerAgent := createWorkSeekingAgentCredential(t, server, worker, []string{"tasks_read", "submissions_write", "submissions_read"})
 	workerSession := initializeMCPSession(t, server, workerAgent)
 	ownerAgent := createAgentCredential(t, server, owner.AccessToken, []string{"tasks_read", "submissions_read", "submissions_review"})
 	ownerSession := initializeMCPSession(t, server, ownerAgent)

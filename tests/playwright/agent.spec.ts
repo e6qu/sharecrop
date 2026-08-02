@@ -4,13 +4,19 @@ import {
   password,
   taskRequest,
   uniqueEmail,
+  verifyAccountByApi,
+  verifyAccountWithToken,
 } from "./helpers.ts";
 
-test("creating an agent credential shows the token and MCP config", async ({ page }) => {
+test("creating an agent credential shows the token and MCP config", async ({ page, request }) => {
+  const email = uniqueEmail("ui-agent");
   await page.goto("/");
-  await page.getByTestId("email").fill(uniqueEmail("ui-agent"));
+  await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
   await page.getByTestId("register").click();
+  await expect(page.getByTestId("balance")).toHaveText("0 credits");
+  await verifyAccountByApi(request, email);
+  await page.reload();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-manage-menu").click();
@@ -44,11 +50,15 @@ test("creating an agent credential shows the token and MCP config", async ({ pag
   );
 });
 
-test("creating an agent credential with an expiration and org scopes lists it as such", async ({ page }) => {
+test("creating an agent credential with an expiration and org scopes lists it as such", async ({ page, request }) => {
+  const email = uniqueEmail("ui-agent-expiring");
   await page.goto("/");
-  await page.getByTestId("email").fill(uniqueEmail("ui-agent-expiring"));
+  await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
   await page.getByTestId("register").click();
+  await expect(page.getByTestId("balance")).toHaveText("0 credits");
+  await verifyAccountByApi(request, email);
+  await page.reload();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-manage-menu").click();
@@ -65,11 +75,15 @@ test("creating an agent credential with an expiration and org scopes lists it as
   await expect(page.getByTestId("credential-row")).toContainText("expires");
 });
 
-test("an invalid expires-in-hours value is rejected instead of silently minting a non-expiring credential", async ({ page }) => {
+test("an invalid expires-in-hours value is rejected instead of silently minting a non-expiring credential", async ({ page, request }) => {
+  const email = uniqueEmail("ui-agent-bad-expiry");
   await page.goto("/");
-  await page.getByTestId("email").fill(uniqueEmail("ui-agent-bad-expiry"));
+  await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
   await page.getByTestId("register").click();
+  await expect(page.getByTestId("balance")).toHaveText("0 credits");
+  await verifyAccountByApi(request, email);
+  await page.reload();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-manage-menu").click();
@@ -84,11 +98,15 @@ test("an invalid expires-in-hours value is rejected instead of silently minting 
   await expect(page.getByTestId("agent-secret")).toHaveCount(0);
 });
 
-test("the mint form clears after creating a credential, so a second mint doesn't repeat stale scopes/expiry", async ({ page }) => {
+test("the mint form clears after creating a credential, so a second mint doesn't repeat stale scopes/expiry", async ({ page, request }) => {
+  const email = uniqueEmail("ui-agent-reset");
   await page.goto("/");
-  await page.getByTestId("email").fill(uniqueEmail("ui-agent-reset"));
+  await page.getByTestId("email").fill(email);
   await page.getByTestId("password").fill(password);
   await page.getByTestId("register").click();
+  await expect(page.getByTestId("balance")).toHaveText("0 credits");
+  await verifyAccountByApi(request, email);
+  await page.reload();
   await expect(page.getByTestId("balance")).toHaveText("100 credits");
 
   await page.getByTestId("nav-manage-menu").click();
@@ -112,6 +130,7 @@ test("tasks panel lists user tasks and shows agent curl examples", async ({ page
   });
   expect(registerResponse.ok()).toBeTruthy();
   const registerBody = (await registerResponse.json()) as AuthBody;
+  await verifyAccountWithToken(request, registerBody.access_token);
 
   const taskResponse = await request.post("/api/tasks", {
     headers: { Authorization: `Bearer ${registerBody.access_token}` },

@@ -129,6 +129,12 @@ go build -o "$scenario_parity_binary" ./cmd/sharecrop
 export SHARECROP_REGISTRATION_RATE_CAPACITY=100000
 export SHARECROP_REGISTRATION_RATE_REFILL=100000
 
+# The scenario's actors must verify their email addresses over the API: the
+# signup grant now lands at verification, and the scenario spends credits.
+# Verification tokens are only returned in responses under api delivery, so
+# the scenario servers opt into it exactly like the Playwright web server.
+export SHARECROP_ACCOUNT_TOKEN_DELIVERY=api
+
 # 1) Native in-process mux. 2) WASI guest (the production default).
 run_scenario_parity native env SHARECROP_WASI_MODE=native "$scenario_parity_binary" serve
 run_scenario_parity wasi "$scenario_parity_binary" serve

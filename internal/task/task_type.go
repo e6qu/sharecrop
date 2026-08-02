@@ -7,21 +7,61 @@ import (
 	"github.com/e6qu/sharecrop/internal/core"
 )
 
-// TaskType is a pre-baked category for a task. It lets developer-oriented work
-// (code review, security review, and so on) be templated and filtered, beyond
+// TaskType is a pre-baked category for a task. It lets knowledge work (code
+// review, research, planning, and so on) be templated and filtered, beyond
 // the free-text title and description.
 type TaskType struct {
 	value string
 }
 
 var (
-	TaskTypeGeneral        = TaskType{value: "general"}
-	TaskTypeCodeReview     = TaskType{value: "code_review"}
-	TaskTypeSecurityReview = TaskType{value: "security_review"}
-	TaskTypeProductReview  = TaskType{value: "product_review"}
-	TaskTypeUIUXReview     = TaskType{value: "ui_ux_review"}
-	TaskTypeQATesting      = TaskType{value: "qa_testing"}
+	TaskTypeGeneral              = TaskType{value: "general"}
+	TaskTypeCodeReview           = TaskType{value: "code_review"}
+	TaskTypeSecurityReview       = TaskType{value: "security_review"}
+	TaskTypeProductReview        = TaskType{value: "product_review"}
+	TaskTypeUIUXReview           = TaskType{value: "ui_ux_review"}
+	TaskTypeQATesting            = TaskType{value: "qa_testing"}
+	TaskTypeDocumentReview       = TaskType{value: "document_review"}
+	TaskTypeDocumentationWriting = TaskType{value: "documentation_writing"}
+	TaskTypeDiagramWriting       = TaskType{value: "diagram_writing"}
+	TaskTypePlanning             = TaskType{value: "planning"}
+	TaskTypeResearch             = TaskType{value: "research"}
+	TaskTypeDataExtraction       = TaskType{value: "data_extraction"}
+	TaskTypeTroubleshooting      = TaskType{value: "troubleshooting"}
+	TaskTypeCodeAnalysis         = TaskType{value: "code_analysis"}
+	TaskTypeArchitectureReview   = TaskType{value: "architecture_review"}
+	TaskTypeThreatAnalysis       = TaskType{value: "threat_analysis"}
 )
+
+// allTaskTypes lists every legal task type in wire order. Adding a task type
+// means adding one entry here (plus the contracts, Elm, and OpenAPI mirrors);
+// ParseTaskType and AllTaskTypes both walk this list.
+var allTaskTypes = []TaskType{
+	TaskTypeGeneral,
+	TaskTypeCodeReview,
+	TaskTypeSecurityReview,
+	TaskTypeProductReview,
+	TaskTypeUIUXReview,
+	TaskTypeQATesting,
+	TaskTypeDocumentReview,
+	TaskTypeDocumentationWriting,
+	TaskTypeDiagramWriting,
+	TaskTypePlanning,
+	TaskTypeResearch,
+	TaskTypeDataExtraction,
+	TaskTypeTroubleshooting,
+	TaskTypeCodeAnalysis,
+	TaskTypeArchitectureReview,
+	TaskTypeThreatAnalysis,
+}
+
+// AllTaskTypes returns every legal task type in wire order. Generators and
+// totality tests iterate this closed set instead of keeping their own list.
+func AllTaskTypes() []TaskType {
+	values := make([]TaskType, len(allTaskTypes))
+	copy(values, allTaskTypes)
+	return values
+}
 
 type TaskTypeResult interface {
 	taskTypeResult()
@@ -39,25 +79,18 @@ func (TaskTypeAccepted) taskTypeResult() {}
 
 func (TaskTypeRejected) taskTypeResult() {}
 
-// ParseTaskType accepts the known developer task types. An empty value defaults
-// to "general".
+// ParseTaskType accepts the known task types. An empty value defaults to
+// "general".
 func ParseTaskType(raw string) TaskTypeResult {
-	switch raw {
-	case "", TaskTypeGeneral.value:
+	if raw == "" {
 		return TaskTypeAccepted{Value: TaskTypeGeneral}
-	case TaskTypeCodeReview.value:
-		return TaskTypeAccepted{Value: TaskTypeCodeReview}
-	case TaskTypeSecurityReview.value:
-		return TaskTypeAccepted{Value: TaskTypeSecurityReview}
-	case TaskTypeProductReview.value:
-		return TaskTypeAccepted{Value: TaskTypeProductReview}
-	case TaskTypeUIUXReview.value:
-		return TaskTypeAccepted{Value: TaskTypeUIUXReview}
-	case TaskTypeQATesting.value:
-		return TaskTypeAccepted{Value: TaskTypeQATesting}
-	default:
-		return TaskTypeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "task type is invalid")}
 	}
+	for _, taskType := range allTaskTypes {
+		if taskType.value == raw {
+			return TaskTypeAccepted{Value: taskType}
+		}
+	}
+	return TaskTypeRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidEnum, "task type is invalid")}
 }
 
 func (taskType TaskType) String() string {

@@ -152,6 +152,104 @@ createOrgCredentialCommand model state =
         ( updateLoggedIn model (\current -> { current | orgCredentialMessage = Nothing, newOrgCredential = Nothing }), ElmTask.perform OrgCredentialExpiresAtResolved Time.now )
 
 
+{-| Sends the work-budget form for one credential. The daily task budget is
+the one required allowance; every other field is blank for "no limit". Bad
+input is refused here with a sentence rather than sent as a 0 the server
+would read as "unlimited" — enabling an agent to seek work with an
+accidentally-unlimited allowance is the worst outcome of a typo.
+-}
+saveWorkPolicyCommand : Model -> LoggedInModel -> String -> ( Model, Cmd Msg )
+saveWorkPolicyCommand model state credentialId =
+    let
+        refuse message =
+            ( updateLoggedIn model (\current -> { current | workPolicyMessage = Just (FailureNote message) }), Cmd.none )
+    in
+    case String.toInt (String.trim state.workPolicyTasksPerDay) of
+        Nothing ->
+            refuse "Tasks per day must be a whole number."
+
+        Just tasksPerDay ->
+            if tasksPerDay < 1 then
+                refuse "Tasks per day must be at least 1."
+
+            else if not (optionalAllowanceIsValid state.workPolicyMaxConcurrent) then
+                refuse "Tasks at once must be a positive whole number, or blank for no limit."
+
+            else if not (optionalAllowanceIsValid state.workPolicyMaxCredits) then
+                refuse "Credits per day must be a positive whole number, or blank for no limit."
+
+            else if not (optionalAllowanceIsValid state.workPolicyMinReward) then
+                refuse "Minimum reward must be a positive whole number, or blank for no minimum."
+
+            else if not (optionalAllowanceIsValid state.workPolicyTokenBudget) then
+                refuse "Token budget must be a positive whole number, or blank for none."
+
+            else if String.trim state.workPolicyTokenNote /= "" && optionalAllowance state.workPolicyTokenBudget == 0 then
+                refuse "A token-budget note needs a token count."
+
+            else
+                ( updateLoggedIn model (\current -> { current | workPolicyMessage = Nothing })
+                , putWorkPolicy state.accessToken
+                    credentialId
+                    (Encode.object
+                        [ ( "work_seeking", Agent.workSeekingStateEncoder Agent.WorkSeekingStateEnabled )
+                        , ( "max_tasks_per_day", Encode.int tasksPerDay )
+                        , ( "max_concurrent_reservations", Encode.int (optionalAllowance state.workPolicyMaxConcurrent) )
+                        , ( "max_credits_per_day", Encode.int (optionalAllowance state.workPolicyMaxCredits) )
+                        , ( "task_types", Encode.list Encode.string state.workPolicyTaskTypes )
+                        , ( "min_reward_credits", Encode.int (optionalAllowance state.workPolicyMinReward) )
+                        , ( "token_budget_tokens", Encode.int (optionalAllowance state.workPolicyTokenBudget) )
+                        , ( "token_budget_note", Encode.string (String.trim state.workPolicyTokenNote) )
+                        ]
+                    )
+                )
+
+
+{-| Blank (no limit) or a positive whole number. A 0 typed by hand is
+refused: the wire meaning of 0 is "no limit", which is not what someone
+typing a limit means.
+-}
+optionalAllowanceIsValid : String -> Bool
+optionalAllowanceIsValid raw =
+    case String.toInt (String.trim raw) of
+        Just value ->
+            value > 0
+
+        Nothing ->
+            String.trim raw == ""
+
+
+optionalAllowance : String -> Int
+optionalAllowance raw =
+    Maybe.withDefault 0 (String.toInt (String.trim raw))
+
+
+putWorkSeekingDisabled : String -> String -> Cmd Msg
+putWorkSeekingDisabled token credentialId =
+    putWorkPolicy token
+        credentialId
+        (Encode.object
+            [ ( "work_seeking", Agent.workSeekingStateEncoder Agent.WorkSeekingStateDisabled )
+            , ( "max_tasks_per_day", Encode.int 0 )
+            , ( "max_concurrent_reservations", Encode.int 0 )
+            , ( "max_credits_per_day", Encode.int 0 )
+            , ( "task_types", Encode.list Encode.string [] )
+            , ( "min_reward_credits", Encode.int 0 )
+            , ( "token_budget_tokens", Encode.int 0 )
+            , ( "token_budget_note", Encode.string "" )
+            ]
+        )
+
+
+putWorkPolicy : String -> String -> Encode.Value -> Cmd Msg
+putWorkPolicy token credentialId body =
+    authorizedRequest "PUT"
+        token
+        ("/api/agent-credentials/" ++ credentialId ++ "/work-policy")
+        (Http.jsonBody body)
+        (expectJsonWithServerError WorkPolicyConfigured Agent.agentCredentialResponseDecoder)
+
+
 {-| True for a blank draft (never expires) or a positive whole number of
 hours. Kept separate from `expiresAtFromHours` so a typo like "0", "-1", or
 "12h" is rejected with a message rather than silently minting a
@@ -518,6 +616,7 @@ routeLoadCmd token subjectId activityCursor page =
         AdminPage ->
             Cmd.batch
                 [ authorizedRequest "GET" token "/api/admin/operations" Http.emptyBody (expectJsonWithServerError OperationsReceived Admin.operationsResponseDecoder)
+                , authorizedRequest "GET" token "/api/admin/operations/counters" Http.emptyBody (expectJsonWithServerError OpsCountersReceived Admin.operationsCountersResponseDecoder)
                 , fetchAuditEvents token "" "" "" 0
                 , fetchPlatformAdmins token 0
                 , fetchUserDirectory token

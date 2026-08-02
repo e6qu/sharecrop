@@ -12,13 +12,18 @@ import (
 // the generated Elm contracts drift.
 
 func TestAuthResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(authResponse{SubjectKind: "user", SubjectID: "subject-1", AccessToken: "token-1", Role: "member", Username: "ada", DisplayName: "Ada"})
-	assertWireShape(t, encoded, err, `{"subject_kind":"user","subject_id":"subject-1","access_token":"token-1","role":"member","username":"ada","display_name":"Ada"}`)
+	encoded, err := json.Marshal(authResponse{SubjectKind: "user", SubjectID: "subject-1", AccessToken: "token-1", Role: "member", Username: "ada", DisplayName: "Ada", EmailVerificationState: "unverified"})
+	assertWireShape(t, encoded, err, `{"subject_kind":"user","subject_id":"subject-1","access_token":"token-1","role":"member","username":"ada","display_name":"Ada","email_verification_state":"unverified"}`)
 }
 
 func TestAuthRequestWireShape(t *testing.T) {
 	encoded, err := json.Marshal(authRequest{Email: "person@example.com", Password: "correct horse battery staple"})
 	assertWireShape(t, encoded, err, `{"email":"person@example.com","password":"correct horse battery staple"}`)
+}
+
+func TestAccountProfileResponseWireShape(t *testing.T) {
+	encoded, err := json.Marshal(accountProfileResponse{ID: "user-1", Email: "person@example.com", DisplayName: "Ada", EmailVerificationState: "verified"})
+	assertWireShape(t, encoded, err, `{"id":"user-1","email":"person@example.com","display_name":"Ada","email_verification_state":"verified"}`)
 }
 
 func TestAccountTokenResponseWireShape(t *testing.T) {
@@ -487,9 +492,31 @@ func TestCreditTransferResponseWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"entry_id":"entry-1","amount":15}`)
 }
 
+// disabledWorkPolicyJSON is the wire form of the default work_seeking_disabled
+// policy every credential is minted with.
+const disabledWorkPolicyJSON = `{"work_seeking":"work_seeking_disabled","max_tasks_per_day":0,"max_concurrent_reservations":0,"max_credits_per_day":0,"task_types":[],"min_reward_credits":0,"token_budget_tokens":0,"token_budget_note":""}`
+
 func TestAgentCredentialResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(agentCredentialResponse{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read", "submissions_write"}, State: "active"})
-	assertWireShape(t, encoded, err, `{"id":"cred-1","label":"Local agent","scopes":["tasks_read","submissions_write"],"state":"active","expires_at":"","task_id":""}`)
+	encoded, err := json.Marshal(agentCredentialResponse{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read", "submissions_write"}, State: "active", WorkPolicy: workPolicyResponse{WorkSeeking: "work_seeking_disabled", TaskTypes: []string{}}})
+	assertWireShape(t, encoded, err, `{"id":"cred-1","label":"Local agent","scopes":["tasks_read","submissions_write"],"state":"active","expires_at":"","task_id":"","work_policy":`+disabledWorkPolicyJSON+`,"tasks_used_today":0,"credits_spent_today":0,"active_reservations":0}`)
+}
+
+func TestAgentCredentialResponseEnabledPolicyWireShape(t *testing.T) {
+	encoded, err := json.Marshal(agentCredentialResponse{
+		ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read"}, State: "active",
+		WorkPolicy: workPolicyResponse{
+			WorkSeeking:               "work_seeking_enabled",
+			MaxTasksPerDay:            20,
+			MaxConcurrentReservations: 3,
+			MaxCreditsPerDay:          50,
+			TaskTypes:                 []string{"code_review", "research"},
+			MinRewardCredits:          5,
+			TokenBudgetTokens:         200000,
+			TokenBudgetNote:           "Stay under one budget unit per day.",
+		},
+		TasksUsedToday: 2, CreditsSpentToday: 10, ActiveReservations: 1,
+	})
+	assertWireShape(t, encoded, err, `{"id":"cred-1","label":"Local agent","scopes":["tasks_read"],"state":"active","expires_at":"","task_id":"","work_policy":{"work_seeking":"work_seeking_enabled","max_tasks_per_day":20,"max_concurrent_reservations":3,"max_credits_per_day":50,"task_types":["code_review","research"],"min_reward_credits":5,"token_budget_tokens":200000,"token_budget_note":"Stay under one budget unit per day."},"tasks_used_today":2,"credits_spent_today":10,"active_reservations":1}`)
 }
 
 func TestAgentCredentialRequestWireShape(t *testing.T) {
@@ -497,14 +524,24 @@ func TestAgentCredentialRequestWireShape(t *testing.T) {
 	assertWireShape(t, encoded, err, `{"label":"Local agent","scopes":["tasks_read","submissions_write"]}`)
 }
 
+func TestWorkPolicyRequestWireShape(t *testing.T) {
+	encoded, err := json.Marshal(workPolicyRequest{WorkSeeking: "work_seeking_enabled", MaxTasksPerDay: 10, MaxConcurrentReservations: 2, MaxCreditsPerDay: 40, TaskTypes: []string{"code_review"}, MinRewardCredits: 3, TokenBudgetTokens: 100000, TokenBudgetNote: "advisory only"})
+	assertWireShape(t, encoded, err, `{"work_seeking":"work_seeking_enabled","max_tasks_per_day":10,"max_concurrent_reservations":2,"max_credits_per_day":40,"task_types":["code_review"],"min_reward_credits":3,"token_budget_tokens":100000,"token_budget_note":"advisory only"}`)
+}
+
 func TestAgentCredentialCreatedResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(agentCredentialCreatedResponse{Credential: agentCredentialResponse{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read"}, State: "active"}, Secret: "agent-secret"})
-	assertWireShape(t, encoded, err, `{"credential":{"id":"cred-1","label":"Local agent","scopes":["tasks_read"],"state":"active","expires_at":"","task_id":""},"secret":"agent-secret"}`)
+	encoded, err := json.Marshal(agentCredentialCreatedResponse{Credential: agentCredentialResponse{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read"}, State: "active", WorkPolicy: workPolicyResponse{WorkSeeking: "work_seeking_disabled", TaskTypes: []string{}}}, Secret: "agent-secret"})
+	assertWireShape(t, encoded, err, `{"credential":{"id":"cred-1","label":"Local agent","scopes":["tasks_read"],"state":"active","expires_at":"","task_id":"","work_policy":`+disabledWorkPolicyJSON+`,"tasks_used_today":0,"credits_spent_today":0,"active_reservations":0},"secret":"agent-secret"}`)
 }
 
 func TestAgentCredentialsResponseWireShape(t *testing.T) {
-	encoded, err := json.Marshal(agentCredentialsResponse{Credentials: []agentCredentialResponse{{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read"}, State: "active"}}})
-	assertWireShape(t, encoded, err, `{"credentials":[{"id":"cred-1","label":"Local agent","scopes":["tasks_read"],"state":"active","expires_at":"","task_id":""}],"next_offset":0}`)
+	encoded, err := json.Marshal(agentCredentialsResponse{Credentials: []agentCredentialResponse{{ID: "cred-1", Label: "Local agent", Scopes: []string{"tasks_read"}, State: "active", WorkPolicy: workPolicyResponse{WorkSeeking: "work_seeking_disabled", TaskTypes: []string{}}}}})
+	assertWireShape(t, encoded, err, `{"credentials":[{"id":"cred-1","label":"Local agent","scopes":["tasks_read"],"state":"active","expires_at":"","task_id":"","work_policy":`+disabledWorkPolicyJSON+`,"tasks_used_today":0,"credits_spent_today":0,"active_reservations":0}],"next_offset":0}`)
+}
+
+func TestOpsCountersViewWireShape(t *testing.T) {
+	encoded, err := json.Marshal(OpsCountersView{OutboxRecordedBacklog: 4, OutboxDispatchFailed: 1, WebhookDeliveriesPending: 2, WebhookDeliveriesDead: 0, OldestPendingWebhookAgeSeconds: 90, SignupGrantsToday: 5, PeerTransfersToday: 3, PeerTransferCreditsToday: 45, BudgetRefusalsToday: 7})
+	assertWireShape(t, encoded, err, `{"outbox_recorded_backlog":4,"outbox_dispatch_failed":1,"webhook_deliveries_pending":2,"webhook_deliveries_dead":0,"oldest_pending_webhook_age_seconds":90,"signup_grants_today":5,"peer_transfers_today":3,"peer_transfer_credits_today":45,"budget_refusals_today":7}`)
 }
 
 func TestUserProfileResponseWireShape(t *testing.T) {

@@ -13,6 +13,8 @@ type Store interface {
 	VerifyCredential(context.Context, SecretHash) VerifyStoreResult
 	ListCredentials(context.Context, core.UserID, core.Page) ListStoreResult
 	RevokeCredential(context.Context, core.UserID, core.AgentCredentialID) RevokeStoreResult
+	UpdateWorkPolicy(context.Context, core.UserID, core.AgentCredentialID, WorkPolicy) UpdateWorkPolicyStoreResult
+	ReadWorkActivity(context.Context, core.UserID) WorkActivityStoreResult
 }
 
 type Service struct {
@@ -62,13 +64,14 @@ func (service Service) Create(ctx context.Context, owner core.UserID, label Labe
 	}
 
 	credential := Credential{
-		ID:        idCreated.Value,
-		UserID:    owner,
-		Label:     label,
-		Scopes:    scopes,
-		State:     StateActive,
-		ExpiresAt: expiresAt,
-		TaskID:    taskID,
+		ID:         idCreated.Value,
+		UserID:     owner,
+		Label:      label,
+		Scopes:     scopes,
+		State:      StateActive,
+		ExpiresAt:  expiresAt,
+		TaskID:     taskID,
+		WorkPolicy: WorkPolicyDisabled{},
 	}
 
 	storeResult := service.store.CreateCredential(ctx, credential, secretCreated.Value.Hash())
@@ -106,6 +109,68 @@ func (service Service) IssueTaskWorkerCredential(ctx context.Context, owner core
 		return "", false
 	}
 	return created.Secret.String(), true
+}
+
+type ConfigureWorkPolicyResult interface {
+	configureWorkPolicyResult()
+}
+
+type WorkPolicyConfigured struct {
+	Value Credential
+}
+
+type ConfigureWorkPolicyRejected struct {
+	Reason core.DomainError
+}
+
+func (WorkPolicyConfigured) configureWorkPolicyResult() {}
+
+func (ConfigureWorkPolicyRejected) configureWorkPolicyResult() {}
+
+// ConfigureWorkPolicy sets a credential's work policy: enabling work-seeking
+// with the stated allowances, or disabling it again (which drops every
+// allowance). Only the owning user may configure it, only for an active,
+// unscoped credential: a task-scoped worker credential operates within the
+// reservation it was issued for and never carries a policy of its own.
+func (service Service) ConfigureWorkPolicy(ctx context.Context, owner core.UserID, id core.AgentCredentialID, policy WorkPolicy) ConfigureWorkPolicyResult {
+	if policy == nil {
+		return ConfigureWorkPolicyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidArgument, "work policy is required")}
+	}
+
+	storeResult := service.store.UpdateWorkPolicy(ctx, owner, id, policy)
+	updated, matched := storeResult.(UpdateWorkPolicyStoreUpdated)
+	if !matched {
+		return ConfigureWorkPolicyRejected{Reason: storeResult.(UpdateWorkPolicyStoreRejected).Reason}
+	}
+	return WorkPolicyConfigured{Value: updated.Value}
+}
+
+type WorkActivityResult interface {
+	workActivityResult()
+}
+
+type WorkActivityListed struct {
+	Values []CredentialWorkActivity
+}
+
+type WorkActivityRejected struct {
+	Reason core.DomainError
+}
+
+func (WorkActivityListed) workActivityResult() {}
+
+func (WorkActivityRejected) workActivityResult() {}
+
+// WorkActivity reads today's budget consumption and the active reservation
+// count for every credential the owner holds, so credential listings can show
+// budget state without a per-credential query.
+func (service Service) WorkActivity(ctx context.Context, owner core.UserID) WorkActivityResult {
+	storeResult := service.store.ReadWorkActivity(ctx, owner)
+	listed, matched := storeResult.(WorkActivityStoreListed)
+	if !matched {
+		return WorkActivityRejected{Reason: storeResult.(WorkActivityStoreRejected).Reason}
+	}
+	return WorkActivityListed{Values: listed.Values}
 }
 
 type VerifyResult interface {

@@ -79,7 +79,7 @@ func TestMCPReviewerReadsSubmissionContent(t *testing.T) {
 	task := createPublicUserTask(t, server, owner)
 	openTask(t, server, owner.AccessToken, task.ID)
 
-	workerAgent := createAgentCredential(t, server, worker.AccessToken, []string{"tasks_read", "submissions_write", "submissions_read"})
+	workerAgent := createWorkSeekingAgentCredential(t, server, worker, []string{"tasks_read", "submissions_write", "submissions_read"})
 	workerSession := initializeMCPSession(t, server, workerAgent)
 
 	submit := toolText(t, decodeRPC(t, mcpCall(t, server, workerAgent, workerSession, `1`, "sharecrop.submit_response",
@@ -187,7 +187,7 @@ func TestMCPInvalidSubmissionReturnsErrorsAndKeepsReservation(t *testing.T) {
 		t.Fatalf("open_task error: %+v", opened.Error)
 	}
 
-	workerAgent := createAgentCredential(t, server, worker.AccessToken, []string{"tasks_read", "submissions_write", "submissions_read"})
+	workerAgent := createWorkSeekingAgentCredential(t, server, worker, []string{"tasks_read", "submissions_write", "submissions_read"})
 	workerSession := initializeMCPSession(t, server, workerAgent)
 	reserve := decodeRPC(t, mcpCall(t, server, workerAgent, workerSession, `3`, "sharecrop.reserve_task", `{"task_id":"`+createdDetail.ID+`"}`))
 	if reserve.Error != nil {

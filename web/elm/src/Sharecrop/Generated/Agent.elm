@@ -205,6 +205,72 @@ agentCredentialStateEncoder agentCredentialState =
             Encode.string "revoked"
 
 
+type WorkSeekingState
+    = WorkSeekingStateDisabled
+    | WorkSeekingStateEnabled
+
+workSeekingStateDecoder : Decoder WorkSeekingState
+workSeekingStateDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\value ->
+                case value of
+                    "work_seeking_disabled" ->
+                        Decode.succeed WorkSeekingStateDisabled
+
+                    "work_seeking_enabled" ->
+                        Decode.succeed WorkSeekingStateEnabled
+
+                    _ ->
+                        Decode.fail "invalid WorkSeekingState"
+            )
+
+workSeekingStateEncoder : WorkSeekingState -> Encode.Value
+workSeekingStateEncoder workSeekingState =
+    case workSeekingState of
+        WorkSeekingStateDisabled ->
+            Encode.string "work_seeking_disabled"
+
+        WorkSeekingStateEnabled ->
+            Encode.string "work_seeking_enabled"
+
+
+type alias AgentWorkPolicyResponse =
+    { workSeeking : WorkSeekingState
+    , maxTasksPerDay : Int
+    , maxConcurrentReservations : Int
+    , maxCreditsPerDay : Int
+    , taskTypes : List String
+    , minRewardCredits : Int
+    , tokenBudgetTokens : Int
+    , tokenBudgetNote : String
+    }
+
+agentWorkPolicyResponseDecoder : Decoder AgentWorkPolicyResponse
+agentWorkPolicyResponseDecoder =
+    Decode.map8 AgentWorkPolicyResponse
+        (Decode.field "work_seeking" workSeekingStateDecoder)
+        (Decode.field "max_tasks_per_day" Decode.int)
+        (Decode.field "max_concurrent_reservations" Decode.int)
+        (Decode.field "max_credits_per_day" Decode.int)
+        (Decode.field "task_types" (Decode.list Decode.string))
+        (Decode.field "min_reward_credits" Decode.int)
+        (Decode.field "token_budget_tokens" Decode.int)
+        (Decode.field "token_budget_note" Decode.string)
+
+agentWorkPolicyResponseEncoder : AgentWorkPolicyResponse -> Encode.Value
+agentWorkPolicyResponseEncoder agentWorkPolicyResponse =
+    Encode.object
+        [ ( "work_seeking", workSeekingStateEncoder agentWorkPolicyResponse.workSeeking )
+        , ( "max_tasks_per_day", Encode.int agentWorkPolicyResponse.maxTasksPerDay )
+        , ( "max_concurrent_reservations", Encode.int agentWorkPolicyResponse.maxConcurrentReservations )
+        , ( "max_credits_per_day", Encode.int agentWorkPolicyResponse.maxCreditsPerDay )
+        , ( "task_types", Encode.list Encode.string agentWorkPolicyResponse.taskTypes )
+        , ( "min_reward_credits", Encode.int agentWorkPolicyResponse.minRewardCredits )
+        , ( "token_budget_tokens", Encode.int agentWorkPolicyResponse.tokenBudgetTokens )
+        , ( "token_budget_note", Encode.string agentWorkPolicyResponse.tokenBudgetNote )
+        ]
+
 type alias AgentCredentialResponse =
     { id : String
     , label : String
@@ -212,17 +278,29 @@ type alias AgentCredentialResponse =
     , state : AgentCredentialState
     , expiresAt : String
     , taskID : String
+    , workPolicy : AgentWorkPolicyResponse
+    , tasksUsedToday : Int
+    , creditsSpentToday : Int
+    , activeReservations : Int
     }
 
 agentCredentialResponseDecoder : Decoder AgentCredentialResponse
 agentCredentialResponseDecoder =
-    Decode.map6 AgentCredentialResponse
+    Decode.map8 AgentCredentialResponse
         (Decode.field "id" Decode.string)
         (Decode.field "label" Decode.string)
         (Decode.field "scopes" (Decode.list agentScopeDecoder))
         (Decode.field "state" agentCredentialStateDecoder)
         (Decode.field "expires_at" Decode.string)
         (Decode.field "task_id" Decode.string)
+        (Decode.field "work_policy" agentWorkPolicyResponseDecoder)
+        (Decode.field "tasks_used_today" Decode.int)
+        |> Decode.andThen
+            (\finish ->
+                Decode.map2 finish
+                    (Decode.field "credits_spent_today" Decode.int)
+                    (Decode.field "active_reservations" Decode.int)
+            )
 
 agentCredentialResponseEncoder : AgentCredentialResponse -> Encode.Value
 agentCredentialResponseEncoder agentCredentialResponse =
@@ -233,6 +311,10 @@ agentCredentialResponseEncoder agentCredentialResponse =
         , ( "state", agentCredentialStateEncoder agentCredentialResponse.state )
         , ( "expires_at", Encode.string agentCredentialResponse.expiresAt )
         , ( "task_id", Encode.string agentCredentialResponse.taskID )
+        , ( "work_policy", agentWorkPolicyResponseEncoder agentCredentialResponse.workPolicy )
+        , ( "tasks_used_today", Encode.int agentCredentialResponse.tasksUsedToday )
+        , ( "credits_spent_today", Encode.int agentCredentialResponse.creditsSpentToday )
+        , ( "active_reservations", Encode.int agentCredentialResponse.activeReservations )
         ]
 
 type alias AgentCredentialsResponse =

@@ -168,7 +168,7 @@ func (server Server) sendCredits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := server.ledgerService.SendCredits(r.Context(), actor.subject.ID, source.value, target.value, amount.Value, note.value, key.Value)
+	result := server.ledgerService.SendCredits(r.Context(), actor.subject.ID, source.value, target.value, amount.Value, note.value, key.Value, ledger.SpendByUser{})
 	sent, matched := result.(ledger.CreditsSent)
 	if !matched {
 		writeDomainError(w, result.(ledger.SendRejected).Reason)

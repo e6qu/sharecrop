@@ -46,7 +46,7 @@ func (store OrgStore) CreateOrganization(ctx context.Context, organizationID cor
 		return org.CreateOrganizationStoreRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "insert organization owner role failed")}
 	}
 
-	grantResult := insertOrganizationCreditGrant(ctx, tx, organizationID)
+	grantResult := insertOrganizationCreditGrant(ctx, tx, organizationID, createdBy)
 	if rejected, matched := grantResult.(signupGrantRejected); matched {
 		return org.CreateOrganizationStoreRejected{Reason: rejected.reason}
 	}

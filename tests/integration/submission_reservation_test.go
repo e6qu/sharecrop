@@ -54,7 +54,7 @@ func submitResponse(t *testing.T, service submission.Service, taskID core.TaskID
 	if !matched {
 		t.Fatalf("response source rejected")
 	}
-	return service.Submit(context.Background(), submission.SubmitCommand{
+	return service.Submit(context.Background(), task.WorkerIsUser{}, submission.SubmitCommand{
 		TaskID:         taskID,
 		SubmitterID:    worker,
 		ResponseSource: source.Value,
@@ -79,6 +79,7 @@ func TestInvalidSubmissionKeepsReservationActive(t *testing.T) {
 		t.Fatalf("reservation id rejected")
 	}
 	reserved, reservedMatched := taskStore.CreateReservation(context.Background(), reservationID.Value, task.ReservationCommand{
+		Origin:      task.ReservedByUserSession{},
 		TaskID:      taskID,
 		Assignee:    task.UserAssignee{UserID: worker},
 		RequestedBy: worker,

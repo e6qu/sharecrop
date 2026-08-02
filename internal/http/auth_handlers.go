@@ -506,8 +506,8 @@ func (server Server) findOwnDirectoryEntry(ctx context.Context, userID core.User
 	return directoryEntryFound{value: listed.Values[0]}
 }
 
-// accountProfile reports the signed-in user's own profile: id, email, and
-// display name.
+// accountProfile reports the signed-in user's own profile: id, email,
+// display name, and email-verification state.
 func (server Server) accountProfile(w http.ResponseWriter, r *http.Request) {
 	actorResult := server.requireUserSubject(r)
 	actor, matched := actorResult.(userSubjectAccepted)
@@ -518,9 +518,10 @@ func (server Server) accountProfile(w http.ResponseWriter, r *http.Request) {
 	switch entry := server.findOwnDirectoryEntry(r.Context(), actor.subject.ID).(type) {
 	case directoryEntryFound:
 		writeJSON(w, http.StatusOK, accountProfileResponse{
-			ID:          entry.value.ID.String(),
-			Email:       entry.value.Email.String(),
-			DisplayName: entry.value.DisplayName.String(),
+			ID:                     entry.value.ID.String(),
+			Email:                  entry.value.Email.String(),
+			DisplayName:            entry.value.DisplayName.String(),
+			EmailVerificationState: entry.value.VerificationState.String(),
 		})
 	case directoryEntryMissing:
 		writeError(w, http.StatusNotFound, core.ErrorCodeNotFound, "account was not found")

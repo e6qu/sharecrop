@@ -244,15 +244,15 @@ func (healthTaskService) GetSeries(context.Context, auth.Subject, core.TaskSerie
 	return task.GetSeriesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult {
+func (healthTaskService) Reserve(context.Context, auth.UserSubject, task.WorkerOrigin, core.TaskID) task.ReservationResult {
 	return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) ReserveForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult {
+func (healthTaskService) ReserveForOrganizationTeam(context.Context, auth.UserSubject, task.WorkerOrigin, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult {
 	return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthTaskService) ReserveForTeam(context.Context, auth.UserSubject, core.TaskID, core.TeamID) task.ReservationResult {
+func (healthTaskService) ReserveForTeam(context.Context, auth.UserSubject, task.WorkerOrigin, core.TaskID, core.TeamID) task.ReservationResult {
 	return task.ReservationRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -272,7 +272,7 @@ func (healthTaskService) ListReservations(context.Context, auth.Subject, core.Ta
 	return task.ReservationsListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthSubmissionService) Submit(context.Context, submission.SubmitCommand) submission.SubmitResult {
+func (healthSubmissionService) Submit(context.Context, task.WorkerOrigin, submission.SubmitCommand) submission.SubmitResult {
 	return submission.SubmitRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -302,11 +302,11 @@ func (healthSubmissionService) ListSubmissionComments(context.Context, auth.Subj
 
 type healthLedgerService struct{}
 
-func (healthLedgerService) FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult {
+func (healthLedgerService) FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey, ledger.SpendOrigin) ledger.FundResult {
 	return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthLedgerService) FundTaskFromOrganization(context.Context, core.UserID, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult {
+func (healthLedgerService) FundTaskFromOrganization(context.Context, core.UserID, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey, ledger.SpendOrigin) ledger.FundResult {
 	return ledger.FundRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -318,7 +318,7 @@ func (healthLedgerService) AcceptSubmission(context.Context, ledger.Reviewer, co
 	return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthLedgerService) ReviewAcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult {
+func (healthLedgerService) ReviewAcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection, ledger.SpendOrigin) ledger.AcceptResult {
 	return ledger.AcceptRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -326,7 +326,7 @@ func (healthLedgerService) RequestChanges(context.Context, ledger.Reviewer, core
 	return ledger.RequestChangesRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthLedgerService) RejectSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult {
+func (healthLedgerService) RejectSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection, ledger.SpendOrigin) ledger.RejectResult {
 	return ledger.RejectRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -354,7 +354,7 @@ func (healthLedgerService) GrantCredits(context.Context, core.UserID, ledger.Gra
 	return ledger.GrantRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
-func (healthLedgerService) SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey) ledger.SendResult {
+func (healthLedgerService) SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey, ledger.SpendOrigin) ledger.SendResult {
 	return ledger.SendRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
@@ -370,6 +370,14 @@ func (healthAgentService) Verify(context.Context, agent.SecretPlain) agent.Verif
 
 func (healthAgentService) List(context.Context, core.UserID, core.Page) agent.ListResult {
 	return agent.ListRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAgentService) ConfigureWorkPolicy(context.Context, core.UserID, core.AgentCredentialID, agent.WorkPolicy) agent.ConfigureWorkPolicyResult {
+	return agent.ConfigureWorkPolicyRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
+}
+
+func (healthAgentService) WorkActivity(context.Context, core.UserID) agent.WorkActivityResult {
+	return agent.WorkActivityRejected{Reason: core.NewDomainError(core.ErrorCodeInvalidState, "not used")}
 }
 
 type healthOrgCredentialService struct{}

@@ -114,7 +114,52 @@ async function registerAdmin(origin: string): Promise<AdminSession> {
   ) {
     throw new Error("registered subject_id is not a UUID");
   }
+  await verifyEmail(origin, accessToken);
   return { subjectID, accessToken, refreshToken };
+}
+
+// The signup grant lands at email verification, not at registration, and the
+// scenario spends credits (funding, tips, peer sends). The runner therefore
+// verifies its actor over the API, which needs the api token delivery the
+// scenario servers are started with.
+async function verifyEmail(origin: string, accessToken: string): Promise<void> {
+  const issued = await fetch(`${origin}/api/account/email-verification`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    },
+  });
+  const issuedText = await issued.text();
+  if (issued.status !== 201) {
+    throw new Error(
+      `POST /api/account/email-verification returned ${issued.status}: ${
+        issuedText.slice(0, 400)
+      }`,
+    );
+  }
+  const token = requireString(
+    parseResponseBody(issuedText, "POST /api/account/email-verification"),
+    "token",
+  );
+  const confirmed = await fetch(
+    `${origin}/api/auth/email-verification/confirm`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ token }),
+    },
+  );
+  if (confirmed.status !== 200) {
+    throw new Error(
+      `POST /api/auth/email-verification/confirm returned ${confirmed.status}: ${
+        (await confirmed.text()).slice(0, 400)
+      }`,
+    );
+  }
 }
 
 async function grantPlatformAdmin(

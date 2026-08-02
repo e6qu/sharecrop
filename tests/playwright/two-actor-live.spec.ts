@@ -1,6 +1,11 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import process from "node:process";
-import { fillDetailResponse, password, uniqueEmail } from "./helpers.ts";
+import {
+  fillDetailResponse,
+  password,
+  uniqueEmail,
+  verifyAccountWithToken,
+} from "./helpers.ts";
 
 // Two live browser sessions - a requester and a worker signed in as
 // different registered users at the same time - drive one task through its
@@ -36,6 +41,10 @@ test("two live sessions follow one task loop through the poll", async ({ browser
       data: { email, password, display_name: displayName },
     });
     expect(registered.ok(), `register ${email}`).toBeTruthy();
+    const registeredBody = (await registered.json()) as {
+      access_token: string;
+    };
+    await verifyAccountWithToken(request, registeredBody.access_token);
     const context = await browser.newContext({ baseURL: apiOrigin });
     const page = await context.newPage();
     await page.goto("/");

@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { type AuthBody, password, uniqueEmail } from "./helpers.ts";
+import {
+  type AuthBody,
+  password,
+  uniqueEmail,
+  verifyAccountWithToken,
+} from "./helpers.ts";
 
 // Browser flows for the peer economy against the real backend: sending
 // credits, sending collectibles, the mint confirmation, per-page document
@@ -15,7 +20,9 @@ async function registerViaAPI(
     data: { email, password },
   });
   expect(response.ok()).toBeTruthy();
-  return { email, body: (await response.json()) as AuthBody };
+  const body = (await response.json()) as AuthBody;
+  await verifyAccountWithToken(request, body.access_token);
+  return { email, body };
 }
 
 async function loginViaUI(

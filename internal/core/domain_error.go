@@ -19,6 +19,15 @@ var (
 	ErrorCodeConflict         = ErrorCode{value: "conflict"}
 	ErrorCodeUnauthenticated  = ErrorCode{value: "unauthenticated"}
 	ErrorCodeRateLimited      = ErrorCode{value: "rate_limited"}
+	// ErrorCodeBudgetExceeded marks a request refused because a configured
+	// work budget is exhausted: an agent credential's daily task budget,
+	// concurrent reservation cap, or daily credit spend, or a per-subject
+	// peer-transfer velocity ceiling. It maps to HTTP 429: the request was
+	// well-formed and authorized but a quota is used up, and retrying after
+	// the window resets can succeed — unlike 403, which signals a permission
+	// the caller does not have at all. The distinct code keeps it separable
+	// from rate_limited (request-frequency protection).
+	ErrorCodeBudgetExceeded = ErrorCode{value: "budget_exceeded"}
 	// ErrorCodeUnavailable marks a server-side failure (upstream provider,
 	// storage, or session infrastructure) rather than a caller mistake. It is
 	// written by HTTP handlers for 5xx responses; domain constructors do not
@@ -41,6 +50,7 @@ func AllErrorCodes() []ErrorCode {
 		ErrorCodeConflict,
 		ErrorCodeUnauthenticated,
 		ErrorCodeRateLimited,
+		ErrorCodeBudgetExceeded,
 		ErrorCodeUnavailable,
 	}
 }

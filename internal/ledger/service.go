@@ -16,6 +16,9 @@ type FundStoreCommand struct {
 	TaskID         core.TaskID
 	Amount         CreditAmount
 	IdempotencyKey IdempotencyKey
+	// Spend is the work-credential spend-budget consumption applied
+	// atomically with the fund.
+	Spend SpendCharge
 	// Draft is the task_funded event recorded inside the fund transaction.
 	Draft event.Draft
 }
@@ -36,6 +39,9 @@ type AcceptStoreCommand struct {
 	CreditSelection  CreditReviewSelection
 	TipSelection     TipSelection
 	CollectibleTip   CollectibleTipSelection
+	// Spend is the work-credential spend-budget consumption for a credit tip,
+	// applied atomically with the tip.
+	Spend SpendCharge
 	// Draft is the submission_accepted event recorded inside the accept
 	// transaction; the store merges the worker into its recipients and
 	// derives the payout/tip and submission_superseded events from it.
@@ -65,6 +71,9 @@ type RejectStoreCommand struct {
 	CreditSelection  CreditReviewSelection
 	TipSelection     TipSelection
 	BanSelection     BanSelection
+	// Spend is the work-credential spend-budget consumption for a credit tip,
+	// applied atomically with the tip.
+	Spend SpendCharge
 	// Draft is the submission_rejected event recorded inside the reject
 	// transaction; the store merges the worker into its recipients and
 	// derives the partial payout/tip events from it.
@@ -94,6 +103,9 @@ type OrganizationFundStoreCommand struct {
 	// ActingUserID is the organization member who initiated the funding, so
 	// the recorded event and audit trail carry the real actor.
 	ActingUserID core.UserID
+	// Spend is the work-credential spend-budget consumption applied
+	// atomically with the fund.
+	Spend SpendCharge
 	// Draft is the task_funded event recorded inside the fund transaction;
 	// the store merges the task owner into its recipients.
 	Draft event.Draft
@@ -130,6 +142,11 @@ type PeerTransferStoreCommand struct {
 	Amount         CreditAmount
 	Note           TransferNote
 	IdempotencyKey IdempotencyKey
+	// Spend is the work-credential spend-budget consumption applied
+	// atomically with the send. The per-subject velocity ceiling
+	// (DailyPeerTransferCeilingCredits) is enforced unconditionally inside
+	// the same transaction, whatever the origin.
+	Spend SpendCharge
 	// Draft is the credits_sent event recorded inside the transfer
 	// transaction; the store merges the resolved receivers into its
 	// recipients.
@@ -195,7 +212,7 @@ func taskSubject(taskID core.TaskID) event.Subject {
 	return subject
 }
 
-func (service Service) FundTask(ctx context.Context, funder core.UserID, taskID core.TaskID, amount CreditAmount, key IdempotencyKey) FundResult {
+func (service Service) FundTask(ctx context.Context, funder core.UserID, taskID core.TaskID, amount CreditAmount, key IdempotencyKey, origin SpendOrigin) FundResult {
 	entryResult := core.NewLedgerEntryID()
 	entryCreated, matched := entryResult.(core.LedgerEntryIDCreated)
 	if !matched {
@@ -218,6 +235,7 @@ func (service Service) FundTask(ctx context.Context, funder core.UserID, taskID 
 		TaskID:         taskID,
 		Amount:         amount,
 		IdempotencyKey: key,
+		Spend:          spendChargeFor(origin, amount),
 		Draft:          draft,
 	})
 	if funded, matched := result.(TaskFunded); matched {
@@ -227,7 +245,7 @@ func (service Service) FundTask(ctx context.Context, funder core.UserID, taskID 
 }
 
 func (service Service) AcceptSubmission(ctx context.Context, reviewer Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey) AcceptResult {
-	return service.ReviewAcceptSubmission(ctx, reviewer, taskID, submissionID, key, FullCreditReviewSelection{}, NoTipSelection{}, NoCollectibleTipSelection{})
+	return service.ReviewAcceptSubmission(ctx, reviewer, taskID, submissionID, key, FullCreditReviewSelection{}, NoTipSelection{}, NoCollectibleTipSelection{}, SpendByUser{})
 }
 
 // reviewerActor maps a reviewer to the event actor and initial recipients of
@@ -270,7 +288,7 @@ func requireReviewerCanPay(reviewer Reviewer, tipSelection TipSelection, collect
 	return nil
 }
 
-func (service Service) ReviewAcceptSubmission(ctx context.Context, reviewer Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, creditSelection CreditReviewSelection, tipSelection TipSelection, collectibleTip CollectibleTipSelection) AcceptResult {
+func (service Service) ReviewAcceptSubmission(ctx context.Context, reviewer Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, creditSelection CreditReviewSelection, tipSelection TipSelection, collectibleTip CollectibleTipSelection, origin SpendOrigin) AcceptResult {
 	if reason := requireReviewerCanPay(reviewer, tipSelection, collectibleTip, NoBanSelection{}); reason != nil {
 		return AcceptRejected{Reason: *reason}
 	}
@@ -316,6 +334,7 @@ func (service Service) ReviewAcceptSubmission(ctx context.Context, reviewer Revi
 		CreditSelection:  creditSelection,
 		TipSelection:     tipSelection,
 		CollectibleTip:   collectibleTip,
+		Spend:            tipSpendChargeFor(origin, tipSelection),
 		Draft:            draft,
 	})
 	if accepted, matched := result.(SubmissionAccepted); matched {
@@ -349,7 +368,7 @@ func (service Service) RequestChanges(ctx context.Context, reviewer Reviewer, ta
 	return result
 }
 
-func (service Service) RejectSubmission(ctx context.Context, reviewer Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, note submission.ReviewNote, creditSelection CreditReviewSelection, tipSelection TipSelection, banSelection BanSelection) RejectResult {
+func (service Service) RejectSubmission(ctx context.Context, reviewer Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key IdempotencyKey, note submission.ReviewNote, creditSelection CreditReviewSelection, tipSelection TipSelection, banSelection BanSelection, origin SpendOrigin) RejectResult {
 	if reason := requireReviewerCanPay(reviewer, tipSelection, NoCollectibleTipSelection{}, banSelection); reason != nil {
 		return RejectRejected{Reason: *reason}
 	}
@@ -387,6 +406,7 @@ func (service Service) RejectSubmission(ctx context.Context, reviewer Reviewer, 
 		CreditSelection:  creditSelection,
 		TipSelection:     tipSelection,
 		BanSelection:     banSelection,
+		Spend:            tipSpendChargeFor(origin, tipSelection),
 		Draft:            draft,
 	})
 	if rejected, matched := result.(SubmissionRejected); matched {
@@ -457,7 +477,7 @@ func (service Service) RefundTask(ctx context.Context, requester core.UserID, ta
 // verified by the API boundary). The recorded event names that user as its
 // actor, and the store merges the task owner into the recipients inside the
 // fund transaction.
-func (service Service) FundTaskFromOrganization(ctx context.Context, actingUser core.UserID, organizationID core.OrganizationID, taskID core.TaskID, amount CreditAmount, key IdempotencyKey) FundResult {
+func (service Service) FundTaskFromOrganization(ctx context.Context, actingUser core.UserID, organizationID core.OrganizationID, taskID core.TaskID, amount CreditAmount, key IdempotencyKey, origin SpendOrigin) FundResult {
 	entryResult := core.NewLedgerEntryID()
 	entryCreated, matched := entryResult.(core.LedgerEntryIDCreated)
 	if !matched {
@@ -479,6 +499,7 @@ func (service Service) FundTaskFromOrganization(ctx context.Context, actingUser 
 		Amount:         amount,
 		IdempotencyKey: key,
 		ActingUserID:   actingUser,
+		Spend:          spendChargeFor(origin, amount),
 		Draft:          draft,
 	})
 	if funded, fundedMatched := result.(TaskFunded); fundedMatched {
@@ -573,7 +594,7 @@ func (service Service) ListOrganizationEntries(ctx context.Context, organization
 // credits_sent event (recipients: the actor and the resolved receivers) is
 // recorded inside the transfer transaction and dispatched after commit; no
 // admin audit entry is written because this is not an administrative action.
-func (service Service) SendCredits(ctx context.Context, actor core.UserID, source TransferSource, target TransferTarget, amount CreditAmount, note TransferNote, key IdempotencyKey) SendResult {
+func (service Service) SendCredits(ctx context.Context, actor core.UserID, source TransferSource, target TransferTarget, amount CreditAmount, note TransferNote, key IdempotencyKey, origin SpendOrigin) SendResult {
 	subject := event.NoSubjectRefs()
 	switch typed := source.(type) {
 	case TransferFromSelf:
@@ -618,6 +639,7 @@ func (service Service) SendCredits(ctx context.Context, actor core.UserID, sourc
 		Amount:         amount,
 		Note:           note,
 		IdempotencyKey: key,
+		Spend:          spendChargeFor(origin, amount),
 		Draft:          draft,
 	})
 	sent, sentMatched := result.(CreditsSent)

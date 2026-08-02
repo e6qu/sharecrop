@@ -50,6 +50,7 @@ func TestSubmissionBridgeDualRun(t *testing.T) {
 	receiptID := newReceiptTokenID(t)
 	receiptHash := newReceiptHash(t)
 	command := submission.SubmitCommand{
+		Budget:         task.NoWorkBudgetCharge{},
 		TaskID:         taskID,
 		SubmitterID:    submitter,
 		ResponseSource: newResponseSource(t, `{"answer":"42"}`),

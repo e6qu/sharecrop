@@ -1045,6 +1045,52 @@ countPhrase count unit =
         String.fromInt count ++ " " ++ unit ++ "s ago"
 
 
+{-| A counted noun with no time sense: "1 task", "3 tasks". `countPhrase`
+above always reads as elapsed time ("3 tasks ago"), which is wrong for an
+allowance or a holding.
+-}
+pluralCount : Int -> String -> String
+pluralCount count unit =
+    if count == 1 then
+        "1 " ++ unit
+
+    else
+        String.fromInt count ++ " " ++ unit ++ "s"
+
+
+{-| A duration in seconds, humanized to its two largest useful units:
+"45 seconds", "6 minutes", "2 hours 10 minutes", "3 days 4 hours". Used for
+the age of the oldest webhook delivery still waiting, where "9421" tells an
+operator nothing. Under one second reports "under a second" rather than
+"0 seconds", because the counter it comes from truncates.
+-}
+durationLabel : Int -> String
+durationLabel seconds =
+    if seconds < 1 then
+        "under a second"
+
+    else if seconds < 60 then
+        pluralCount seconds "second"
+
+    else if seconds < 3600 then
+        pluralCount (seconds // 60) "minute"
+
+    else if seconds < 86400 then
+        twoUnitDuration (seconds // 3600) "hour" (modBy 3600 seconds // 60) "minute"
+
+    else
+        twoUnitDuration (seconds // 86400) "day" (modBy 86400 seconds // 3600) "hour"
+
+
+twoUnitDuration : Int -> String -> Int -> String -> String
+twoUnitDuration major majorUnit minor minorUnit =
+    if minor == 0 then
+        pluralCount major majorUnit
+
+    else
+        pluralCount major majorUnit ++ " " ++ pluralCount minor minorUnit
+
+
 {-| A humanized absolute instant, e.g. "Sep 15, 2026, 17:00 UTC" — for
 expiry displays, where the exact calendar moment matters more than a
 relative phrase. Falls back to the raw timestamp when it does not parse.

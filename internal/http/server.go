@@ -89,9 +89,9 @@ type TaskService interface {
 	ListSeriesComments(context.Context, auth.UserSubject, core.TaskSeriesID, core.Page) task.SeriesCommentsResult
 	AddTaskComment(context.Context, auth.UserSubject, core.TaskID, task.CommentBody) task.TaskCommentResult
 	ListTaskComments(context.Context, auth.UserSubject, core.TaskID, core.Page) task.TaskCommentsResult
-	Reserve(context.Context, auth.UserSubject, core.TaskID) task.ReservationResult
-	ReserveForOrganizationTeam(context.Context, auth.UserSubject, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
-	ReserveForTeam(context.Context, auth.UserSubject, core.TaskID, core.TeamID) task.ReservationResult
+	Reserve(context.Context, auth.UserSubject, task.WorkerOrigin, core.TaskID) task.ReservationResult
+	ReserveForOrganizationTeam(context.Context, auth.UserSubject, task.WorkerOrigin, core.TaskID, core.OrganizationID, core.TeamID) task.ReservationResult
+	ReserveForTeam(context.Context, auth.UserSubject, task.WorkerOrigin, core.TaskID, core.TeamID) task.ReservationResult
 	CancelReservation(context.Context, auth.Subject, core.TaskID, core.TaskReservationID) task.ReservationStateChangeResult
 	ListReservations(context.Context, auth.Subject, core.TaskID, core.Page) task.ReservationsListResult
 }
@@ -101,6 +101,8 @@ type AgentService interface {
 	Verify(context.Context, agent.SecretPlain) agent.VerifyResult
 	List(context.Context, core.UserID, core.Page) agent.ListResult
 	Revoke(context.Context, core.UserID, core.AgentCredentialID) agent.RevokeResult
+	ConfigureWorkPolicy(context.Context, core.UserID, core.AgentCredentialID, agent.WorkPolicy) agent.ConfigureWorkPolicyResult
+	WorkActivity(context.Context, core.UserID) agent.WorkActivityResult
 }
 
 // OrgCredentialService mints and verifies org-wide credentials (see
@@ -136,7 +138,7 @@ type AssetService interface {
 }
 
 type SubmissionService interface {
-	Submit(context.Context, submission.SubmitCommand) submission.SubmitResult
+	Submit(context.Context, task.WorkerOrigin, submission.SubmitCommand) submission.SubmitResult
 	Get(context.Context, auth.Subject, core.SubmissionID) submission.GetResult
 	FindByReceipt(context.Context, submission.ReceiptTokenPlain) submission.ReceiptStatusResult
 	ListForTask(context.Context, auth.Subject, core.TaskID, core.Page) submission.ListResult
@@ -146,12 +148,12 @@ type SubmissionService interface {
 }
 
 type LedgerService interface {
-	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
-	FundTaskFromOrganization(context.Context, core.UserID, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey) ledger.FundResult
+	FundTask(context.Context, core.UserID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey, ledger.SpendOrigin) ledger.FundResult
+	FundTaskFromOrganization(context.Context, core.UserID, core.OrganizationID, core.TaskID, ledger.CreditAmount, ledger.IdempotencyKey, ledger.SpendOrigin) ledger.FundResult
 	AcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey) ledger.AcceptResult
-	ReviewAcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection) ledger.AcceptResult
+	ReviewAcceptSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, ledger.CreditReviewSelection, ledger.TipSelection, ledger.CollectibleTipSelection, ledger.SpendOrigin) ledger.AcceptResult
 	RequestChanges(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote) ledger.RequestChangesResult
-	RejectSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection) ledger.RejectResult
+	RejectSubmission(context.Context, ledger.Reviewer, core.TaskID, core.SubmissionID, ledger.IdempotencyKey, submission.ReviewNote, ledger.CreditReviewSelection, ledger.TipSelection, ledger.BanSelection, ledger.SpendOrigin) ledger.RejectResult
 	RefundTask(context.Context, core.UserID, core.TaskID, ledger.IdempotencyKey) ledger.RefundResult
 	TaskAllocatedCredits(context.Context, core.TaskID) ledger.TaskAllocatedResult
 	Balance(context.Context, core.UserID) ledger.BalanceResult
@@ -159,7 +161,7 @@ type LedgerService interface {
 	ListEntries(context.Context, core.UserID, core.Page) ledger.ListEntriesResult
 	ListOrganizationEntries(context.Context, core.OrganizationID, core.Page) ledger.ListEntriesResult
 	GrantCredits(context.Context, core.UserID, ledger.GrantTarget, ledger.CreditAmount, ledger.GrantNote, ledger.IdempotencyKey) ledger.GrantResult
-	SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey) ledger.SendResult
+	SendCredits(context.Context, core.UserID, ledger.TransferSource, ledger.TransferTarget, ledger.CreditAmount, ledger.TransferNote, ledger.IdempotencyKey, ledger.SpendOrigin) ledger.SendResult
 }
 
 type AuditService interface {
@@ -219,6 +221,7 @@ type Server struct {
 	shauth                shauthConfig
 	requireBrowserSession bool
 	oidcSessions          auth.OpenIDConnectSessionStore
+	opsCounters           OpsCountersReader
 }
 
 type RuntimeState struct {
@@ -237,6 +240,12 @@ type RuntimeState struct {
 	PlatformAdmins          PlatformAdminService
 	ModerationTriage        ModerationTriageService
 	OIDCSessions            auth.OpenIDConnectSessionStore
+	// OpsCounters is the host-side operations read model behind
+	// GET /api/admin/operations/counters. It aggregates over Postgres tables
+	// (outbox, webhook deliveries, ledger, budget counters), so only runtimes
+	// with direct database access wire the real reader; every other runtime
+	// keeps the explicit unavailable reader and the host serves the route.
+	OpsCounters OpsCountersReader
 }
 
 // Rate-limit budgets (burst capacity + steady refill per second): bound abusive
@@ -274,6 +283,7 @@ func DefaultRuntimeState(bootstrapAdmins map[string]bool) RuntimeState {
 		PlatformAdmins:          newMemoryPlatformAdminService(bootstrapAdmins),
 		ModerationTriage:        newMemoryModerationTriageService(),
 		OIDCSessions:            newMemoryOpenIDConnectSessionStore(),
+		OpsCounters:             NewUnavailableOpsCountersReader(),
 	}
 }
 
@@ -283,8 +293,8 @@ func New(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVeri
 }
 
 func NewWithRuntimeState(staticFiles fs.FS, authService AuthService, subjectVerifier SubjectVerifier, organizationService OrganizationService, taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, agentService AgentService, orgCredentialService OrgCredentialService, assetService AssetService, runtime RuntimeState) http.Handler {
-	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.RegistrationRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.EventStore == nil || runtime.WebhookStore == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil || runtime.PlatformAdmins == nil || runtime.ModerationTriage == nil || runtime.OIDCSessions == nil {
-		panic("runtime state requires explicit rate limiters (including the registration limiter), MCP sessions, audit service, notification service, event store, webhook store, saved queue views, privacy service, platform admin service, moderation triage service, and OpenID Connect session storage")
+	if runtime.IPRateLimiter == nil || runtime.SubjectRateLimiter == nil || runtime.RegistrationRateLimiter == nil || runtime.MCPSessions == nil || runtime.AuditService == nil || runtime.NotificationService == nil || runtime.EventStore == nil || runtime.WebhookStore == nil || runtime.SavedQueueViews == nil || runtime.PrivacyService == nil || runtime.PlatformAdmins == nil || runtime.ModerationTriage == nil || runtime.OIDCSessions == nil || runtime.OpsCounters == nil {
+		panic("runtime state requires explicit rate limiters (including the registration limiter), MCP sessions, audit service, notification service, event store, webhook store, saved queue views, privacy service, platform admin service, moderation triage service, OpenID Connect session storage, and an operations counters reader")
 	}
 	return newServer(staticFiles, authService, subjectVerifier, organizationService, taskService, submissionService, ledgerService, agentService, orgCredentialService, assetService, runtime)
 }
@@ -305,7 +315,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		agentService:         agentService,
 		orgCredentialService: orgCredentialService,
 		assetService:         assetService,
-		mcpServer:            mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: runtime.NotificationService, authService: authService, platformAdmins: runtime.PlatformAdmins, moderationTriage: runtime.ModerationTriage, privacyService: runtime.PrivacyService, auditService: runtime.AuditService, webhookService: webhook.NewService(runtime.WebhookStore), eventStore: runtime.EventStore}),
+		mcpServer:            mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: runtime.NotificationService, authService: authService, platformAdmins: runtime.PlatformAdmins, moderationTriage: runtime.ModerationTriage, privacyService: runtime.PrivacyService, auditService: runtime.AuditService, webhookService: webhook.NewService(runtime.WebhookStore), eventStore: runtime.EventStore, agentService: agentService}),
 		mcpSessions:          runtime.MCPSessions,
 		// The refresh-token cookie is Secure by default; local plain-HTTP dev can
 		// opt out explicitly with SHARECROP_INSECURE_COOKIES=true.
@@ -323,6 +333,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 		platformAdmins:        runtime.PlatformAdmins,
 		moderationTriage:      runtime.ModerationTriage,
 		oidcSessions:          runtime.OIDCSessions,
+		opsCounters:           runtime.OpsCounters,
 		shauth:                shauth,
 		requireBrowserSession: shauth.enabled() || os.Getenv("SHARECROP_REQUIRE_BROWSER_SESSION") == "true",
 	}
@@ -425,6 +436,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/admin/collectibles/{collectible_id}/release", server.releaseCollectible)
 	mux.HandleFunc("DELETE /api/admin/collectibles/{collectible_id}", server.deleteCollectible)
 	mux.HandleFunc("GET /api/admin/operations", server.operationsStatus)
+	mux.HandleFunc("GET /api/admin/operations/counters", server.operationsCounters)
 	mux.HandleFunc("GET /api/admin/platform-admins", server.listPlatformAdmins)
 	mux.HandleFunc("POST /api/admin/platform-admins", server.grantPlatformAdmin)
 	mux.HandleFunc("POST /api/admin/platform-admins/{user_id}/revoke", server.revokePlatformAdmin)
@@ -453,6 +465,7 @@ func newServer(staticFiles fs.FS, authService AuthService, subjectVerifier Subje
 	mux.HandleFunc("POST /api/agent-credentials", server.createAgentCredential)
 	mux.HandleFunc("GET /api/agent-credentials", server.listAgentCredentials)
 	mux.HandleFunc("POST /api/agent-credentials/{credential_id}/revoke", server.revokeAgentCredential)
+	mux.HandleFunc("PUT /api/agent-credentials/{credential_id}/work-policy", server.configureAgentWorkPolicy)
 	mux.HandleFunc("POST /api/organizations/{organization_id}/credentials", server.createOrgCredential)
 	mux.HandleFunc("GET /api/organizations/{organization_id}/credentials", server.listOrgCredentials)
 	mux.HandleFunc("POST /api/organizations/{organization_id}/credentials/{credential_id}/revoke", server.revokeOrgCredential)
@@ -480,8 +493,8 @@ func withRequestBodyLimit(next http.Handler) http.Handler {
 
 // NewMCPServer builds an MCP server backed by the given domain services so the
 // stdio transport can reuse the same tool surface as the HTTP endpoint.
-func NewMCPServer(taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, organizationService OrganizationService, orgCredentialService OrgCredentialService, assetService AssetService, notificationService NotificationService, authService AuthService, platformAdmins PlatformAdminService, moderationTriage ModerationTriageService, privacyService PrivacyService, auditService AuditService, webhookService webhook.Service, eventStore event.Store) mcp.Server {
-	return mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: notificationService, authService: authService, platformAdmins: platformAdmins, moderationTriage: moderationTriage, privacyService: privacyService, auditService: auditService, webhookService: webhookService, eventStore: eventStore})
+func NewMCPServer(taskService TaskService, submissionService SubmissionService, ledgerService LedgerService, organizationService OrganizationService, orgCredentialService OrgCredentialService, assetService AssetService, notificationService NotificationService, authService AuthService, platformAdmins PlatformAdminService, moderationTriage ModerationTriageService, privacyService PrivacyService, auditService AuditService, webhookService webhook.Service, eventStore event.Store, agentService AgentService) mcp.Server {
+	return mcp.NewServer(mcpServices{taskService: taskService, submissionService: submissionService, ledgerService: ledgerService, organizationService: organizationService, orgCredentialService: orgCredentialService, assetService: assetService, notificationService: notificationService, authService: authService, platformAdmins: platformAdmins, moderationTriage: moderationTriage, privacyService: privacyService, auditService: auditService, webhookService: webhookService, eventStore: eventStore, agentService: agentService})
 }
 
 func health(w http.ResponseWriter, r *http.Request) {
@@ -692,29 +705,51 @@ func ParseRegistrationRateRefillForRuntime(raw string) float64 {
 	return refill
 }
 
+// workerSubjectResult resolves a worker-endpoint request: the acting user
+// subject plus the worker origin (user session vs agent credential with its
+// work policy), so the task/submission services can enforce work budgets.
+type workerSubjectResult interface {
+	workerSubjectResult()
+}
+
+type workerSubjectAccepted struct {
+	subject auth.UserSubject
+	origin  task.WorkerOrigin
+}
+
+type workerSubjectRejected struct {
+	reason string
+}
+
+func (workerSubjectAccepted) workerSubjectResult() {}
+
+func (workerSubjectRejected) workerSubjectResult() {}
+
 // requireWorkerSubject resolves a request to an acting user subject from either
 // a user access token or an agent credential that holds the required scope. This
 // lets a single agent token drive the worker REST endpoints as well as MCP (an
 // agent credential always acts as its owning user, exactly as it does over MCP).
 // taskID is the task this specific request acts on: a task-scoped credential
 // (Credential.TaskID != nil, e.g. one auto-issued on reservation) is rejected
-// outright if it doesn't match, regardless of what scopes it holds.
-func (server Server) requireWorkerSubject(r *http.Request, scope agent.Scope, taskID core.TaskID) userSubjectResult {
+// outright if it doesn't match, regardless of what scopes it holds. The
+// returned origin carries the credential's work-policy snapshot; the service
+// layer fails closed against it.
+func (server Server) requireWorkerSubject(r *http.Request, scope agent.Scope, taskID core.TaskID) workerSubjectResult {
 	if accepted, matched := server.requireUserSubject(r).(userSubjectAccepted); matched {
-		return accepted
+		return workerSubjectAccepted{subject: accepted.subject, origin: task.WorkerIsUser{}}
 	}
 	verifyResult := server.verifyAgent(r)
 	verified, matched := verifyResult.(agent.CredentialVerified)
 	if !matched {
-		return userSubjectRejected{reason: "a user access token or an agent credential is required"}
+		return workerSubjectRejected{reason: "a user access token or an agent credential is required"}
 	}
 	if _, granted := verified.Credential.Scopes.Allows(scope).(agent.ScopeGranted); !granted {
-		return userSubjectRejected{reason: "the agent credential is missing the " + scope.String() + " scope"}
+		return workerSubjectRejected{reason: "the agent credential is missing the " + scope.String() + " scope"}
 	}
 	if !verified.Credential.MatchesTask(taskID) {
-		return userSubjectRejected{reason: "the agent credential is not valid for this task"}
+		return workerSubjectRejected{reason: "the agent credential is not valid for this task"}
 	}
-	return userSubjectAccepted{subject: verified.Subject}
+	return workerSubjectAccepted{subject: verified.Subject, origin: verified.Credential.TaskWorkerOrigin()}
 }
 
 func (server Server) requireUserSubject(r *http.Request) userSubjectResult {
@@ -1326,6 +1361,16 @@ func (server Server) writeAuthResponse(w http.ResponseWriter, status int, respon
 	} else {
 		response.Role = "member"
 	}
+	// Stamp the email-verification state so the client can prompt "verify your
+	// email to receive your signup grant" without a separate profile request.
+	// Guest subjects have no directory entry and keep the empty sentinel; a
+	// failed directory read also leaves it empty rather than failing the
+	// session response.
+	if matched {
+		if entry, found := server.findOwnDirectoryEntry(context.Background(), userID.Value).(directoryEntryFound); found {
+			response.EmailVerificationState = entry.value.VerificationState.String()
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(response)
@@ -1428,6 +1473,12 @@ func statusForError(reason core.DomainError) int {
 	case core.ErrorCodeUnauthenticated:
 		return http.StatusUnauthorized
 	case core.ErrorCodeRateLimited:
+		return http.StatusTooManyRequests
+	case core.ErrorCodeBudgetExceeded:
+		// A refused work budget is a quota condition, not a missing
+		// permission: the same request succeeds again once the budget window
+		// resets, so 429 (with the distinct budget_exceeded code) fits better
+		// than 403.
 		return http.StatusTooManyRequests
 	case core.ErrorCodeUnavailable:
 		return http.StatusServiceUnavailable

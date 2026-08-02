@@ -92,6 +92,7 @@ emptyLoggedIn response =
     , subjectId = response.subjectID
     , username = response.username
     , displayName = response.displayName
+    , emailVerificationState = response.emailVerificationState
     , now = Time.millisToPosix 0
     , isAdmin = response.role == "admin"
     , page = OverviewPage
@@ -161,6 +162,15 @@ emptyLoggedIn response =
     , credentials = loadedNone
     , newCredential = Nothing
     , agentMessage = Nothing
+    , workPolicyEditing = Nothing
+    , workPolicyTasksPerDay = ""
+    , workPolicyMaxConcurrent = ""
+    , workPolicyMaxCredits = ""
+    , workPolicyTaskTypes = []
+    , workPolicyMinReward = ""
+    , workPolicyTokenBudget = ""
+    , workPolicyTokenNote = ""
+    , workPolicyMessage = Nothing
     , discoveryTasks = loadedNone
     , discoveryIncludeReserved = False
     , discoveryFundedOnly = False
@@ -331,6 +341,7 @@ emptyLoggedIn response =
     , orgTeamOffset = 0
     , orgTeamNextOffset = 0
     , operations = Nothing
+    , opsCounters = OpsCountersPending
     , auditEvents = []
     , auditEventsOffset = 0
     , auditEventsNextOffset = 0
@@ -699,7 +710,7 @@ enterPageFields page state =
             { state | page = page, teamDetail = Nothing, teamDetailError = Nothing, teamWork = [], teamWorkQuery = "", teamWorkFilter = "", teamWorkTypeFilter = "", teamWorkSort = "newest", teamWorkOffset = 0, teamWorkMessage = Nothing, teamCollectibles = [], teamCollectiblesMessage = Nothing, teamMemberEmail = "", teamMemberMessage = Nothing }
 
         AdminPage ->
-            { state | page = page, operations = Nothing, auditEvents = [], auditEventsOffset = 0, platformAdmins = [], platformAdminsOffset = 0, adminSelectedUserId = "", adminModerationReports = [], adminModerationStateFilter = "open", adminModerationOffset = 0, adminModerationResolutionNote = "", adminPrivacyRequests = [], adminPrivacyOffset = 0, adminPrivacyResolutionNote = "", adminRetentionRedactedFieldCount = Nothing, grantTargetKind = "user", grantTargetId = "", grantAmount = "", grantNote = "", grantKey = "", grantMessage = Nothing, auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
+            { state | page = page, operations = Nothing, opsCounters = OpsCountersPending, auditEvents = [], auditEventsOffset = 0, platformAdmins = [], platformAdminsOffset = 0, adminSelectedUserId = "", adminModerationReports = [], adminModerationStateFilter = "open", adminModerationOffset = 0, adminModerationResolutionNote = "", adminPrivacyRequests = [], adminPrivacyOffset = 0, adminPrivacyResolutionNote = "", adminRetentionRedactedFieldCount = Nothing, grantTargetKind = "user", grantTargetId = "", grantAmount = "", grantNote = "", grantKey = "", grantMessage = Nothing, auditActionFilter = "", auditSubjectKindFilter = "", auditSubjectIDFilter = "", adminMessage = Nothing }
 
         OverviewPage ->
             -- The feed cursor and rows survive route changes: a revisit
@@ -711,7 +722,10 @@ enterPageFields page state =
             { state | page = page, sendRecipientKind = "user", sendRecipientId = "", sendAmount = "", sendNote = "", sendKey = "", sendMessage = Nothing }
 
         AgentsPage ->
-            { state | page = page, webhookURL = "", webhookKinds = [], webhookAudience = Events.WebhookAudienceRecipient, webhookFilterTaskType = "", webhookFilterMinReward = "", webhookMessage = Nothing, newWebhookSecret = Nothing, activeWebhookDeliveriesID = Nothing, webhookDeliveries = [] }
+            -- The work-policy editor closes on entry, so returning to the page
+            -- never shows a half-filled budget form for a credential the user
+            -- has since stopped thinking about.
+            { state | page = page, webhookURL = "", webhookKinds = [], webhookAudience = Events.WebhookAudienceRecipient, webhookFilterTaskType = "", webhookFilterMinReward = "", webhookMessage = Nothing, newWebhookSecret = Nothing, activeWebhookDeliveriesID = Nothing, webhookDeliveries = [], workPolicyEditing = Nothing, workPolicyMessage = Nothing }
 
         InboxPage ->
             { state | page = page, notifications = [], notificationsOffset = 0, notificationsNextOffset = 0, inboxUnreadOnly = False, inboxMessage = Nothing }
@@ -1332,6 +1346,48 @@ update msg model =
             -- note the list refresh shows the credential still active with no
             -- explanation.
             ( Api.updateLoggedIn model (\state -> { state | agentMessage = Just (FailureNote ("Could not revoke the credential: " ++ httpErrorLabel error)) }), Cmd.none )
+
+        AllowWorkSeekingClicked credential ->
+            ( Api.updateLoggedIn model (openWorkPolicyForm credential), Cmd.none )
+
+        EditWorkPolicyClicked credential ->
+            ( Api.updateLoggedIn model (openWorkPolicyForm credential), Cmd.none )
+
+        CloseWorkPolicyClicked ->
+            ( Api.updateLoggedIn model (\state -> { state | workPolicyEditing = Nothing, workPolicyMessage = Nothing }), Cmd.none )
+
+        WorkPolicyTasksPerDayChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | workPolicyTasksPerDay = value }), Cmd.none )
+
+        WorkPolicyMaxConcurrentChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | workPolicyMaxConcurrent = value }), Cmd.none )
+
+        WorkPolicyMaxCreditsChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | workPolicyMaxCredits = value }), Cmd.none )
+
+        ToggleWorkPolicyTaskType taskType ->
+            ( Api.updateLoggedIn model (\state -> { state | workPolicyTaskTypes = toggleString taskType state.workPolicyTaskTypes }), Cmd.none )
+
+        WorkPolicyMinRewardChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | workPolicyMinReward = value }), Cmd.none )
+
+        WorkPolicyTokenBudgetChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | workPolicyTokenBudget = value }), Cmd.none )
+
+        WorkPolicyTokenNoteChanged value ->
+            ( Api.updateLoggedIn model (\state -> { state | workPolicyTokenNote = value }), Cmd.none )
+
+        SaveWorkPolicyClicked credentialId ->
+            Api.withSession model (\state -> Api.saveWorkPolicyCommand model state credentialId)
+
+        StopWorkSeekingClicked credentialId ->
+            Api.withSession model (\state -> ( model, Api.putWorkSeekingDisabled state.accessToken credentialId ))
+
+        WorkPolicyConfigured (Ok credential) ->
+            ( Api.updateLoggedIn model (\state -> { state | workPolicyEditing = Nothing, workPolicyMessage = Just (SuccessNote (View.workPolicySavedLabel credential)) }), Api.refreshCredentials model )
+
+        WorkPolicyConfigured (Err error) ->
+            ( Api.updateLoggedIn model (\state -> { state | workPolicyMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
         OrgCredentialsReceived result ->
             ( Api.updateLoggedIn model (\state -> { state | orgCredentials = Api.loadedFromResult .credentials result }), Cmd.none )
@@ -3000,6 +3056,16 @@ update msg model =
         OperationsReceived (Err error) ->
             ( Api.updateLoggedIn model (\state -> { state | operations = Nothing, adminMessage = Just (FailureNote (httpErrorLabel error)) }), Cmd.none )
 
+        OpsCountersReceived (Ok counters) ->
+            ( Api.updateLoggedIn model (\state -> { state | opsCounters = OpsCountersLoaded counters }), Cmd.none )
+
+        OpsCountersReceived (Err error) ->
+            -- A refused counters read is its own rendered state: the section
+            -- explains itself instead of showing nine fabricated zeros, and
+            -- the failure never lands in the page-wide admin message (the
+            -- other admin panels loaded fine).
+            ( Api.updateLoggedIn model (\state -> { state | opsCounters = OpsCountersUnavailable (httpErrorLabel error) }), Cmd.none )
+
         AuditEventsReceived (Ok response) ->
             ( Api.updateLoggedIn model (\state -> { state | auditEvents = response.events, auditEventsNextOffset = response.nextOffset, adminMessage = Nothing }), Cmd.none )
 
@@ -3547,6 +3613,56 @@ toggleString value values =
 
     else
         value :: values
+
+
+{-| Opens the work-budget editor for one credential and fills it from what
+that credential currently allows. A credential that is not seeking work has
+no stored allowances, so the form starts at the suggested daily task budget
+with every other allowance left open; an already-enabled credential is
+edited from its own numbers. A stored 0 means "no limit" on the wire, which
+is the empty field here.
+-}
+openWorkPolicyForm : Agent.AgentCredentialResponse -> LoggedInModel -> LoggedInModel
+openWorkPolicyForm credential state =
+    let
+        policy =
+            credential.workPolicy
+    in
+    case policy.workSeeking of
+        Agent.WorkSeekingStateEnabled ->
+            { state
+                | workPolicyEditing = Just credential.id
+                , workPolicyMessage = Nothing
+                , workPolicyTasksPerDay = String.fromInt policy.maxTasksPerDay
+                , workPolicyMaxConcurrent = optionalCountField policy.maxConcurrentReservations
+                , workPolicyMaxCredits = optionalCountField policy.maxCreditsPerDay
+                , workPolicyTaskTypes = policy.taskTypes
+                , workPolicyMinReward = optionalCountField policy.minRewardCredits
+                , workPolicyTokenBudget = optionalCountField policy.tokenBudgetTokens
+                , workPolicyTokenNote = policy.tokenBudgetNote
+            }
+
+        Agent.WorkSeekingStateDisabled ->
+            { state
+                | workPolicyEditing = Just credential.id
+                , workPolicyMessage = Nothing
+                , workPolicyTasksPerDay = View.suggestedDailyTaskBudget
+                , workPolicyMaxConcurrent = ""
+                , workPolicyMaxCredits = ""
+                , workPolicyTaskTypes = []
+                , workPolicyMinReward = ""
+                , workPolicyTokenBudget = ""
+                , workPolicyTokenNote = ""
+            }
+
+
+optionalCountField : Int -> String
+optionalCountField value =
+    if value == 0 then
+        ""
+
+    else
+        String.fromInt value
 
 
 {-| The idempotency key for the current send-credits intent: minted on the

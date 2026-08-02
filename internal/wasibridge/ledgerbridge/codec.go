@@ -335,6 +335,64 @@ func decodeExecution(raw string) (ledger.Execution, error) {
 	}
 }
 
+// ---- ledger.SpendCharge ----
+
+// spendChargeWire flattens the ledger.SpendCharge union: kind is "none" or
+// "spend_budget".
+type spendChargeWire struct {
+	Kind         string `json:"kind"`
+	CredentialID string `json:"credential_id,omitempty"`
+	DayLimit     int64  `json:"day_limit,omitempty"`
+	Amount       int64  `json:"amount,omitempty"`
+}
+
+const (
+	spendChargeKindNone   = "none"
+	spendChargeKindBudget = "spend_budget"
+)
+
+// encodeSpendCharge leaves the kind empty for an unknown (or missing) charge;
+// the decoding side rejects the empty kind, so a malformed charge fails
+// closed at the boundary instead of passing as "no charge".
+func encodeSpendCharge(charge ledger.SpendCharge) spendChargeWire {
+	switch typed := charge.(type) {
+	case ledger.NoSpendCharge:
+		return spendChargeWire{Kind: spendChargeKindNone}
+	case ledger.ChargeSpendBudget:
+		return spendChargeWire{
+			Kind:         spendChargeKindBudget,
+			CredentialID: corewire.EncodeAgentCredentialID(typed.CredentialID),
+			DayLimit:     typed.DayLimit.Int64(),
+			Amount:       typed.Amount.Int64(),
+		}
+	default:
+		return spendChargeWire{}
+	}
+}
+
+func decodeSpendCharge(wire spendChargeWire) (ledger.SpendCharge, error) {
+	switch wire.Kind {
+	case spendChargeKindNone:
+		return ledger.NoSpendCharge{}, nil
+	case spendChargeKindBudget:
+		credentialID, err := corewire.DecodeAgentCredentialID(wire.CredentialID)
+		if err != nil {
+			return nil, err
+		}
+		dayLimit, err := decodeCreditAmount(wire.DayLimit)
+		if err != nil {
+			return nil, err
+		}
+		amount, err := decodeCreditAmount(wire.Amount)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.ChargeSpendBudget{CredentialID: credentialID, DayLimit: dayLimit, Amount: amount}, nil
+	default:
+		return nil, fmt.Errorf("unknown spend charge kind %q", wire.Kind)
+	}
+}
+
 // ---- command structs ----
 
 type fundCommandWire struct {
@@ -343,6 +401,7 @@ type fundCommandWire struct {
 	TaskID         string                `json:"task_id"`
 	Amount         int64                 `json:"amount"`
 	IdempotencyKey string                `json:"idempotency_key"`
+	Spend          spendChargeWire       `json:"spend"`
 	Draft          eventbridge.DraftWire `json:"draft"`
 }
 
@@ -353,6 +412,7 @@ func encodeFundCommand(command ledger.FundStoreCommand) fundCommandWire {
 		TaskID:         corewire.EncodeTaskID(command.TaskID),
 		Amount:         encodeCreditAmount(command.Amount),
 		IdempotencyKey: encodeIdempotencyKey(command.IdempotencyKey),
+		Spend:          encodeSpendCharge(command.Spend),
 		Draft:          eventbridge.EncodeDraft(command.Draft),
 	}
 }
@@ -378,6 +438,10 @@ func decodeFundCommand(wire fundCommandWire) (ledger.FundStoreCommand, error) {
 	if err != nil {
 		return ledger.FundStoreCommand{}, err
 	}
+	spend, err := decodeSpendCharge(wire.Spend)
+	if err != nil {
+		return ledger.FundStoreCommand{}, err
+	}
 	draft, err := eventbridge.DecodeDraft(wire.Draft)
 	if err != nil {
 		return ledger.FundStoreCommand{}, err
@@ -388,6 +452,7 @@ func decodeFundCommand(wire fundCommandWire) (ledger.FundStoreCommand, error) {
 		TaskID:         taskID,
 		Amount:         amount,
 		IdempotencyKey: key,
+		Spend:          spend,
 		Draft:          draft,
 	}, nil
 }
@@ -399,6 +464,7 @@ type orgFundCommandWire struct {
 	Amount         int64                 `json:"amount"`
 	IdempotencyKey string                `json:"idempotency_key"`
 	ActingUserID   string                `json:"acting_user_id"`
+	Spend          spendChargeWire       `json:"spend"`
 	Draft          eventbridge.DraftWire `json:"draft"`
 }
 
@@ -410,6 +476,7 @@ func encodeOrgFundCommand(command ledger.OrganizationFundStoreCommand) orgFundCo
 		Amount:         encodeCreditAmount(command.Amount),
 		IdempotencyKey: encodeIdempotencyKey(command.IdempotencyKey),
 		ActingUserID:   corewire.EncodeUserID(command.ActingUserID),
+		Spend:          encodeSpendCharge(command.Spend),
 		Draft:          eventbridge.EncodeDraft(command.Draft),
 	}
 }
@@ -439,6 +506,10 @@ func decodeOrgFundCommand(wire orgFundCommandWire) (ledger.OrganizationFundStore
 	if err != nil {
 		return ledger.OrganizationFundStoreCommand{}, err
 	}
+	spend, err := decodeSpendCharge(wire.Spend)
+	if err != nil {
+		return ledger.OrganizationFundStoreCommand{}, err
+	}
 	draft, err := eventbridge.DecodeDraft(wire.Draft)
 	if err != nil {
 		return ledger.OrganizationFundStoreCommand{}, err
@@ -450,6 +521,7 @@ func decodeOrgFundCommand(wire orgFundCommandWire) (ledger.OrganizationFundStore
 		Amount:         amount,
 		IdempotencyKey: key,
 		ActingUserID:   actingUserID,
+		Spend:          spend,
 		Draft:          draft,
 	}, nil
 }
@@ -466,6 +538,7 @@ type acceptCommandWire struct {
 	CreditSelection  selectionWire         `json:"credit_selection"`
 	TipSelection     selectionWire         `json:"tip_selection"`
 	CollectibleTip   selectionWire         `json:"collectible_tip"`
+	Spend            spendChargeWire       `json:"spend"`
 	Draft            eventbridge.DraftWire `json:"draft"`
 }
 
@@ -482,6 +555,7 @@ func encodeAcceptCommand(command ledger.AcceptStoreCommand) acceptCommandWire {
 		CreditSelection:  encodeCreditReviewSelection(command.CreditSelection),
 		TipSelection:     encodeTipSelection(command.TipSelection),
 		CollectibleTip:   encodeCollectibleTipSelection(command.CollectibleTip),
+		Spend:            encodeSpendCharge(command.Spend),
 		Draft:            eventbridge.EncodeDraft(command.Draft),
 	}
 }
@@ -507,6 +581,10 @@ func decodeAcceptCommand(wire acceptCommandWire) (ledger.AcceptStoreCommand, err
 	if err != nil {
 		return ledger.AcceptStoreCommand{}, err
 	}
+	spend, err := decodeSpendCharge(wire.Spend)
+	if err != nil {
+		return ledger.AcceptStoreCommand{}, err
+	}
 	draft, err := eventbridge.DecodeDraft(wire.Draft)
 	if err != nil {
 		return ledger.AcceptStoreCommand{}, err
@@ -523,6 +601,7 @@ func decodeAcceptCommand(wire acceptCommandWire) (ledger.AcceptStoreCommand, err
 		CreditSelection:  creditSelection,
 		TipSelection:     tipSelection,
 		CollectibleTip:   collectibleTip,
+		Spend:            spend,
 		Draft:            draft,
 	}, nil
 }
@@ -582,6 +661,7 @@ type rejectCommandWire struct {
 	CreditSelection  selectionWire         `json:"credit_selection"`
 	TipSelection     selectionWire         `json:"tip_selection"`
 	BanSelection     selectionWire         `json:"ban_selection"`
+	Spend            spendChargeWire       `json:"spend"`
 	Draft            eventbridge.DraftWire `json:"draft"`
 }
 
@@ -598,6 +678,7 @@ func encodeRejectCommand(command ledger.RejectStoreCommand) rejectCommandWire {
 		CreditSelection:  encodeCreditReviewSelection(command.CreditSelection),
 		TipSelection:     encodeTipSelection(command.TipSelection),
 		BanSelection:     encodeBanSelection(command.BanSelection),
+		Spend:            encodeSpendCharge(command.Spend),
 		Draft:            eventbridge.EncodeDraft(command.Draft),
 	}
 }
@@ -635,6 +716,10 @@ func decodeRejectCommand(wire rejectCommandWire) (ledger.RejectStoreCommand, err
 	if err != nil {
 		return ledger.RejectStoreCommand{}, err
 	}
+	spend, err := decodeSpendCharge(wire.Spend)
+	if err != nil {
+		return ledger.RejectStoreCommand{}, err
+	}
 	draft, err := eventbridge.DecodeDraft(wire.Draft)
 	if err != nil {
 		return ledger.RejectStoreCommand{}, err
@@ -651,6 +736,7 @@ func decodeRejectCommand(wire rejectCommandWire) (ledger.RejectStoreCommand, err
 		CreditSelection:  creditSelection,
 		TipSelection:     tipSelection,
 		BanSelection:     banSelection,
+		Spend:            spend,
 		Draft:            draft,
 	}, nil
 }
@@ -1354,6 +1440,7 @@ type grantCommandWire struct {
 	Amount         int64                 `json:"amount"`
 	Note           string                `json:"note"`
 	IdempotencyKey string                `json:"idempotency_key"`
+	Spend          spendChargeWire       `json:"spend"`
 	Draft          eventbridge.DraftWire `json:"draft"`
 }
 
@@ -1552,6 +1639,7 @@ type peerTransferCommandWire struct {
 	// absence (a validated note is never empty).
 	Note           string                `json:"note"`
 	IdempotencyKey string                `json:"idempotency_key"`
+	Spend          spendChargeWire       `json:"spend"`
 	Draft          eventbridge.DraftWire `json:"draft"`
 }
 
@@ -1569,6 +1657,7 @@ func encodePeerTransferCommand(command ledger.PeerTransferStoreCommand) peerTran
 		Amount:         encodeCreditAmount(command.Amount),
 		Note:           note,
 		IdempotencyKey: encodeIdempotencyKey(command.IdempotencyKey),
+		Spend:          encodeSpendCharge(command.Spend),
 		Draft:          eventbridge.EncodeDraft(command.Draft),
 	}
 }
@@ -1610,6 +1699,10 @@ func decodePeerTransferCommand(wire peerTransferCommandWire) (ledger.PeerTransfe
 	if err != nil {
 		return ledger.PeerTransferStoreCommand{}, err
 	}
+	spend, err := decodeSpendCharge(wire.Spend)
+	if err != nil {
+		return ledger.PeerTransferStoreCommand{}, err
+	}
 	draft, err := eventbridge.DecodeDraft(wire.Draft)
 	if err != nil {
 		return ledger.PeerTransferStoreCommand{}, err
@@ -1623,6 +1716,7 @@ func decodePeerTransferCommand(wire peerTransferCommandWire) (ledger.PeerTransfe
 		Amount:         amount,
 		Note:           note,
 		IdempotencyKey: key,
+		Spend:          spend,
 		Draft:          draft,
 	}, nil
 }

@@ -37,9 +37,9 @@ type capturedSendCommand struct {
 	key    string
 }
 
-func (services *capturingServices) SendCredits(ctx context.Context, actor core.UserID, source ledger.TransferSource, target ledger.TransferTarget, amount ledger.CreditAmount, note ledger.TransferNote, key ledger.IdempotencyKey) ledger.SendResult {
+func (services *capturingServices) SendCredits(ctx context.Context, actor core.UserID, source ledger.TransferSource, target ledger.TransferTarget, amount ledger.CreditAmount, note ledger.TransferNote, key ledger.IdempotencyKey, origin ledger.SpendOrigin) ledger.SendResult {
 	*services.sendCommand = capturedSendCommand{source: source, target: target, amount: amount.Int64(), note: note, key: key.String()}
-	return services.fakeServices.SendCredits(ctx, actor, source, target, amount, note, key)
+	return services.fakeServices.SendCredits(ctx, actor, source, target, amount, note, key, origin)
 }
 
 func (services *capturingServices) CreateTask(ctx context.Context, command task.CreateCommand) task.CreateResult {
@@ -54,10 +54,10 @@ func (services *capturingServices) ListTasks(ctx context.Context, subject auth.S
 	return services.fakeServices.ListTasks(ctx, subject, scope, filters, page)
 }
 
-func (services *capturingServices) ReviewAcceptSubmission(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, collectibleTip ledger.CollectibleTipSelection) ledger.AcceptResult {
+func (services *capturingServices) ReviewAcceptSubmission(ctx context.Context, reviewer ledger.Reviewer, taskID core.TaskID, submissionID core.SubmissionID, key ledger.IdempotencyKey, creditSelection ledger.CreditReviewSelection, tipSelection ledger.TipSelection, collectibleTip ledger.CollectibleTipSelection, origin ledger.SpendOrigin) ledger.AcceptResult {
 	*services.collectibleTip = collectibleTip
 	*services.reviewer = reviewer
-	return services.fakeServices.ReviewAcceptSubmission(ctx, reviewer, taskID, submissionID, key, creditSelection, tipSelection, collectibleTip)
+	return services.fakeServices.ReviewAcceptSubmission(ctx, reviewer, taskID, submissionID, key, creditSelection, tipSelection, collectibleTip, origin)
 }
 
 func newCapturingServices() *capturingServices {

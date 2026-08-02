@@ -801,3 +801,72 @@ test("the demo organization sends credits and a collectible", async ({ page }) =
     "Sent Golden Egg.",
   );
 });
+
+test("demo shows an agent that seeks work on a budget beside one that does not", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("95 credits")).toBeVisible();
+
+  await page.getByTestId("nav-manage-menu").click();
+  await page.getByTestId("nav-agents").click();
+
+  const seeking = page.getByTestId("credential-row").filter({
+    hasText: "Harvest crew agent",
+  });
+  await expect(seeking.getByTestId("work-seeking-state")).toHaveText(
+    "Allowed to seek work",
+  );
+  // Consumption is real: the seeded agent reserved two tasks through its own
+  // credential, which is what charges the day counter.
+  await expect(seeking.getByTestId("work-tasks-today")).toContainText(
+    "2 of 10 tasks today",
+  );
+  await expect(seeking.getByTestId("work-reservations-now")).toContainText(
+    "2 of 3 tasks held at once",
+  );
+  await expect(seeking.getByTestId("work-credits-today")).toContainText(
+    "0 of 50 credits spent today",
+  );
+  await expect(seeking.getByTestId("work-policy-task-types")).toContainText(
+    "Document review, Research, Data extraction",
+  );
+  await expect(seeking.getByTestId("work-policy-token-budget")).toContainText(
+    "advisory only",
+  );
+
+  const idle = page.getByTestId("credential-row").filter({
+    hasText: "Notebook helper",
+  });
+  await expect(idle.getByTestId("work-seeking-state")).toHaveText(
+    "Not allowed to seek work",
+  );
+  await expect(idle.getByTestId("work-policy-usage")).toHaveCount(0);
+});
+
+test("demo admin renders the operations counters from the host store", async ({ page }) => {
+  await page.goto(`${demoOrigin}/index.html`);
+  await expect(page.getByText("95 credits")).toBeVisible();
+
+  await page.getByTestId("nav-account-menu").click();
+  await page.getByTestId("nav-admin").click();
+
+  // The demo keeps the same aggregate tables production reads, so the
+  // counters are real values, not the unavailable state.
+  await expect(page.getByTestId("admin-ops-counters")).toBeVisible();
+  await expect(page.getByTestId("admin-ops-counters-unavailable")).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId("admin-ops-counters")).toContainText(
+    "Events awaiting dispatch",
+  );
+  await expect(page.getByTestId("admin-ops-counters")).toContainText(
+    "Oldest pending",
+  );
+  // Every demo persona verified their email, so the day's signup grants are
+  // counted rather than guessed at.
+  await expect(page.getByTestId("admin-ops-counters")).toContainText(
+    "Signup grants",
+  );
+  await expect(page.getByTestId("admin-ops-counters")).toContainText(
+    "Agent budget refusals",
+  );
+});

@@ -182,12 +182,12 @@ func TestReplayedCommandsRecordNoNewEvents(t *testing.T) {
 	// fund_task
 	fundTask := insertTask(t, pool, owner, "draft", 20)
 	fundKey := idempotencyKey(t, "replay-fund-"+fundTask.String())
-	if funded, matched := service.FundTask(context.Background(), owner, fundTask, creditAmount(t, 20), fundKey).(ledger.TaskFunded); !matched {
+	if funded, matched := service.FundTask(context.Background(), owner, fundTask, creditAmount(t, 20), fundKey, ledger.SpendByUser{}).(ledger.TaskFunded); !matched {
 		t.Fatalf("fund rejected")
 	} else if _, first := funded.Execution.(ledger.FirstExecution); !first {
 		t.Fatalf("first fund execution = %T", funded.Execution)
 	}
-	refunded, matched := service.FundTask(context.Background(), owner, fundTask, creditAmount(t, 20), fundKey).(ledger.TaskFunded)
+	refunded, matched := service.FundTask(context.Background(), owner, fundTask, creditAmount(t, 20), fundKey, ledger.SpendByUser{}).(ledger.TaskFunded)
 	if !matched {
 		t.Fatalf("replayed fund rejected")
 	}
@@ -204,7 +204,7 @@ func TestReplayedCommandsRecordNoNewEvents(t *testing.T) {
 	// accept_submission
 	acceptTask := insertTask(t, pool, owner, "draft", 30)
 	acceptKey := "replay-accept-" + acceptTask.String()
-	if _, matched := service.FundTask(context.Background(), owner, acceptTask, creditAmount(t, 30), idempotencyKey(t, "fund-"+acceptTask.String())).(ledger.TaskFunded); !matched {
+	if _, matched := service.FundTask(context.Background(), owner, acceptTask, creditAmount(t, 30), idempotencyKey(t, "fund-"+acceptTask.String()), ledger.SpendByUser{}).(ledger.TaskFunded); !matched {
 		t.Fatalf("fund for accept rejected")
 	}
 	setTaskState(t, pool, acceptTask, "open")
@@ -258,10 +258,10 @@ func TestReplayedCommandsRecordNoNewEvents(t *testing.T) {
 	rejectTask := insertTask(t, pool, owner, "open", 10)
 	rejectSubmission := insertSubmission(t, pool, rejectTask, worker)
 	rejectKey := idempotencyKey(t, "replay-reject-"+rejectTask.String())
-	if _, matched := service.RejectSubmission(context.Background(), ledger.UserReviewer{ID: owner}, rejectTask, rejectSubmission, rejectKey, note, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{}).(ledger.SubmissionRejected); !matched {
+	if _, matched := service.RejectSubmission(context.Background(), ledger.UserReviewer{ID: owner}, rejectTask, rejectSubmission, rejectKey, note, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{}, ledger.SpendByUser{}).(ledger.SubmissionRejected); !matched {
 		t.Fatalf("reject rejected")
 	}
-	rerejected, rerejectedMatched := service.RejectSubmission(context.Background(), ledger.UserReviewer{ID: owner}, rejectTask, rejectSubmission, rejectKey, note, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{}).(ledger.SubmissionRejected)
+	rerejected, rerejectedMatched := service.RejectSubmission(context.Background(), ledger.UserReviewer{ID: owner}, rejectTask, rejectSubmission, rejectKey, note, ledger.NoCreditReviewSelection{}, ledger.NoTipSelection{}, ledger.NoBanSelection{}, ledger.SpendByUser{}).(ledger.SubmissionRejected)
 	if !rerejectedMatched {
 		t.Fatalf("replayed reject rejected")
 	}
@@ -278,7 +278,7 @@ func TestReplayedCommandsRecordNoNewEvents(t *testing.T) {
 	// is that the retry records no second task_cancelled event.
 	refundTask := insertTask(t, pool, owner, "draft", 15)
 	refundKeyRaw := "replay-refund-" + refundTask.String()
-	if _, matched := service.FundTask(context.Background(), owner, refundTask, creditAmount(t, 15), idempotencyKey(t, "fund-"+refundTask.String())).(ledger.TaskFunded); !matched {
+	if _, matched := service.FundTask(context.Background(), owner, refundTask, creditAmount(t, 15), idempotencyKey(t, "fund-"+refundTask.String()), ledger.SpendByUser{}).(ledger.TaskFunded); !matched {
 		t.Fatalf("fund for refund rejected")
 	}
 	if first, matched := service.RefundTask(context.Background(), owner, refundTask, idempotencyKey(t, refundKeyRaw)).(ledger.TaskRefunded); !matched {
@@ -331,7 +331,7 @@ func TestAcceptSupersedesCompetingSubmissions(t *testing.T) {
 	reviewedWorker := createUser(t, pool, "supersede-reviewed")
 
 	taskID := insertTask(t, pool, owner, "draft", 25)
-	if _, matched := service.FundTask(context.Background(), owner, taskID, creditAmount(t, 25), idempotencyKey(t, "fund-"+taskID.String())).(ledger.TaskFunded); !matched {
+	if _, matched := service.FundTask(context.Background(), owner, taskID, creditAmount(t, 25), idempotencyKey(t, "fund-"+taskID.String()), ledger.SpendByUser{}).(ledger.TaskFunded); !matched {
 		t.Fatalf("fund rejected")
 	}
 	setTaskState(t, pool, taskID, "open")
@@ -425,7 +425,7 @@ func TestOrganizationFundCarriesActingUser(t *testing.T) {
 		t.Fatalf("insert organization task: %v", err)
 	}
 
-	funded, matched := service.FundTaskFromOrganization(context.Background(), actingUser, organizationID, taskID, creditAmount(t, 60), idempotencyKey(t, "org-fund-"+taskID.String())).(ledger.TaskFunded)
+	funded, matched := service.FundTaskFromOrganization(context.Background(), actingUser, organizationID, taskID, creditAmount(t, 60), idempotencyKey(t, "org-fund-"+taskID.String()), ledger.SpendByUser{}).(ledger.TaskFunded)
 	if !matched {
 		t.Fatalf("organization fund rejected")
 	}
@@ -460,7 +460,7 @@ func TestRefundRecipientsIncludeReleasedHolder(t *testing.T) {
 	owner := createUser(t, pool, "refund-holder-owner")
 	holder := createUser(t, pool, "refund-holder-worker")
 	taskID := insertTask(t, pool, owner, "draft", 30)
-	if _, matched := service.FundTask(context.Background(), owner, taskID, creditAmount(t, 30), idempotencyKey(t, "fund-"+taskID.String())).(ledger.TaskFunded); !matched {
+	if _, matched := service.FundTask(context.Background(), owner, taskID, creditAmount(t, 30), idempotencyKey(t, "fund-"+taskID.String()), ledger.SpendByUser{}).(ledger.TaskFunded); !matched {
 		t.Fatalf("fund rejected")
 	}
 	setTaskState(t, pool, taskID, "open")

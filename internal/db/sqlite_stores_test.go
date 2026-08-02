@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	agentdomain "github.com/e6qu/sharecrop/internal/agent"
 	"github.com/e6qu/sharecrop/internal/assets"
 	"github.com/e6qu/sharecrop/internal/audit"
 	"github.com/e6qu/sharecrop/internal/auth"
@@ -498,5 +499,204 @@ func TestTaskCommentsPaginationOnSQLite(t *testing.T) {
 	}
 	if len(secondPage.Values) != 1 || secondPage.Values[0].ID.String() != commentIDs[0] {
 		t.Fatalf("second page = %#v, want the single oldest comment", secondPage.Values)
+	}
+}
+
+// TestOpsCountersOnSQLite runs the operations read model over the SQLite
+// dialect: every aggregate translates, and an empty database yields zeroed
+// counters with no pending-delivery age.
+func TestOpsCountersOnSQLite(t *testing.T) {
+	handle := openSQLiteWithSchema(t)
+	store := NewOpsCountersStoreFromHandle(NewSQLite(handle))
+
+	result := store.Count(context.Background())
+	counted, matched := result.(OpsCountersCounted)
+	if !matched {
+		t.Fatalf("ops counters rejected: %#v", result)
+	}
+	if counted.Value.OutboxDispatchFailed != 0 || counted.Value.WebhookDeliveriesPending != 0 || counted.Value.WebhookDeliveriesDead != 0 {
+		t.Fatalf("fresh database counters = %+v, want zeroes", counted.Value)
+	}
+	if counted.Value.DayPeerTransfers != 0 || counted.Value.DayBudgetRefusals != 0 {
+		t.Fatalf("fresh database day totals = %+v, want zeroes", counted.Value)
+	}
+	if _, none := counted.Value.OldestPending.(NoPendingWebhookDeliveries); !none {
+		t.Fatalf("oldest pending = %T, want NoPendingWebhookDeliveries", counted.Value.OldestPending)
+	}
+
+	if err := store.EvictStaleWorkDayCounters(context.Background()); err != nil {
+		t.Fatalf("evict stale work day counters: %v", err)
+	}
+}
+
+// TestWorkDayCounterChargeOnSQLite exercises the budget counter upsert on the
+// SQLite dialect: consumption accumulates inside a transaction, an exceeding
+// charge reports the pre-charge usage, and rollback undoes the refused charge.
+func TestWorkDayCounterChargeOnSQLite(t *testing.T) {
+	handle := openSQLiteWithSchema(t)
+	beginner := NewSQLite(handle)
+	ctx := context.Background()
+
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if _, matched := chargeWorkDayCounter(ctx, tx, "agent_tasks:sqlite-test", "2026-08-02", 1, 2).(dayCounterCharged); !matched {
+		t.Fatalf("first charge refused")
+	}
+	if _, matched := chargeWorkDayCounter(ctx, tx, "agent_tasks:sqlite-test", "2026-08-02", 1, 2).(dayCounterCharged); !matched {
+		t.Fatalf("second charge refused")
+	}
+	exhausted, matched := chargeWorkDayCounter(ctx, tx, "agent_tasks:sqlite-test", "2026-08-02", 1, 2).(dayCounterExhausted)
+	if !matched {
+		t.Fatalf("third charge was not refused")
+	}
+	if exhausted.usedBefore != 2 {
+		t.Fatalf("usedBefore = %d, want 2", exhausted.usedBefore)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+
+	// The refused transaction rolled back, so a fresh one starts clean.
+	fresh, err := beginner.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin fresh: %v", err)
+	}
+	if _, matched := chargeWorkDayCounter(ctx, fresh, "agent_tasks:sqlite-test", "2026-08-02", 1, 2).(dayCounterCharged); !matched {
+		t.Fatalf("charge after rollback refused")
+	}
+	if err := fresh.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+}
+
+// TestAgentWorkPolicyOnSQLite round-trips a work policy through the agent
+// store over the SQLite dialect (the browser demo's storage adapter).
+func TestAgentWorkPolicyOnSQLite(t *testing.T) {
+	handle := openSQLiteWithSchema(t)
+	beginner := NewSQLite(handle)
+	store := NewAgentStoreFromHandle(beginner)
+	authStore := NewAuthStoreFromHandle(beginner)
+	ctx := context.Background()
+
+	userID := core.NewUserID().(core.UserIDCreated).Value
+	email := auth.NewEmailAddress("sqlite-work-policy@example.com").(auth.EmailAddressAccepted).Value
+	secret := auth.NewPasswordSecret("correct horse battery staple").(auth.PasswordSecretAccepted).Value
+	hash := auth.HashPassword(secret).(auth.PasswordHashCreated).Value
+	if _, accepted := authStore.CreateUserCredential(ctx, userID, email, auth.DeriveDisplayNameFromEmail(email), hash).(auth.StoreUserAccepted); !accepted {
+		t.Fatalf("create user rejected")
+	}
+
+	label := agentdomain.NewLabel("SQLite policy agent").(agentdomain.LabelAccepted).Value
+	credentialID := core.NewAgentCredentialID().(core.AgentCredentialIDCreated).Value
+	credential := agentdomain.Credential{
+		ID:         credentialID,
+		UserID:     userID,
+		Label:      label,
+		Scopes:     agentdomain.NewScopeSet([]agentdomain.Scope{agentdomain.ScopeTasksRead}),
+		State:      agentdomain.StateActive,
+		WorkPolicy: agentdomain.WorkPolicyDisabled{},
+	}
+	plain := agentdomain.NewSecretPlain().(agentdomain.SecretPlainAccepted).Value
+	if _, accepted := store.CreateCredential(ctx, credential, plain.Hash()).(agentdomain.CreateStoreAccepted); !accepted {
+		t.Fatalf("create credential rejected")
+	}
+
+	budget := agentdomain.NewDailyTaskBudget(3).(agentdomain.DailyTaskBudgetAccepted).Value
+	limited := agentdomain.NewTaskTypesLimited([]task.TaskType{task.TaskTypePlanning, task.TaskTypeDiagramWriting}).(agentdomain.TaskTypesLimitedAccepted).Value
+	policy := agentdomain.WorkPolicyEnabled{Allowances: agentdomain.WorkAllowances{
+		MaxTasksPerDay:         budget,
+		ConcurrentReservations: agentdomain.ConcurrentReservationsUnlimited{},
+		DailySpend:             agentdomain.DailySpendUnlimited{},
+		TaskTypes:              limited,
+		RewardFloor:            agentdomain.NoRewardFloor{},
+		TokenBudget:            agentdomain.NoTokenBudgetAdvisory{},
+	}}
+	updated, updatedMatched := store.UpdateWorkPolicy(ctx, userID, credentialID, policy).(agentdomain.UpdateWorkPolicyStoreUpdated)
+	if !updatedMatched {
+		t.Fatalf("update work policy rejected")
+	}
+	enabled, enabledMatched := updated.Value.WorkPolicy.(agentdomain.WorkPolicyEnabled)
+	if !enabledMatched {
+		t.Fatalf("updated policy = %T, want enabled", updated.Value.WorkPolicy)
+	}
+	if enabled.Allowances.MaxTasksPerDay.Int64() != 3 {
+		t.Fatalf("daily budget = %d, want 3", enabled.Allowances.MaxTasksPerDay.Int64())
+	}
+	types, typesMatched := enabled.Allowances.TaskTypes.(agentdomain.TaskTypesLimited)
+	if !typesMatched || len(types.Values()) != 2 || !types.Allows(task.TaskTypeDiagramWriting) {
+		t.Fatalf("task type restriction did not round-trip: %#v", enabled.Allowances.TaskTypes)
+	}
+
+	verified, verifiedMatched := store.VerifyCredential(ctx, plain.Hash()).(agentdomain.VerifyStoreFound)
+	if !verifiedMatched {
+		t.Fatalf("verify rejected")
+	}
+	if agentdomain.WorkPolicyState(verified.Value.WorkPolicy) != agentdomain.WorkSeekingEnabled {
+		t.Fatalf("verified policy is not enabled")
+	}
+}
+
+// TestReadWorkActivityOnSQLite covers the consumption read's key
+// concatenation and day filtering over the SQLite dialect (the browser demo's
+// storage adapter): counters written under the store's own key prefixes are
+// attributed to the right credential, and a stale day is ignored.
+func TestReadWorkActivityOnSQLite(t *testing.T) {
+	handle := openSQLiteWithSchema(t)
+	beginner := NewSQLite(handle)
+	store := NewAgentStoreFromHandle(beginner)
+	authStore := NewAuthStoreFromHandle(beginner)
+	ctx := context.Background()
+
+	userID := core.NewUserID().(core.UserIDCreated).Value
+	email := auth.NewEmailAddress("sqlite-work-activity@example.com").(auth.EmailAddressAccepted).Value
+	secret := auth.NewPasswordSecret("correct horse battery staple").(auth.PasswordSecretAccepted).Value
+	hash := auth.HashPassword(secret).(auth.PasswordHashCreated).Value
+	if _, accepted := authStore.CreateUserCredential(ctx, userID, email, auth.DeriveDisplayNameFromEmail(email), hash).(auth.StoreUserAccepted); !accepted {
+		t.Fatalf("create user rejected")
+	}
+
+	label := agentdomain.NewLabel("SQLite activity agent").(agentdomain.LabelAccepted).Value
+	credentialID := core.NewAgentCredentialID().(core.AgentCredentialIDCreated).Value
+	credential := agentdomain.Credential{
+		ID:         credentialID,
+		UserID:     userID,
+		Label:      label,
+		Scopes:     agentdomain.NewScopeSet([]agentdomain.Scope{agentdomain.ScopeTasksRead}),
+		State:      agentdomain.StateActive,
+		WorkPolicy: agentdomain.WorkPolicyDisabled{},
+	}
+	plain := agentdomain.NewSecretPlain().(agentdomain.SecretPlainAccepted).Value
+	if _, accepted := store.CreateCredential(ctx, credential, plain.Hash()).(agentdomain.CreateStoreAccepted); !accepted {
+		t.Fatalf("create credential rejected")
+	}
+
+	today := utcDay(time.Now())
+	for _, row := range []struct {
+		key  string
+		day  string
+		used int64
+	}{
+		{workDayKeyAgentTasks + credentialID.String(), today, 2},
+		{workDayKeyAgentSpend + credentialID.String(), today, 7},
+		// A stale window must not count toward today.
+		{workDayKeyAgentTasks + credentialID.String(), "2000-01-01", 9},
+	} {
+		if _, err := beginner.Exec(ctx, "insert into work_day_counters (key, day, used) values ($1, $2, $3)", row.key, row.day, row.used); err != nil {
+			t.Fatalf("insert counter %q: %v", row.key, err)
+		}
+	}
+
+	listed, listedMatched := store.ReadWorkActivity(ctx, userID).(agentdomain.WorkActivityStoreListed)
+	if !listedMatched {
+		t.Fatalf("read work activity rejected")
+	}
+	if len(listed.Values) != 1 {
+		t.Fatalf("activity rows = %d, want 1", len(listed.Values))
+	}
+	got := listed.Values[0]
+	if got.CredentialID != credentialID || got.TasksToday != 2 || got.CreditsSpentToday != 7 || got.ActiveReservations != 0 {
+		t.Fatalf("activity = %+v, want tasks 2, spend 7, reservations 0", got)
 	}
 }

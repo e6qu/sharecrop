@@ -18,6 +18,11 @@ type Credential struct {
 	State     State
 	ExpiresAt *time.Time
 	TaskID    *core.TaskID
+	// WorkPolicy is the credential's work budget. Every credential is minted
+	// work_seeking_disabled; the owner must explicitly enable work-seeking
+	// with a daily task budget before the credential can reserve tasks or
+	// submit to tasks the owner has not already reserved.
+	WorkPolicy WorkPolicy
 }
 
 // IsExpired reports whether the credential's expiration, if set, is in the past.
